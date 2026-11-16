@@ -1,6 +1,8 @@
 import { usePrefs } from "@/data/store";
+import { CHAT_APP_NAME } from "@/lib/chat";
 import { PACKAGE_NAME } from "@/lib/accounts-export";
-import { PageBody, PageHead, Panel } from "@/ui";
+import { PageBody, PageHead, Panel, Segmented } from "@/ui";
+import { toast } from "@/ui/toast";
 
 /**
  * What the system connects to in a real build (Admin, 16 Nov, after the templates Aodhan shared
@@ -9,9 +11,11 @@ import { PageBody, PageHead, Panel } from "@/ui";
  */
 export function Connections() {
   const brand = usePrefs((s) => s.brand);
+  const setBrand = usePrefs((s) => s.setBrand);
   const uk = brand.region === "UK";
   const rows: [name: string, what: string][] = [
     ["Microsoft 365", `Email for info@, accounts@ and each person's own mailbox. A reply approved here goes out from Outlook, in the same thread.`],
+    [CHAT_APP_NAME[brand.chatApp], "Team chat: each channel is read as messages arrive, anything someone has to act on is tagged and passed to them, and a reply approved here is posted in the same channel."],
     [PACKAGE_NAME[brand.accountsPackage], "Sales invoices, supplier bills and job costs go across each night, so nobody types them twice."],
     [uk ? "HMRC, Construction Industry Scheme" : "Revenue, Relevant Contracts Tax", uk ? "Subcontractors verified and the right deduction taken before each payment." : "Subcontract payments notified and the deduction rate checked before each payment."],
     ["The firm's bank", "Payments in are matched to invoices each morning, so Overdue is right before anyone looks."],
@@ -21,6 +25,15 @@ export function Connections() {
     <>
       <PageHead title="Connections" note="The systems this connects to when it is built for a firm. In this demo nothing is connected: the sample data stands in for each one, and nothing leaves this browser." />
       <PageBody>
+        <div className="mb-4 flex max-w-5xl flex-wrap items-center gap-3">
+          <p className="mr-auto">Team chat runs on</p>
+          <Segmented
+            label="Team chat app"
+            value={brand.chatApp}
+            onChange={(v) => { setBrand({ chatApp: v }); toast(`Team chat now shows ${CHAT_APP_NAME[v]}`); }}
+            options={[{ value: "teams", label: "Microsoft Teams" }, { value: "slack", label: "Slack" }]}
+          />
+        </div>
         <Panel className="max-w-5xl overflow-x-auto">
           <table className="tbl">
             <thead>

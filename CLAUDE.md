@@ -34,7 +34,9 @@ what has been tested.
   unavailable; `tests/browser/ask_check.py` tests the panel against a scripted stand-in.
 
 **Where it stands.** Step 1 of six is built and live on demo.vardil.com (`main` at 01e7566,
-16 Nov). 199 automated tests and 647 browser checks pass.
+16 Nov). 199 automated tests and 647 browser checks pass there. Step 2 (Team chat) is part
+built on Oisin's copy, branch `step-2-team-chat` in `product574/vardil-construction-demo`: see
+"Step 2 on Oisin's copy" under "Where we stopped".
 
 **How each step is built (on the co-founder's copy).** Work on a branch. Before any code,
 bring Aodhan 2 or 3 options as pictures and get his pick. Then build, add tests, run
@@ -167,6 +169,7 @@ Two sources were merged (November 2026):
 | 62 | Billing | In Admin (16 Nov, after step 1: "add billing to the admin section. Have it to show three months prior as past invoices"), as in the templates: the plan, the next invoice, and the invoices for the three months before this one. Per person with a sign-in (office and site management, 13 in the sample data); operatives on the site phone and clients in the portal are free. Invoices from Vardil numbered VD-yymm, issued on the first working day of the month after, taken by direct debit three working days later. The price is €59 a person a month before VAT, set by Aodhan on 16 Nov (it was a €55 placeholder until he picked it), in `PLAN` in `src/lib/subscription.ts` (changing it means bumping DATA_VERSION and the figures in `subscription.test.ts`, `snapshot.test.ts` and `s1b_check.py`). Only the managing director sees it: Billing, like Roles and access, stays his even when Admin is switched on for another level (`mdOnly` on the sidebar item in `departments.ts`, and the screen sends anyone else back to Admin) |
 | 63 | Moving sales cards | Cards move between the board's columns (16 Nov, after step 1: "have it so that jobs can be moved between sections"), by dragging or with the handle on each card's corner (a list of columns, for phones and keyboards). Every move does what that stage means, after a dialog saying what will happen: To quote to Drafting drafts the quote; Drafting back to To quote discards the draft; Drafting to Sent sends it; a quote that is out can go to Queried (with the client's question), Won (purchase order, then a project), Declined, or back to Drafting to be changed; Queried to Sent sends the revision; Declined to Drafting reopens it. Refused: anything into Opened (the client does that), anything out of Won (a project now), skipping a stage. While dragging, the columns it can go to say what a drop does and the rest dim. Only people with "Price and send quotes" can move cards. Rules in `src/lib/pipeline.ts`. The board or list switch and the richer Log enquiry are still to come in step 3 |
 | 64 | Team chat layout (step 2) | Option C of three, picked by Oisin from pictures (16 Nov, his copy, branch `step-2-team-chat`): a triage view like Email. The sidebar has Views (Needs action, Passed to me, Done), then the channels, then which chat app is connected. The main list is "Needs action" across every channel, each row tagged, with its channel and who it was passed to; opening one shows the thread around it, who it was passed to and why, and the drafted reply, with Approve reply, Edit reply, Pass to someone else and Mark done. The chat itself stays in Teams or Slack. The other two: A, a channel view with an AI panel on the right; B, the channel stream with tags and drafts under each message. Not yet seen by Aodhan |
+| 65 | Team chat app | Switchable, like the accounts package (Oisin, 16 Nov, the recommended option of three: switchable, Teams only, Slack only): Admin > Connections has Microsoft Teams or Slack, Teams by default. It is a preference (`Brand.chatApp`), so it survives Reset demo data. Teams shows channels by name ("C720 Ardmullen House"), Slack as #c720-ardmullen-house (`channelLabel` in `src/lib/chat.ts`) |
 
 Standing preferences (these come from Aodhan and are not optional):
 
@@ -243,7 +246,8 @@ src/
                         overview.ts (the AI overview, worked out from the records),
                         approvals.ts (client first), portal.ts (the overview's Portal panel),
                         requests.ts (what waits for the managing director's yes or no),
-                        subscription.ts (Admin, Billing), pipeline.ts (moving sales cards)
+                        subscription.ts (Admin, Billing), pipeline.ts (moving sales cards),
+                        chat.ts (Team chat, step 2)
   ui/                   the interface kit: Button, Badge, PageHead, Panel, Dialog, Menu, toast
   modules/<department>/ one folder per department, one file per screen. dashboard/ is the
                         overview plus ApprovalsPanel.tsx; admin/ (16 Nov) holds Requests,
@@ -398,6 +402,39 @@ State of the work at the start of the second session (re-checked from the zip):
   private Claude artifact (title "Construction operations demo").
 - The managing director is Aidan King. The client the demo signs in as is Susan Kane of
   Ardmullen Estate.
+
+**Step 2 on Oisin's copy (16 Nov, branch `step-2-team-chat`, part one of two).** Oisin
+picked option C from three pictures (decision 64) and a switchable chat app (decision 65).
+Built so far:
+
+- Data: `ChatChannel`, `ChatMessage` and `ChatAction` in `types.ts`, `db.chatChannels` and
+  `db.chatMessages`, DATA_VERSION 12. Sample data in `src/data/seed/chat.ts`: a channel per
+  live site (C719 to C725) plus Office, Plant and yard, and Accounts; this morning's messages
+  and three dealt with on the working day before. Everything in it is already in the records
+  (DH2 in the yard, SW2 at Dunmoy, Burren Lime, the Kilcashel tender in Email).
+- Rules in `src/lib/chat.ts` with tests (`chat.test.ts`, 24): `routeFor` (plant to Pat
+  Scully, safety to Declan Furey, accounts to Maeve Quirke, decisions to the managing
+  director, other questions to Niamh Lavelle; supplies, labour, client queries and
+  complaints to the contracts manager running that project), `routeReason`, `channelLabel`,
+  the lists for each view and channel, the counts, and `threadAround` (the two messages
+  before, the message, and any reply posted from here).
+- Screen `src/modules/chat/TeamChat.tsx`: Team chat in the bar right of Email; the sidebar has
+  Views (Needs action, Passed to me, Done) and a link per channel (`more` on a `NavGroup`, so
+  the list comes from the records; long names are cut short). Laid out like Email: the list,
+  then the open message with the conversation around it, why it went to that person, Tagged
+  as and Passed to, and the drafted reply with "Approve and post" and "Mark done, no reply".
+  Posting puts the reply in the channel in the name of the person it was passed to, and needs
+  "Approve drafts". A message closed without a reply can be moved back. Every change is in
+  the Activity log.
+- Departments: the managing director, contracts managers and accounts have Team chat. Site
+  managers do not yet (part two).
+- Tests: 223 automated tests; 688 browser checks in fourteen suites (new `s2_check.py`, 41;
+  `m1_check.py` now counts 13 departments and `s1_check.py` six connections).
+
+Part two, still to do: drafted replies also waiting in Approvals on the overview (a new
+approval kind, approving from either place does the same thing, as with Email); site managers
+seeing only their own sites' channels; an automation line ("Team chat message tagged and
+passed on") in Admin, Automations; then show Aodhan.
 
 **16 Nov, later: Aodhan's list of changes, in six steps** (each built on a branch, tried on
 its preview address, and published only when he says). He listed them after the review;

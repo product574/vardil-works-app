@@ -36,9 +36,9 @@ export function Branding() {
           changed && (
             <Button
               onClick={() => {
-                const { region, accountsPackage } = brand;
+                const { region, accountsPackage, chatApp } = brand;
                 resetBrand();
-                setBrand({ region, accountsPackage });
+                setBrand({ region, accountsPackage, chatApp });
                 toast(`Back to ${DEFAULT_BRAND.brandName}`);
               }}
             >

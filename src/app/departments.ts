@@ -2,14 +2,17 @@
  * The map of the whole app: every department in the bottom bar, and the short sidebar each
  * one shows. Adding a screen means adding a line here and a route in router.tsx.
  */
-import { Browsers, CalendarDots, DeviceMobile, EnvelopeSimple, FolderOpen, Gauge, GearSix, Handshake, HardHat, type Icon, Receipt, Truck, UserGear, UsersThree } from "@phosphor-icons/react";
+import { Browsers, CalendarDots, ChatsCircle, DeviceMobile, EnvelopeSimple, FolderOpen, Gauge, GearSix, Handshake, HardHat, type Icon, Receipt, Truck, UserGear, UsersThree } from "@phosphor-icons/react";
+import type { Brand } from "@/config/brand";
+import { channelLabel, chatCounts } from "@/lib/chat";
 import { waitingOnDirector } from "@/lib/requests";
 import { dueState } from "@/lib/status";
-import type { Db, DepartmentKey } from "@/data/types";
+import type { Db, DepartmentKey, ID } from "@/data/types";
 
 /** `mdOnly`: shown to the managing director only, even when the department is switched on for another level. */
-export type NavItem = { to: string; label: string; count?: (db: Db, today: string) => number; countTone?: "accent" | "warn" | "bad"; end?: boolean; mdOnly?: boolean };
-export type NavGroup = { label: string; items: NavItem[] };
+export type NavItem = { to: string; label: string; count?: (db: Db, today: string, me: ID | null) => number; countTone?: "accent" | "warn" | "bad"; end?: boolean; mdOnly?: boolean };
+/** `more`: items worked out from the records, such as one per Team chat channel. */
+export type NavGroup = { label: string; items: NavItem[]; more?: (db: Db, brand: Brand) => NavItem[] };
 export type Department = { key: DepartmentKey; /** Name in the bottom bar. */ label: string; /** Longer name for the sidebar heading, when it differs. */ title?: string; icon: Icon; home: string; groups: NavGroup[]; inBar: boolean };
 
 export const DEPARTMENTS: Department[] = [
@@ -26,6 +29,18 @@ export const DEPARTMENTS: Department[] = [
         { to: "/inbox/sent", label: "Sent" },
         { to: "/inbox/archive", label: "Archive" },
       ] },
+    ],
+  },
+  {
+    // Step 2 (decision 64): what the AI picked out of the firm's Teams or Slack, across every channel.
+    key: "chat", label: "Team chat", icon: ChatsCircle, home: "/chat", inBar: true,
+    groups: [
+      { label: "Views", items: [
+        { to: "/chat", label: "Needs action", end: true, count: (db, _t, me) => chatCounts(db.chatMessages, me).open },
+        { to: "/chat/mine", label: "Passed to me", count: (db, _t, me) => chatCounts(db.chatMessages, me).mine },
+        { to: "/chat/done", label: "Done" },
+      ] },
+      { label: "Channels", items: [], more: (db, brand) => db.chatChannels.map((c) => ({ to: `/chat/channel/${c.id}`, label: channelLabel(c, brand.chatApp) })) },
     ],
   },
   {

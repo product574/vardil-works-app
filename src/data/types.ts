@@ -478,6 +478,42 @@ export type Mail = {
   attachment?: string;
 };
 
+// ── Team chat (step 2) ────────────────────────────────────────────────────────
+
+/** What a team chat message is about, when someone has to act on it. Who it goes to follows from the tag (`routeFor` in src/lib/chat.ts). */
+export type ChatTag = "Plant request" | "Supplies" | "Labour" | "Client query" | "Complaint" | "Safety" | "Accounts" | "Decision" | "Question";
+
+/** A channel in the firm's Teams or Slack. Site channels belong to a project. */
+export type ChatChannel = { id: ID; name: string; projectId?: ID; purpose: string };
+
+/**
+ * Set on a message the AI picked out as needing someone to act. The chat itself stays in Teams
+ * or Slack; this is the layer on top: tagged, passed to a person, with a reply drafted for them.
+ */
+export type ChatAction = {
+  tag: ChatTag;
+  toId: ID;
+  /** Set when a person passed it on by hand, instead of the AI. */
+  passedBy?: string;
+  status: "Open" | "Done";
+  /** The drafted reply, in the words of the person it was passed to. Gone once posted or dropped. */
+  draft?: string;
+  outcome?: "Replied" | "Done without reply";
+  resolvedBy?: string;
+  resolvedAt?: Stamp;
+};
+
+export type ChatMessage = {
+  id: ID;
+  channelId: ID;
+  authorId: ID;
+  at: Stamp;
+  text: string;
+  /** A reply posted from here answers this message. */
+  replyTo?: ID;
+  action?: ChatAction;
+};
+
 // ── Management layer ──────────────────────────────────────────────────────────
 
 /**
@@ -509,6 +545,7 @@ export type Approval = {
 export type DepartmentKey =
   | "dashboard"
   | "inbox"
+  | "chat"
   | "sales"
   | "projects"
   | "schedule"
@@ -591,6 +628,9 @@ export type Db = {
   supplierInvoices: SupplierInvoice[];
   salesInvoices: SalesInvoice[];
   mails: Mail[];
+  chatChannels: ChatChannel[];
+  /** Oldest first. */
+  chatMessages: ChatMessage[];
   approvals: Approval[];
   automations: Automation[];
   activity: Activity[];

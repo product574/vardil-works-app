@@ -16,6 +16,7 @@ import { REGION } from "@/lib/money";
 import { ROLES } from "../roles";
 import type { Db } from "../types";
 import { seedAssets } from "./assets";
+import { seedChat } from "./chat";
 import { quotedMargin, seedCommercial } from "./commercial";
 import { fillManagementDates, seedActivity, seedFiles, seedMail, seedManagement, seedMoney } from "./office";
 import { seedPeople } from "./people";
@@ -90,6 +91,7 @@ function buildIrishSeed(realToday: string, opts: { emailDomain?: string; vatPct?
     files,
     ...money,
     mails,
+    ...seedChat(day, proj.projects, names),
     approvals,
     automations,
     activity: [],

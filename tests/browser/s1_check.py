@@ -132,7 +132,7 @@ def steps(page, ctx):
     go(page, "/admin/activity")
     check("Activity log: in Admin, recording the answers", "Agreed to spend" in main.inner_text() and "Turned down a site request" in main.inner_text())
     go(page, "/admin/connections")
-    check("Connections: what a real build connects to, and that the demo does not", main.locator("tbody tr").count() == 5 and "Microsoft 365" in main.inner_text() and "nothing is connected" in main.inner_text())
+    check("Connections: what a real build connects to, and that the demo does not", main.locator("tbody tr").count() == 6 and "Microsoft 365" in main.inner_text() and "nothing is connected" in main.inner_text())
     go(page, "/admin/access")
     check("Roles and access: now in Admin, with the new yes or no permission", "What they can do" in main.inner_text() and "Answer requests for a yes or no" in main.inner_text())
 

@@ -20,6 +20,7 @@ const plant = () => import("@/modules/plant");
 const files = () => import("@/modules/files/Files");
 const invoicing = () => import("@/modules/invoicing/Invoicing");
 const inbox = () => import("@/modules/inbox/Inbox");
+const chat = () => import("@/modules/chat/TeamChat");
 const portal = () => import("@/modules/portal/Portal");
 const site = () => import("@/modules/site/SiteView");
 const settings = () => import("@/modules/settings");
@@ -103,6 +104,11 @@ export const router = create([
           screen("inbox", inbox, (m) => () => <m.Inbox folder="Inbox" />),
           screen("inbox/sent", inbox, (m) => () => <m.Inbox folder="Sent" />),
           screen("inbox/archive", inbox, (m) => () => <m.Inbox folder="Archive" />),
+          // Team chat (step 2): one screen for the three views and each channel, so the list starts fresh on each.
+          screen("chat", chat, (m) => () => <m.TeamChat view="open" />),
+          screen("chat/mine", chat, (m) => () => <m.TeamChat view="mine" />),
+          screen("chat/done", chat, (m) => () => <m.TeamChat view="done" />),
+          screen("chat/channel/:channelId", chat, (m) => m.TeamChatChannel),
           screen("portal", portal, (m) => m.Portal),
           screen("site", site, (m) => m.SiteView),
           screen("settings", settings, (m) => m.Branding),

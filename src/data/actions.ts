@@ -17,7 +17,7 @@ import { ROLES } from "./roles";
 import { costingFor, linesFor, type WorkKind } from "./seed/commercial";
 import { rng } from "./seed/util";
 import { getDay, useData, usePrefs } from "./store";
-import type { AccessKey, AccessRow, Allocation, Cert, Client, Db, DepartmentKey, Enquiry, ID, LevelKey, PermKey, Person, PhotoStage, Language, Mail, MailIntent, Proof, RequestKind, RoleKey, FileCategory, FileKind, FleetDocCategory, Project, Variation, Vehicle } from "./types";
+import type { AccessKey, AccessRow, Allocation, Cert, ChatTag, Client, Db, DepartmentKey, Enquiry, ID, LevelKey, PermKey, Person, PhotoStage, Language, Mail, MailIntent, Proof, RequestKind, RoleKey, FileCategory, FileKind, FleetDocCategory, Project, Variation, Vehicle } from "./types";
 
 const mutate = (fn: (db: Db) => void) => useData.getState().mutate(fn);
 
@@ -1400,3 +1400,80 @@ export function discardReplyDraft(mailId: ID) {
   });
 }
 
+
+// ── Team chat (step 2) ────────────────────────────────────────────────────────
+
+function chatTarget(db: Db, m: { channelId: ID; text: string }) {
+  const ch = db.chatChannels.find((c) => c.id === m.channelId);
+  const words = m.text.split(" ");
+  return `${ch?.name ?? "Team chat"}: ${words.slice(0, 8).join(" ")}${words.length > 8 ? "..." : ""}`;
+}
+
+/** Edit the drafted reply before it is posted. What is approved is what goes into the channel. */
+export function saveChatDraft(id: ID, draft: string) {
+  mutate((db) => {
+    const a = db.chatMessages.find((x) => x.id === id)?.action;
+    if (a?.status === "Open") a.draft = draft;
+  });
+}
+
+/**
+ * Post the drafted reply in the channel, in the name of the person it was passed to, and mark the
+ * message dealt with. In the demo nothing leaves the browser; a real build posts to Teams or Slack here.
+ */
+export function postChatReply(id: ID) {
+  mutate((db) => {
+    const m = db.chatMessages.find((x) => x.id === id);
+    const a = m?.action;
+    if (!m || !a || a.status !== "Open" || !a.draft?.trim()) return;
+    const who = actorName(db);
+    db.chatMessages.push({ id: newId("cm"), channelId: m.channelId, authorId: a.toId, at: nowStamp(), text: a.draft.trim(), replyTo: m.id });
+    Object.assign(a, { status: "Done", outcome: "Replied", draft: undefined, resolvedBy: who, resolvedAt: nowStamp() });
+    log(db, "Posted a reply in Team chat", chatTarget(db, m), "chat", who);
+  });
+}
+
+/** Pass a message to someone else. The draft stays for them to change. */
+export function passChatMessage(id: ID, personId: ID) {
+  mutate((db) => {
+    const m = db.chatMessages.find((x) => x.id === id);
+    if (!m?.action || m.action.toId === personId) return;
+    const who = actorName(db);
+    m.action.toId = personId;
+    m.action.passedBy = who;
+    log(db, "Passed a Team chat message on", `${chatTarget(db, m)} to ${db.people.find((p) => p.id === personId)?.name}`, "chat", who);
+  });
+}
+
+/** Change what a message was tagged as. Who it is passed to stays as it is. */
+export function tagChatMessage(id: ID, tag: ChatTag) {
+  mutate((db) => {
+    const m = db.chatMessages.find((x) => x.id === id);
+    if (!m?.action || m.action.tag === tag) return;
+    m.action.tag = tag;
+    log(db, "Changed a Team chat message's tag", `${chatTarget(db, m)} as ${tag}`, "chat");
+  });
+}
+
+/** Dealt with some other way (a phone call, already sorted): closed with no reply, and the draft dropped. */
+export function closeChatMessage(id: ID) {
+  mutate((db) => {
+    const m = db.chatMessages.find((x) => x.id === id);
+    const a = m?.action;
+    if (!m || !a || a.status !== "Open") return;
+    const who = actorName(db);
+    Object.assign(a, { status: "Done", outcome: "Done without reply", draft: undefined, resolvedBy: who, resolvedAt: nowStamp() });
+    log(db, "Marked a Team chat message done", chatTarget(db, m), "chat", who);
+  });
+}
+
+/** Put a message closed without a reply back on the list. One that was answered stays answered. */
+export function reopenChatMessage(id: ID) {
+  mutate((db) => {
+    const m = db.chatMessages.find((x) => x.id === id);
+    const a = m?.action;
+    if (!m || !a || a.status !== "Done" || a.outcome !== "Done without reply") return;
+    Object.assign(a, { status: "Open", outcome: undefined, resolvedBy: undefined, resolvedAt: undefined });
+    log(db, "Moved a Team chat message back to Needs action", chatTarget(db, m), "chat");
+  });
+}

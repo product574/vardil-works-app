@@ -315,14 +315,17 @@ function Search({ autoFocus = false, onDone }: { autoFocus?: boolean; onDone?: (
 function useNavCounts() {
   const db = useData((s) => s.db);
   const day = useDay();
-  return (count: ((d: typeof db, today: string) => number) | undefined) => (count ? count(db, day) : 0);
+  const me = useAccess().personId;
+  return (count: ((d: typeof db, today: string, me: string | null) => number) | undefined) => (count ? count(db, day, me) : 0);
 }
 
 /** A department's sidebar groups, without the managing director's own screens for anyone else. */
 function useGroups(pathname: string) {
   const md = useAccess().role === "md";
+  const db = useData((s) => s.db);
+  const brand = usePrefs((s) => s.brand);
   return departmentFor(pathname)
-    .groups.map((g) => ({ ...g, items: g.items.filter((it) => md || !it.mdOnly) }))
+    .groups.map((g) => ({ ...g, items: [...g.items, ...(g.more?.(db, brand) ?? [])].filter((it) => md || !it.mdOnly) }))
     .filter((g) => g.items.length > 0);
 }
 
@@ -340,8 +343,8 @@ function Sidebar() {
           <ul>
             {g.items.map((it) => (
               <li key={it.to}>
-                <NavLink to={it.to} end={it.end} className={({ isActive }) => cx("flex h-9 items-center gap-2 rounded-md px-2", isActive ? "bg-surface font-medium text-accent-ink shadow-[inset_0_0_0_1px_var(--line)]" : "hover:bg-surface/70")}>
-                  {it.label}
+                <NavLink to={it.to} end={it.end} title={it.label} className={({ isActive }) => cx("flex h-9 items-center gap-2 rounded-md px-2", isActive ? "bg-surface font-medium text-accent-ink shadow-[inset_0_0_0_1px_var(--line)]" : "hover:bg-surface/70")}>
+                  <span className="min-w-0 flex-1 truncate">{it.label}</span>
                   <Count n={n(it.count)} tone={it.countTone ?? "accent"} />
                 </NavLink>
               </li>

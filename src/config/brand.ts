@@ -7,6 +7,8 @@
  */
 export type Region = "IE" | "UK";
 export type AccountsPackage = "sage50" | "xero" | "sheet";
+/** The firm's team chat, shown in Team chat and Admin, Connections (step 2). */
+export type ChatApp = "teams" | "slack";
 
 export type Brand = {
   /** Short name shown top left and on the sign-in page. */
@@ -23,6 +25,8 @@ export type Brand = {
   region: Region;
   /** Which accounts package the invoicing export is laid out for. */
   accountsPackage: AccountsPackage;
+  /** Which team chat the firm uses: Microsoft Teams or Slack. Changes how channels are named. */
+  chatApp: ChatApp;
   /** Email domain used for the invented staff and shared mailboxes. */
   emailDomain: string;
 };
@@ -35,6 +39,7 @@ export const DEFAULT_BRAND: Brand = {
   logoUrl: "",
   region: "IE",
   accountsPackage: "sage50",
+  chatApp: "teams",
   emailDomain: "abcconstruction.example",
 };
 
