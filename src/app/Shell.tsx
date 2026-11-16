@@ -36,11 +36,18 @@ export function Shell() {
     <div className="flex h-dvh flex-col bg-canvas">
       <TopBar />
       <div className="flex min-h-0 flex-1">
-        {dept.key !== "site" && <Sidebar />}
-        <main id="main" className={cx("min-w-0 flex-1 overflow-y-auto", showBar && "pb-24")}>
-          <SideNavCompact />
-          <Outlet />
-        </main>
+        {dept.key !== "site" && !dept.ownLayout && <Sidebar />}
+        {dept.ownLayout ? (
+          // Email and Team chat draw their own side panel and scroll their own parts.
+          <main id="main" className="flex min-w-0 flex-1 overflow-hidden">
+            <Outlet />
+          </main>
+        ) : (
+          <main id="main" className={cx("min-w-0 flex-1 overflow-y-auto", showBar && "pb-24")}>
+            <SideNavCompact />
+            <Outlet />
+          </main>
+        )}
         {showAsk && <AskPanel />}
       </div>
       {showBar && <DepartmentBar keys={allowed.map((d) => d.key)} besideAsk={showAsk} />}
@@ -378,6 +385,7 @@ function SideNavCompact() {
 function DepartmentBar({ keys, besideAsk }: { keys: string[]; besideAsk: boolean }) {
   const location = useLocation();
   const current = departmentFor(location.pathname);
+  const n = useNavCounts();
   return (
     <nav aria-label="Departments" className={cx("pointer-events-none fixed inset-x-0 bottom-3 z-30 flex justify-center px-2", besideAsk && "md:right-[27rem]")}>
       <ul className="pointer-events-auto flex max-w-full gap-1 overflow-x-auto rounded-[14px] border border-line bg-surface p-1.5 shadow-dock">
@@ -391,7 +399,14 @@ function DepartmentBar({ keys, besideAsk }: { keys: string[]; besideAsk: boolean
                 aria-current={active ? "page" : undefined}
                 className={cx("press flex h-14 w-[4.9rem] flex-col items-center justify-center gap-0.5 rounded-lg text-[0.87rem] leading-tight", active ? "bg-accent-strong font-medium text-white" : "text-muted hover:bg-accent-soft hover:text-accent-ink")}
               >
-                <Icon size={22} weight={active ? "fill" : "regular"} />
+                <span className="relative">
+                  <Icon size={22} weight={active ? "fill" : "regular"} />
+                  {n(d.badge) > 0 && (
+                    <span aria-label={`${n(d.badge)} unread`} className={cx("absolute -top-1.5 -right-3 min-w-5 rounded-full px-1 text-center text-[0.8125rem] leading-5 font-medium", active ? "bg-white text-accent-ink" : "bg-accent-strong text-white")}>
+                      {n(d.badge)}
+                    </span>
+                  )}
+                </span>
                 <span className="whitespace-nowrap">{d.label}</span>
               </NavLink>
             </li>

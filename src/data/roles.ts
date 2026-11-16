@@ -52,7 +52,7 @@ export const ROLES: RoleDef[] = [
     personId: "p-sm1",
     does: "Marks attendance, ticks off scope, requests people and plant.",
     home: "/people/timesheet",
-    departments: ["projects", "schedule", "people", "plant", "files", "site"],
+    departments: ["chat", "projects", "schedule", "people", "plant", "files", "site"],
     money: [true, false],
     perms: ["markTime", "correctTime"],
   },

@@ -4,7 +4,7 @@
  */
 import { Browsers, CalendarDots, ChatsCircle, DeviceMobile, EnvelopeSimple, FolderOpen, Gauge, GearSix, Handshake, HardHat, type Icon, Receipt, Truck, UserGear, UsersThree } from "@phosphor-icons/react";
 import type { Brand } from "@/config/brand";
-import { channelLabel, chatCounts } from "@/lib/chat";
+import { totalUnread } from "@/lib/chat";
 import { waitingOnDirector } from "@/lib/requests";
 import { dueState } from "@/lib/status";
 import type { Db, DepartmentKey, ID } from "@/data/types";
@@ -13,7 +13,19 @@ import type { Db, DepartmentKey, ID } from "@/data/types";
 export type NavItem = { to: string; label: string; count?: (db: Db, today: string, me: ID | null) => number; countTone?: "accent" | "warn" | "bad"; end?: boolean; mdOnly?: boolean };
 /** `more`: items worked out from the records, such as one per Team chat channel. */
 export type NavGroup = { label: string; items: NavItem[]; more?: (db: Db, brand: Brand) => NavItem[] };
-export type Department = { key: DepartmentKey; /** Name in the bottom bar. */ label: string; /** Longer name for the sidebar heading, when it differs. */ title?: string; icon: Icon; home: string; groups: NavGroup[]; inBar: boolean };
+export type Department = {
+  key: DepartmentKey;
+  /** Name in the bottom bar. */ label: string;
+  /** Longer name for the sidebar heading, when it differs. */ title?: string;
+  icon: Icon;
+  home: string;
+  groups: NavGroup[];
+  inBar: boolean;
+  /** Draws its own full-height side panel (Email and Team chat, laid out like the reference demos), so the shell shows no sidebar. */
+  ownLayout?: boolean;
+  /** A count on the department's button in the bottom bar: unread email, unread messages. */
+  badge?: (db: Db, today: string, me: ID | null) => number;
+};
 
 export const DEPARTMENTS: Department[] = [
   {
@@ -22,26 +34,24 @@ export const DEPARTMENTS: Department[] = [
     groups: [{ label: "Today", items: [{ to: "/dashboard", label: "Overview", end: true, count: (db) => db.approvals.filter((a) => a.status === "Pending").length }] }],
   },
   {
-    key: "inbox", label: "Email", icon: EnvelopeSimple, home: "/inbox", inBar: true,
+    key: "inbox", label: "Email", icon: EnvelopeSimple, home: "/inbox", inBar: true, ownLayout: true,
+    badge: (db) => db.mails.filter((m) => m.folder === "Inbox" && !m.read).length,
     groups: [
       { label: "Folders", items: [
         { to: "/inbox", label: "Inbox", end: true, count: (db) => db.mails.filter((m) => m.folder === "Inbox" && !m.read).length },
+        { to: "/inbox/starred", label: "Starred" },
         { to: "/inbox/sent", label: "Sent" },
+        { to: "/inbox/drafts", label: "Drafts" },
         { to: "/inbox/archive", label: "Archive" },
       ] },
     ],
   },
   {
-    // Step 2 (decision 64): what the AI picked out of the firm's Teams or Slack, across every channel.
-    key: "chat", label: "Team chat", icon: ChatsCircle, home: "/chat", inBar: true,
-    groups: [
-      { label: "Views", items: [
-        { to: "/chat", label: "Needs action", end: true, count: (db, _t, me) => chatCounts(db.chatMessages, me).open },
-        { to: "/chat/mine", label: "Passed to me", count: (db, _t, me) => chatCounts(db.chatMessages, me).mine },
-        { to: "/chat/done", label: "Done" },
-      ] },
-      { label: "Channels", items: [], more: (db, brand) => db.chatChannels.map((c) => ({ to: `/chat/channel/${c.id}`, label: channelLabel(c, brand.chatApp) })) },
-    ],
+    // Laid out like Ping in the reference demos (16 Nov, Oisin): channels and direct messages.
+    key: "chat", label: "Team chat", icon: ChatsCircle, home: "/chat", inBar: true, ownLayout: true,
+    badge: (db, _t, me) => totalUnread(db.chatMessages, db.chatChannels, me),
+    // Not shown (the screen draws its own channel list); listed so Ask AI can link to it.
+    groups: [{ label: "Team chat", items: [{ to: "/chat", label: "Channels" }] }],
   },
   {
     key: "sales", label: "Sales", icon: Handshake, home: "/sales", inBar: true,

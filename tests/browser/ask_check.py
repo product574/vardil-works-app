@@ -133,7 +133,7 @@ try:
         page.wait_for_selector("text=Chaser approved and filed under Sent")
         page.goto(B + "/inbox/sent"); page.wait_for_selector("h1")
         check("Approved, it is filed under Sent as edited", page.get_by_text(f"{ref}, Dunmoy Bridewell final account").count() >= 1)
-        page.get_by_text(f"{ref}, Dunmoy Bridewell final account").first.click(); page.wait_for_timeout(300)
+        page.locator("main").get_by_role("button", name=re.compile(re.escape(f"{ref}, Dunmoy Bridewell final account"))).first.click(); page.wait_for_timeout(300)
         check("with the edit in it", page.get_by_text("Could you please let me know").count() >= 1)
 
         # 6. The other drafts

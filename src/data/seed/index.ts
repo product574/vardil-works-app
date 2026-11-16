@@ -91,7 +91,7 @@ function buildIrishSeed(realToday: string, opts: { emailDomain?: string; vatPct?
     files,
     ...money,
     mails,
-    ...seedChat(day, proj.projects, names),
+    ...seedChat(day, proj.projects),
     approvals,
     automations,
     activity: [],

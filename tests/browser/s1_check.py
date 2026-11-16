@@ -30,7 +30,7 @@ def steps(page, ctx):
     page.get_by_role("button", name="Reset demo data").click(); page.wait_for_timeout(400)
 
     # ── The bar: Email beside Dashboard, Files kept, Admin at the end
-    labels = [t.strip() for t in bar.locator("a").all_inner_texts()]
+    labels = [t.strip().split("\n")[-1] for t in bar.locator("a").all_inner_texts()]  # an unread count may sit above the name
     check("Bar: Email sits right after Dashboard", labels[:2] == ["Dashboard", "Email"], labels)
     check("Bar: Admin and Files are there for the managing director, Inbox is not", "Admin" in labels and "Files" in labels and "Inbox" not in labels, labels)
 

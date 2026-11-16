@@ -1,113 +1,91 @@
-import { routeFor } from "@/lib/chat";
-import type { ChatChannel, ChatMessage, ChatTag, Project } from "../types";
+import type { ChatChannel, ChatMessage, Project } from "../types";
 import { at, workdays } from "./util";
 
 /**
- * Team chat (step 2): a channel per live site plus the office, plant and yard, and accounts.
- * Written relative to the demo's day, so this morning's messages are always this morning's.
- * Every name, item of plant and supplier here is one the rest of the sample data already has:
- * DH2 is in the yard, SW2 is at Dunmoy, Burren Lime supplies the lime, and the Kilcashel tender
+ * Team chat: a channel per live site plus Office, Plant and yard, and Accounts, and a few direct
+ * messages. Written relative to the demo's day, so this morning's messages are always this
+ * morning's. Every name, item of plant and supplier is one the rest of the sample data already
+ * has: DH2 is in the yard, SW2 is at Dunmoy, Burren Lime supplies the lime, the Kilcashel tender
  * is the one in Email.
  */
-const CHANNELS: [id: string, name: string, code: string | null, purpose: string][] = [
-  ["ch-C719", "C719 St Finian's Church", "C719", "Site team and office for St Finian's Church"],
-  ["ch-C720", "C720 Ardmullen House", "C720", "Site team and office for Ardmullen House"],
-  ["ch-C721", "C721 The Old Corn Mill", "C721", "Site team and office for The Old Corn Mill"],
-  ["ch-C722", "C722 Dunmoy Courthouse", "C722", "Site team and office for Dunmoy Courthouse"],
-  ["ch-C723", "C723 14 Fitzgarret Square", "C723", "Site team and office for 14 Fitzgarret Square"],
-  ["ch-C724", "C724 Derrybawn Bridge", "C724", "Site team and office for Derrybawn Bridge"],
-  ["ch-C725", "C725 Granary Quay Warehouses", "C725", "Site team and office for Granary Quay Warehouses"],
-  ["ch-office", "Office", null, "Everyone in the office"],
-  ["ch-plant", "Plant and yard", null, "Plant moves, servicing and the yard"],
-  ["ch-accounts", "Accounts", null, "Invoices, cards and payments"],
-];
+const OFFICE = ["p-md", "p-cm1", "p-cm2", "p-qs", "p-acc", "p-off", "p-hs", "p-yard"];
+const SITE_MANAGERS = ["p-sm1", "p-sm2", "p-sm3", "p-sm4", "p-sm5"];
 
-type Row = {
-  ch: string;
-  who: string;
-  day: "today" | "prev";
-  time: string;
-  text: string;
-  tag?: ChatTag;
-  draft?: string;
-  /** Dealt with on the previous working day: a reply posted, or closed without one. */
-  done?: { reply?: string; time: string };
-};
+type Row = [channel: string, who: string, day: "prev" | "today", time: string, text: string, attachment?: string];
 
 const ROWS: Row[] = [
-  // Dealt with yesterday.
-  { ch: "ch-C724", who: "p-sm1", day: "prev", time: "11:20", text: "Welfare unit at the bridge is out of water. Can the yard sort it today?", tag: "Plant request", done: { reply: "Eoin, I'll fill it from the van tank when I bring out the generator diesel at 2.", time: "11:34" } },
-  { ch: "ch-C720", who: "p-sm2", day: "prev", time: "14:05", text: "Susan Kane asked on site if the estate can keep the walled garden gate open for visitors at the weekend. Is that OK with us?", tag: "Client query", done: { reply: "Cathal, yes, as long as the scaffold on the gate side is fenced off. I'll confirm it to Susan in writing.", time: "14:40" } },
-  { ch: "ch-office", who: "p-off", day: "prev", time: "15:10", text: "Two Safe Pass cards are up for renewal in the new year. Will I book the course or leave it with you?", tag: "Safety", done: { time: "16:02" } },
+  // Yesterday (the working day before).
+  ["ch-C724", "p-sm1", "prev", "11:20", "Welfare unit at the bridge is out of water. Can the yard sort it today?"],
+  ["ch-C724", "p-yard", "prev", "11:34", "@Eoin Brosnan I'll fill it from the van tank when I bring out the generator diesel at 2."],
+  ["ch-C720", "p-sm2", "prev", "14:05", "Susan Kane asked on site if the estate can keep the walled garden gate open for visitors at the weekend. OK with us?"],
+  ["ch-C720", "p-cm1", "prev", "14:40", "@Cathal Minogue yes, as long as the scaffold on the gate side is fenced off. I'll confirm it to Susan in writing."],
+  ["ch-office", "p-off", "prev", "15:10", "Two Safe Pass cards are up for renewal in the new year. Will I book the course or leave it with you, Declan?"],
+  ["ch-office", "p-hs", "prev", "16:02", "Book it please Niamh, the January date in Athlone suits."],
+  ["ch-plant", "p-yard", "prev", "16:30", "MX4 back from service, in the yard if anyone needs a pan mixer."],
+  ["dm-md-cm1", "p-cm1", "prev", "17:05", "Ardmullen is going well. Render on the north side starts tomorrow if the weather holds."],
+  ["dm-md-cm1", "p-md", "prev", "17:12", "Good. Send me a few photos when it's on."],
 
   // This morning.
-  { ch: "ch-plant", who: "p-yard", day: "today", time: "07:30", text: "Van leaves the yard at 8 with diesel for the Derrybawn generator." },
-  { ch: "ch-C720", who: "p-sm2", day: "today", time: "07:31", text: "Morning all. Render going on the north elevation today, dry until about 4." },
-  { ch: "ch-C720", who: "p-cm1", day: "today", time: "07:45", text: "Good. Photos at lunchtime please, Susan is asking for them." },
-  { ch: "ch-C722", who: "p-sm4", day: "today", time: "07:40", text: "Cutting stone for the column bases this morning." },
-  { ch: "ch-C719", who: "p-sm1", day: "today", time: "07:50", text: "Pointing on the south aisle wall finished yesterday. Starting the porch today." },
-  { ch: "ch-C721", who: "p-sm3", day: "today", time: "07:55", text: "Stripping the north pitch today. Slates going on pallets as we go." },
-  {
-    ch: "ch-C720", who: "p-sm2", day: "today", time: "08:12", tag: "Plant request",
-    text: "DH1 is not keeping up in the drawing room, the walls are still wet after the weekend. Can we get a second dehumidifier out?",
-    draft: "Cathal, DH2 is in the yard. It goes out on the van first thing tomorrow and I'll bring the hose with it.",
-  },
-  {
-    ch: "ch-accounts", who: "p-off", day: "today", time: "08:20", tag: "Accounts",
-    text: "Cathal's fuel card was declined at the filling station this morning. Is there a problem with the account?",
-    draft: "Niamh, the card reached its monthly limit. I've asked the fuel company to raise it and it should work again within the hour.",
-  },
-  {
-    ch: "ch-C719", who: "p-sm1", day: "today", time: "08:30", tag: "Supplies",
-    text: "The NHL 3.5 from Burren Lime didn't come yesterday. We'll be out of lime for mortar by the end of tomorrow.",
-    draft: "Eoin, I've been on to Burren Lime. The pallet is on tomorrow morning's load. If it slips again I'll get two bags out from the yard to keep you going.",
-  },
-  {
-    ch: "ch-C723", who: "p-sm5", day: "today", time: "08:40", tag: "Labour",
-    text: "Need another bricklayer for the rest of the week to get the railing plinth done before the stone arrives.",
-    draft: "Shane, I'll look at the week ahead for a bricklayer with free days and come back to you before 3.",
-  },
-  {
-    ch: "ch-C725", who: "p-sm3", day: "today", time: "08:55", tag: "Safety",
-    text: "Edge protection on the second floor loading bay was taken down for the timber delivery and nobody put it back.",
-    draft: "Róisín, keep everyone off the loading bay until the rail is back up. I'll be there after 11 to check it and sign it off.",
-  },
-  {
-    ch: "ch-C722", who: "p-sm4", day: "today", time: "09:00", tag: "Complaint",
-    text: "Neighbour at the back came over about dust from the stone saw. She says it's on her washing and her car.",
-    draft: "Darragh, wet cutting only from now on, and keep the saw behind the hoarding on the courthouse side. I'll ring her this afternoon.",
-  },
-  {
-    ch: "ch-C721", who: "p-sm3", day: "today", time: "09:02", tag: "Client query",
-    text: "The client's architect was on site and asked if the slates off the north pitch can go back on. He wants it in writing.",
-    draft: "Róisín, tell him we'll put it in writing this week: sound slates are being sorted for reuse, and we'll send a count with photos before any new slate is ordered.",
-  },
-  {
-    ch: "ch-office", who: "p-qs", day: "today", time: "09:05", tag: "Decision",
-    text: "The council's tender for the Kilcashel Courthouse portico came in by email this morning. I've a reply drafted saying we'll price it and take the site visit. Are you happy for us to go for it?",
-    draft: "Colm, yes, go for it. Book the site visit and start from the rates on the Dunmoy Courthouse job.",
-  },
+  ["ch-plant", "p-yard", "today", "07:30", "Van leaves the yard at 8 with diesel for the Derrybawn generator."],
+  ["ch-C720", "p-sm2", "today", "07:31", "Morning all. Render going on the north elevation today, dry until about 4."],
+  ["ch-C720", "p-cm1", "today", "07:45", "Good. Photos at lunchtime please, Susan is asking for them."],
+  ["ch-C722", "p-sm4", "today", "07:40", "Cutting stone for the column bases this morning."],
+  ["ch-C719", "p-sm1", "today", "07:50", "Pointing on the south aisle wall finished yesterday. Starting the porch today."],
+  ["ch-C721", "p-sm3", "today", "07:55", "Stripping the north pitch today. Slates going on pallets as we go."],
+  ["ch-C720", "p-sm2", "today", "08:12", "DH1 is not keeping up in the drawing room, the walls are still wet after the weekend. Can we get a second dehumidifier out?"],
+  ["ch-C720", "p-yard", "today", "08:19", "@Cathal Minogue DH2 is in the yard. It'll go out on the van first thing tomorrow with a hose."],
+  ["ch-accounts", "p-off", "today", "08:20", "Cathal's fuel card was declined at the filling station this morning. Is there a problem with the account?"],
+  ["ch-accounts", "p-acc", "today", "08:34", "It hit the monthly limit. I've asked them to raise it, should work again within the hour."],
+  ["ch-C719", "p-sm1", "today", "08:30", "The NHL 3.5 from Burren Lime didn't come yesterday. We'll be out of lime for mortar by the end of tomorrow."],
+  ["ch-C719", "p-cm1", "today", "08:41", "On to them now @Eoin Brosnan. If it slips again I'll get two bags out from the yard."],
+  ["ch-C723", "p-sm5", "today", "08:40", "Need another bricklayer for the rest of the week to get the railing plinth done before the stone arrives."],
+  ["ch-C725", "p-sm3", "today", "08:55", "Edge protection on the second floor loading bay was taken down for the timber delivery and nobody put it back.", "loading-bay.jpg"],
+  ["ch-C725", "p-hs", "today", "09:01", "@Róisín Garvey keep everyone off the bay until the rail is back up. I'll be there after 11 to check it."],
+  ["ch-C722", "p-sm4", "today", "09:00", "Neighbour at the back came over about dust from the stone saw. She says it's on her washing and her car."],
+  ["ch-C721", "p-sm3", "today", "09:02", "The client's architect was on site and asked if the slates off the north pitch can go back on. He wants it in writing."],
+  ["ch-office", "p-qs", "today", "09:05", "The council's tender for the Kilcashel Courthouse portico came in by email this morning. I've a reply drafted saying we'll price it and take the site visit. Happy for us to go for it?"],
+  ["dm-md-off", "p-off", "today", "08:47", "Sinéad's leave request is in your email, the week after next. The rota works if you're happy."],
+  ["dm-md-yard", "p-yard", "today", "08:58", "Telehandler at the Corn Mill is due its exam in the new year. Will I book it in with the same crowd as last time?"],
+  ["dm-cm1-sm2", "p-sm2", "today", "08:15", "Can you ring me when you get a minute? About the gate lodge scaffold."],
 ];
 
-export function seedChat(today: string, projects: Project[], names: Map<string, string>): { chatChannels: ChatChannel[]; chatMessages: ChatMessage[] } {
+export function seedChat(today: string, projects: Project[]): { chatChannels: ChatChannel[]; chatMessages: ChatMessage[] } {
   const prev = workdays(today, -1);
-  const pid = (code: string) => `pr-${code}`;
-  const chatChannels: ChatChannel[] = CHANNELS.map(([id, name, code, purpose]) => ({ id, name, purpose, ...(code ? { projectId: pid(code) } : {}) }));
-  const projectOf = (chId: string) => projects.find((p) => p.id === chatChannels.find((c) => c.id === chId)?.projectId);
-  const chatMessages: ChatMessage[] = [];
-  ROWS.forEach((r, i) => {
-    const day = r.day === "today" ? today : prev;
-    const id = `cm-${String(i + 1).padStart(2, "0")}`;
-    const msg: ChatMessage = { id, channelId: r.ch, authorId: r.who, at: at(day, r.time), text: r.text };
-    if (r.tag) {
-      const toId = routeFor(r.tag, projectOf(r.ch));
-      msg.action = r.done
-        ? { tag: r.tag, toId, status: "Done", outcome: r.done.reply ? "Replied" : "Done without reply", resolvedBy: names.get(toId), resolvedAt: at(day, r.done.time) }
-        : { tag: r.tag, toId, status: "Open", draft: r.draft };
-    }
-    chatMessages.push(msg);
-    if (r.done?.reply) chatMessages.push({ id: `${id}-r`, channelId: r.ch, authorId: msg.action!.toId, at: at(day, r.done.time), text: r.done.reply, replyTo: id });
-  });
-  chatMessages.sort((a, b) => a.at.localeCompare(b.at));
+  const live = projects.filter((p) => p.status === "Live").sort((a, b) => a.code.localeCompare(b.code));
+  const site = live.map((p): ChatChannel => ({
+    id: `ch-${p.code}`,
+    kind: "channel",
+    name: `${p.code} ${p.name}`,
+    projectId: p.id,
+    purpose: `Site team and office for ${p.name}`,
+    memberIds: [...new Set(["p-md", p.contractsManagerId, p.siteManagerId, "p-qs", "p-hs", "p-yard"])],
+    lastRead: {},
+  }));
+  const ch = (id: string, name: string, purpose: string, memberIds: string[]): ChatChannel => ({ id, kind: "channel", name, purpose, memberIds, lastRead: {} });
+  const dm = (a: string, b: string): ChatChannel => ({ id: `dm-${a.slice(2)}-${b.slice(2)}`, kind: "dm", name: "", purpose: "Direct message", memberIds: [a, b], lastRead: {} });
+  const chatChannels: ChatChannel[] = [
+    ...site,
+    ch("ch-office", "Office", "Everyone in the office", OFFICE),
+    ch("ch-plant", "Plant and yard", "Plant moves, servicing and the yard", ["p-md", "p-yard", "p-cm1", "p-cm2", "p-hs", ...SITE_MANAGERS]),
+    ch("ch-accounts", "Accounts", "Invoices, cards and payments", ["p-md", "p-acc", "p-off", "p-qs"]),
+    dm("p-md", "p-cm1"),
+    dm("p-md", "p-off"),
+    dm("p-md", "p-yard"),
+    dm("p-cm1", "p-sm2"),
+  ];
+  const chatMessages: ChatMessage[] = ROWS.map(([channelId, authorId, d, time, text, attachment], i) => ({
+    id: `cm-${String(i + 1).padStart(2, "0")}`,
+    channelId,
+    authorId,
+    at: at(d === "today" ? today : prev, time),
+    text,
+    ...(attachment ? { attachment } : {}),
+  })).sort((a, b) => a.at.localeCompare(b.at));
+  // Everyone has read the working day before; this morning's messages are new to anyone who has not posted since.
+  const endPrev = at(prev, "23:59");
+  for (const c of chatChannels) for (const id of c.memberIds) {
+    const lastOwn = chatMessages.filter((m) => m.channelId === c.id && m.authorId === id).map((m) => m.at).sort().pop();
+    c.lastRead[id] = lastOwn && lastOwn > endPrev ? lastOwn : endPrev;
+  }
   return { chatChannels, chatMessages };
 }

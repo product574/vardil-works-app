@@ -34,9 +34,10 @@ what has been tested.
   unavailable; `tests/browser/ask_check.py` tests the panel against a scripted stand-in.
 
 **Where it stands.** Step 1 of six is built and live on demo.vardil.com (`main` at 01e7566,
-16 Nov). 199 automated tests and 647 browser checks pass there. Step 2 (Team chat) is part
-built on Oisin's copy, branch `step-2-team-chat` in `product574/vardil-construction-demo`: see
-"Step 2 on Oisin's copy" under "Where we stopped".
+16 Nov). 199 automated tests and 647 browser checks pass there. On Oisin's copy (branch
+`step-2-team-chat` in `product574/vardil-construction-demo`) Email now looks like Gmail and
+Team chat like Ping, from the reference demos: see "Oisin's copy, 16 Nov" under "Where we
+stopped".
 
 **How each step is built (on the co-founder's copy).** Work on a branch. Before any code,
 bring Aodhan 2 or 3 options as pictures and get his pick. Then build, add tests, run
@@ -175,8 +176,9 @@ Two sources were merged (November 2026):
 | 61 | Reference templates | Ten demos he shared on 16 Nov (Athboy plant hire, HVAC, haulage, large haulage, packaging, Just Packaging, Costello Doors, Centra, Bryan Lynch, and the tarmac one again). All are Silkrun or Dubsof demos, so the rule stays: layouts and features as the reference, our own code, wording and data. Archives are kept outside the repository |
 | 62 | Billing | In Admin (16 Nov, after step 1: "add billing to the admin section. Have it to show three months prior as past invoices"), as in the templates: the plan, the next invoice, and the invoices for the three months before this one. Per person with a sign-in (office and site management, 13 in the sample data); operatives on the site phone and clients in the portal are free. Invoices from Vardil numbered VD-yymm, issued on the first working day of the month after, taken by direct debit three working days later. The price is €59 a person a month before VAT, set by Aodhan on 16 Nov (it was a €55 placeholder until he picked it), in `PLAN` in `src/lib/subscription.ts` (changing it means bumping DATA_VERSION and the figures in `subscription.test.ts`, `snapshot.test.ts` and `s1b_check.py`). Only the managing director sees it: Billing, like Roles and access, stays his even when Admin is switched on for another level (`mdOnly` on the sidebar item in `departments.ts`, and the screen sends anyone else back to Admin) |
 | 63 | Moving sales cards | Cards move between the board's columns (16 Nov, after step 1: "have it so that jobs can be moved between sections"), by dragging or with the handle on each card's corner (a list of columns, for phones and keyboards). Every move does what that stage means, after a dialog saying what will happen: To quote to Drafting drafts the quote; Drafting back to To quote discards the draft; Drafting to Sent sends it; a quote that is out can go to Queried (with the client's question), Won (purchase order, then a project), Declined, or back to Drafting to be changed; Queried to Sent sends the revision; Declined to Drafting reopens it. Refused: anything into Opened (the client does that), anything out of Won (a project now), skipping a stage. While dragging, the columns it can go to say what a drop does and the rest dim. Only people with "Price and send quotes" can move cards. Rules in `src/lib/pipeline.ts`. The board or list switch and the richer Log enquiry are still to come in step 3 |
-| 64 | Team chat layout (step 2) | Option C of three, picked by Oisin from pictures (16 Nov, his copy, branch `step-2-team-chat`): a triage view like Email. The sidebar has Views (Needs action, Passed to me, Done), then the channels, then which chat app is connected. The main list is "Needs action" across every channel, each row tagged, with its channel and who it was passed to; opening one shows the thread around it, who it was passed to and why, and the drafted reply, with Approve reply, Edit reply, Pass to someone else and Mark done. The chat itself stays in Teams or Slack. The other two: A, a channel view with an AI panel on the right; B, the channel stream with tags and drafts under each message. Not yet seen by Aodhan |
-| 65 | Team chat app | Switchable, like the accounts package (Oisin, 16 Nov, the recommended option of three: switchable, Teams only, Slack only): Admin > Connections has Microsoft Teams or Slack, Teams by default. It is a preference (`Brand.chatApp`), so it survives Reset demo data. Teams shows channels by name ("C720 Ardmullen House"), Slack as #c720-ardmullen-house (`channelLabel` in `src/lib/chat.ts`) |
+| 64 | Team chat layout | Like Ping in the reference demos (Oisin, 16 Nov: "team chat is going to be our equivalent of their ping, and I want it the exact same as theirs"). A side panel with the app, Channels (a # before each) and Direct messages, each with an unread count; the open conversation with a header (name, link to the project for a site channel, members), messages under day lines with initials, name and time, @mentions in bold, and a message box along the bottom ("Type a message... Use @ to mention", a paperclip, a round send button; Enter sends, Shift and Enter for a new line, @ offers the channel's members). No AI in it: Oisin first picked a triage view (option C of three pictures: messages picked out, tagged, passed on, replies drafted) and it was built, then he chose to drop the AI part when moving to Ping. That build is in git history (commit 7d8fc46) |
+| 65 | Team chat app | Switchable, like the accounts package (Oisin, 16 Nov, the recommended option of three: switchable, Teams only, Slack only): Admin > Connections has Microsoft Teams or Slack, Teams by default. It is a preference (`Brand.chatApp`), so it survives Reset demo data. Teams shows channels by name ("C720 Ardmullen House"), Slack as c720-ardmullen-house (`channelLabel` in `src/lib/chat.ts`) |
+| 66 | Email layout | Like Gmail, as in the reference demos (Oisin, 16 Nov: "keep the Gmail the exact same as they have it"; Centra and Bryan Lynch are the fullest). A side panel with the account, Compose, Inbox, Starred, Sent, Drafts, Archive, and the labels (our tags) with unread counts; the list with Focused and Other tabs, Search mail, select-all and Newest or Oldest, rows grouped by day (Today, Yesterday, Earlier this week, Older), each with a checkbox, a star, initials, sender, subject, a preview line, any attachment, the time and the label; picking rows offers Archive, Mark as read and Mark as unread. An open email replaces the list, with a toolbar (Back, n of N, newer and older, Archive, Star, Mark as unread, Label, Move), the email, Linked chips, the reply drafted for it (Send reply, Discard, Forward), and a Summary panel (summary, action items, Passed to, Discuss in Team chat). Compose files a new email under Sent. "Passed to me" and the Unread filter went; Passed to stays in the Summary panel |
 
 Standing preferences (these come from Aodhan and are not optional):
 
@@ -254,7 +256,7 @@ src/
                         approvals.ts (client first), portal.ts (the overview's Portal panel),
                         requests.ts (what waits for the managing director's yes or no),
                         subscription.ts (Admin, Billing), pipeline.ts (moving sales cards),
-                        chat.ts (Team chat, step 2)
+                        chat.ts (Team chat), mail.ts (Email)
   ui/                   the interface kit: Button, Badge, PageHead, Panel, Dialog, Menu, toast
   modules/<department>/ one folder per department, one file per screen. dashboard/ is the
                         overview plus ApprovalsPanel.tsx; admin/ (16 Nov) holds Requests,
@@ -410,38 +412,38 @@ State of the work at the start of the second session (re-checked from the zip):
 - The managing director is Aidan King. The client the demo signs in as is Susan Kane of
   Ardmullen Estate.
 
-**Step 2 on Oisin's copy (16 Nov, branch `step-2-team-chat`, part one of two).** Oisin
-picked option C from three pictures (decision 64) and a switchable chat app (decision 65).
-Built so far:
+**Oisin's copy, 16 Nov (branch `step-2-team-chat`): Email like Gmail, Team chat like Ping.**
+After building a triage-style Team chat (decision 64, first version), Oisin shared ten of the
+reference demos as web archives (Founders shared drive, Demo_Database, Top 10: .wacz files,
+replayed offline with Playwright answering every request from the recording) and asked for
+Email to match their Gmail layout and Team chat their Ping, dropping the AI in Team chat
+(decisions 64 to 66). Layouts and features copied, not their code, wording or data. Built:
 
-- Data: `ChatChannel`, `ChatMessage` and `ChatAction` in `types.ts`, `db.chatChannels` and
-  `db.chatMessages`, DATA_VERSION 12. Sample data in `src/data/seed/chat.ts`: a channel per
-  live site (C719 to C725) plus Office, Plant and yard, and Accounts; this morning's messages
-  and three dealt with on the working day before. Everything in it is already in the records
-  (DH2 in the yard, SW2 at Dunmoy, Burren Lime, the Kilcashel tender in Email).
-- Rules in `src/lib/chat.ts` with tests (`chat.test.ts`, 24): `routeFor` (plant to Pat
-  Scully, safety to Declan Furey, accounts to Maeve Quirke, decisions to the managing
-  director, other questions to Niamh Lavelle; supplies, labour, client queries and
-  complaints to the contracts manager running that project), `routeReason`, `channelLabel`,
-  the lists for each view and channel, the counts, and `threadAround` (the two messages
-  before, the message, and any reply posted from here).
-- Screen `src/modules/chat/TeamChat.tsx`: Team chat in the bar right of Email; the sidebar has
-  Views (Needs action, Passed to me, Done) and a link per channel (`more` on a `NavGroup`, so
-  the list comes from the records; long names are cut short). Laid out like Email: the list,
-  then the open message with the conversation around it, why it went to that person, Tagged
-  as and Passed to, and the drafted reply with "Approve and post" and "Mark done, no reply".
-  Posting puts the reply in the channel in the name of the person it was passed to, and needs
-  "Approve drafts". A message closed without a reply can be moved back. Every change is in
-  the Activity log.
-- Departments: the managing director, contracts managers and accounts have Team chat. Site
-  managers do not yet (part two).
-- Tests: 223 automated tests; 688 browser checks in fourteen suites (new `s2_check.py`, 41;
-  `m1_check.py` now counts 13 departments and `s1_check.py` six connections).
-
-Part two, still to do: drafted replies also waiting in Approvals on the overview (a new
-approval kind, approving from either place does the same thing, as with Email); site managers
-seeing only their own sites' channels; an automation line ("Team chat message tagged and
-passed on") in Admin, Automations; then show Aodhan.
+- Shell: a department with `ownLayout` (Email, Team chat) draws its own full-height side
+  panel and the shell shows no sidebar; a department's `badge` puts an unread count on its
+  button in the bottom bar (unread email, unread messages).
+- Team chat: `ChatChannel` (kind channel or dm, members, `lastRead` per person) and
+  `ChatMessage` (text, optional attachment name) in `types.ts`; sample data in
+  `src/data/seed/chat.ts` (a channel per live site with the people who run it, Office, Plant
+  and yard, Accounts, four direct messages, the working day before and this morning, every
+  name, item of plant and supplier already in the records); rules in `src/lib/chat.ts`
+  (names in Teams or Slack, who sees which channels, unread, day lines, @mentions);
+  `sendChatMessage` and `markChannelRead` in actions; screen `src/modules/chat/TeamChat.tsx`.
+  Everyone with a sign-in sees only the channels they are a member of, so site managers now
+  have Team chat with their own sites' channels. On a phone the list and a conversation are
+  one screen each.
+- Email: `starred` and `to` on `Mail`; three more sample emails so no folder opens empty (an
+  order to Burren Lime and a Safe Pass booking in Sent, a delivery note in Archive); rules in
+  `src/lib/mail.ts` (folders, Focused and Other, day groups, search, preview line, summary,
+  action items); `toggleStar`, `startReply`, `composeMail`, `shareMailToChat` in actions
+  (sent replies now record who they went to); screen `src/modules/inbox/Inbox.tsx`, routes
+  for Starred, Drafts and each label. Ask AI's list of screens includes the new folders.
+- DATA_VERSION 13.
+- Tests: 235 automated tests (new `mail.test.ts`, 17; `chat.test.ts` rewritten, 20); 690
+  browser checks in fourteen suites (`s2_check.py` rewritten for Team chat, 34; the Email
+  part of `m5_check.py` rewritten, 69 in all; `m1_check.py` counts seven departments for a
+  site manager; `s1_check.py` and `ask_check.py` allow for the unread counts and the row
+  checkboxes). Not tested: a real phone, Safari and Firefox.
 
 **16 Nov, later: Aodhan's list of changes, in six steps** (each built on a branch, tried on
 its preview address, and published only when he says). He listed them after the review;

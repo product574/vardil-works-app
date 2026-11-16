@@ -102,13 +102,13 @@ export const router = create([
           // The three folders are one screen. A separate component for each means the list filter
           // starts fresh when you change folder.
           screen("inbox", inbox, (m) => () => <m.Inbox folder="Inbox" />),
+          screen("inbox/starred", inbox, (m) => () => <m.Inbox folder="Starred" />),
           screen("inbox/sent", inbox, (m) => () => <m.Inbox folder="Sent" />),
+          screen("inbox/drafts", inbox, (m) => () => <m.Inbox folder="Drafts" />),
           screen("inbox/archive", inbox, (m) => () => <m.Inbox folder="Archive" />),
-          // Team chat (step 2): one screen for the three views and each channel, so the list starts fresh on each.
-          screen("chat", chat, (m) => () => <m.TeamChat view="open" />),
-          screen("chat/mine", chat, (m) => () => <m.TeamChat view="mine" />),
-          screen("chat/done", chat, (m) => () => <m.TeamChat view="done" />),
-          screen("chat/channel/:channelId", chat, (m) => m.TeamChatChannel),
+          screen("inbox/label/:label", inbox, (m) => m.InboxLabel),
+          screen("chat", chat, (m) => m.TeamChat),
+          screen("chat/:channelId", chat, (m) => m.TeamChat),
           screen("portal", portal, (m) => m.Portal),
           screen("site", site, (m) => m.SiteView),
           screen("settings", settings, (m) => m.Branding),

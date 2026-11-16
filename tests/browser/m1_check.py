@@ -84,7 +84,7 @@ def steps(page, ctx):
     # 8. Roles: site manager is kept out of the dashboard; operative and client get no department bar
     page.get_by_role("button", name="Account menu").click(); page.get_by_role("menuitem", name="Site manager").click(); page.wait_for_timeout(300)
     check("Site manager lands on timesheet", "/people/timesheet" in page.url, page.url)
-    check("Site manager sees 6 departments", page.locator("nav[aria-label=Departments] a").count() == 6, str(page.locator("nav[aria-label=Departments] a").count()))
+    check("Site manager sees 7 departments (Team chat added 16 Nov)", page.locator("nav[aria-label=Departments] a").count() == 7, str(page.locator("nav[aria-label=Departments] a").count()))
     page.goto(BASE + "/dashboard"); page.wait_for_timeout(300)
     check("Site manager typing /dashboard is sent home", "/people/timesheet" in page.url, page.url)
     page.get_by_role("button", name="Account menu").click(); page.get_by_role("menuitem", name="Client").click(); page.wait_for_timeout(300)

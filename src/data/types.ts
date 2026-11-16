@@ -476,31 +476,27 @@ export type Mail = {
   clientId?: ID;
   replyDraft?: { subject: string; body: string };
   attachment?: string;
+  starred?: boolean;
+  /** Who a sent email went to. */
+  to?: string;
 };
 
-// ── Team chat (step 2) ────────────────────────────────────────────────────────
-
-/** What a team chat message is about, when someone has to act on it. Who it goes to follows from the tag (`routeFor` in src/lib/chat.ts). */
-export type ChatTag = "Plant request" | "Supplies" | "Labour" | "Client query" | "Complaint" | "Safety" | "Accounts" | "Decision" | "Question";
-
-/** A channel in the firm's Teams or Slack. Site channels belong to a project. */
-export type ChatChannel = { id: ID; name: string; projectId?: ID; purpose: string };
+// ── Team chat ─────────────────────────────────────────────────────────────────
 
 /**
- * Set on a message the AI picked out as needing someone to act. The chat itself stays in Teams
- * or Slack; this is the layer on top: tagged, passed to a person, with a reply drafted for them.
+ * Team chat, laid out like Ping in the reference demos (16 Nov, Oisin): channels and direct
+ * messages, as in the firm's Teams or Slack. A channel per live site, plus office channels.
  */
-export type ChatAction = {
-  tag: ChatTag;
-  toId: ID;
-  /** Set when a person passed it on by hand, instead of the AI. */
-  passedBy?: string;
-  status: "Open" | "Done";
-  /** The drafted reply, in the words of the person it was passed to. Gone once posted or dropped. */
-  draft?: string;
-  outcome?: "Replied" | "Done without reply";
-  resolvedBy?: string;
-  resolvedAt?: Stamp;
+export type ChatChannel = {
+  id: ID;
+  kind: "channel" | "dm";
+  /** Channel name. A direct message has none: it shows the other person's name. */
+  name: string;
+  projectId?: ID;
+  purpose: string;
+  memberIds: ID[];
+  /** When each member last opened it. Anything newer, from someone else, is unread. */
+  lastRead: Record<ID, Stamp>;
 };
 
 export type ChatMessage = {
@@ -509,9 +505,8 @@ export type ChatMessage = {
   authorId: ID;
   at: Stamp;
   text: string;
-  /** A reply posted from here answers this message. */
-  replyTo?: ID;
-  action?: ChatAction;
+  /** The name of a file sent with the message. */
+  attachment?: string;
 };
 
 // ── Management layer ──────────────────────────────────────────────────────────

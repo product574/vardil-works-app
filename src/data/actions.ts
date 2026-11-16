@@ -17,7 +17,7 @@ import { ROLES } from "./roles";
 import { costingFor, linesFor, type WorkKind } from "./seed/commercial";
 import { rng } from "./seed/util";
 import { getDay, useData, usePrefs } from "./store";
-import type { AccessKey, AccessRow, Allocation, Cert, ChatTag, Client, Db, DepartmentKey, Enquiry, ID, LevelKey, PermKey, Person, PhotoStage, Language, Mail, MailIntent, Proof, RequestKind, RoleKey, FileCategory, FileKind, FleetDocCategory, Project, Variation, Vehicle } from "./types";
+import type { AccessKey, AccessRow, Allocation, Cert, Client, Db, DepartmentKey, Enquiry, ID, LevelKey, PermKey, Person, PhotoStage, Language, Mail, MailIntent, Proof, RequestKind, RoleKey, FileCategory, FileKind, FleetDocCategory, Project, Variation, Vehicle } from "./types";
 
 const mutate = (fn: (db: Db) => void) => useData.getState().mutate(fn);
 
@@ -1360,7 +1360,7 @@ export function moveMail(id: ID, folder: "Inbox" | "Archive") {
  */
 function fileReply(db: Db, m: Mail, who: string) {
   if (!m.replyDraft) return;
-  db.mails.unshift({ ...m, id: newId("mail"), folder: "Sent", subject: m.replyDraft.subject, body: m.replyDraft.body, fromName: who, fromAddress: m.mailbox, receivedAt: nowStamp(), read: true, replyDraft: undefined, attachment: undefined });
+  db.mails.unshift({ ...m, id: newId("mail"), folder: "Sent", subject: m.replyDraft.subject, body: m.replyDraft.body, fromName: who, fromAddress: m.mailbox, to: m.fromName, receivedAt: nowStamp(), read: true, starred: false, replyDraft: undefined, attachment: undefined });
   m.replyDraft = undefined;
   m.folder = "Archive";
   m.read = true;
@@ -1401,79 +1401,94 @@ export function discardReplyDraft(mailId: ID) {
 }
 
 
-// ── Team chat (step 2) ────────────────────────────────────────────────────────
-
-function chatTarget(db: Db, m: { channelId: ID; text: string }) {
-  const ch = db.chatChannels.find((c) => c.id === m.channelId);
-  const words = m.text.split(" ");
-  return `${ch?.name ?? "Team chat"}: ${words.slice(0, 8).join(" ")}${words.length > 8 ? "..." : ""}`;
+/** Star or unstar an email. Not logged: it is the reader's own marker. */
+export function toggleStar(id: ID) {
+  mutate((db) => {
+    const m = db.mails.find((x) => x.id === id);
+    if (m) m.starred = !m.starred;
+  });
 }
 
-/** Edit the drafted reply before it is posted. What is approved is what goes into the channel. */
-export function saveChatDraft(id: ID, draft: string) {
+/** Start a reply to an email that has no drafted one, or after the draft was discarded. */
+export function startReply(id: ID) {
   mutate((db) => {
-    const a = db.chatMessages.find((x) => x.id === id)?.action;
-    if (a?.status === "Open") a.draft = draft;
+    const m = db.mails.find((x) => x.id === id);
+    if (!m || m.replyDraft || m.folder === "Sent") return;
+    m.replyDraft = { subject: /^re:/i.test(m.subject) ? m.subject : `RE: ${m.subject}`, body: `Dear ${m.fromName.split(" ")[0]},\n\n\n\nKind regards,\n${actorName(db)}` };
   });
+}
+
+/** Send a new email from the shared address. In the demo it is filed under Sent; a real build sends it here. */
+export function composeMail(draft: { to: string; subject: string; body: string }) {
+  let id = "";
+  mutate((db) => {
+    const who = actorName(db);
+    const domain = db.mails[0]?.mailbox.split("@")[1] ?? "abcconstruction.example";
+    id = newId("mail");
+    db.mails.unshift({ id, mailbox: `info@${domain}`, folder: "Sent", fromName: who, fromAddress: `info@${domain}`, to: draft.to.trim(), subject: draft.subject.trim() || "(no subject)", body: draft.body, receivedAt: nowStamp(), read: true, intent: "General", routedToId: myId(db) ?? "p-md" });
+    log(db, "Sent an email", `${draft.subject.trim() || "(no subject)"}: to ${draft.to.trim()}`, "inbox", who);
+  });
+  return id;
 }
 
 /**
- * Post the drafted reply in the channel, in the name of the person it was passed to, and mark the
- * message dealt with. In the demo nothing leaves the browser; a real build posts to Teams or Slack here.
+ * "Discuss in Team chat": posts a line about the email in the channel it belongs to (the site's
+ * channel when the client has a live project with one, otherwise Office) and returns that channel.
  */
-export function postChatReply(id: ID) {
+export function shareMailToChat(id: ID): ID | null {
+  let out: ID | null = null;
   mutate((db) => {
-    const m = db.chatMessages.find((x) => x.id === id);
-    const a = m?.action;
-    if (!m || !a || a.status !== "Open" || !a.draft?.trim()) return;
-    const who = actorName(db);
-    db.chatMessages.push({ id: newId("cm"), channelId: m.channelId, authorId: a.toId, at: nowStamp(), text: a.draft.trim(), replyTo: m.id });
-    Object.assign(a, { status: "Done", outcome: "Replied", draft: undefined, resolvedBy: who, resolvedAt: nowStamp() });
-    log(db, "Posted a reply in Team chat", chatTarget(db, m), "chat", who);
+    const m = db.mails.find((x) => x.id === id);
+    const me = myId(db);
+    if (!m || !me) return;
+    const project = db.projects.find((p) => p.clientId === m.clientId && p.status === "Live" && db.chatChannels.some((c) => c.projectId === p.id));
+    const ch = db.chatChannels.find((c) => c.projectId === project?.id) ?? db.chatChannels.find((c) => c.id === "ch-office");
+    if (!ch) return;
+    const stamp = nowStamp();
+    db.chatMessages.push({ id: newId("cm"), channelId: ch.id, authorId: me, at: stamp, text: `Email from ${m.fromName}: "${m.subject}". Can we talk about this one?` });
+    ch.lastRead[me] = stamp;
+    if (!ch.memberIds.includes(me)) ch.memberIds.push(me);
+    log(db, "Shared an email in Team chat", `${m.subject}: in ${ch.name}`, "inbox");
+    out = ch.id;
+  });
+  return out;
+}
+
+// ── Team chat ─────────────────────────────────────────────────────────────────
+
+/** The signed-in person's id, for things they post themselves. */
+function myId(db: Db): ID | null {
+  if (actingAs) return actingAs;
+  const { role, operativeId, asPersonId } = usePrefs.getState();
+  return signedInPersonId(role, asPersonId, operativeId, db.people);
+}
+
+/**
+ * Post a message in a channel or direct message, as the signed-in person. In the demo nothing
+ * leaves the browser; a real build posts it to Teams or Slack here.
+ */
+export function sendChatMessage(channelId: ID, text: string, attachment?: string) {
+  mutate((db) => {
+    const ch = db.chatChannels.find((c) => c.id === channelId);
+    const me = myId(db);
+    const body = text.trim();
+    if (!ch || !me || (!body && !attachment)) return;
+    const stamp = nowStamp();
+    db.chatMessages.push({ id: newId("cm"), channelId, authorId: me, at: stamp, text: body, ...(attachment ? { attachment } : {}) });
+    ch.lastRead[me] = stamp;
+    if (!ch.memberIds.includes(me)) ch.memberIds.push(me);
+    const where = ch.kind === "dm" ? `to ${db.people.find((p) => p.id === ch.memberIds.find((x) => x !== me))?.name ?? "someone"}` : `in ${ch.name}`;
+    log(db, "Posted in Team chat", where, "chat");
   });
 }
 
-/** Pass a message to someone else. The draft stays for them to change. */
-export function passChatMessage(id: ID, personId: ID) {
+/** Opening a channel marks everything in it as read for the signed-in person. Not logged: it is reading, not a change. */
+export function markChannelRead(channelId: ID) {
   mutate((db) => {
-    const m = db.chatMessages.find((x) => x.id === id);
-    if (!m?.action || m.action.toId === personId) return;
-    const who = actorName(db);
-    m.action.toId = personId;
-    m.action.passedBy = who;
-    log(db, "Passed a Team chat message on", `${chatTarget(db, m)} to ${db.people.find((p) => p.id === personId)?.name}`, "chat", who);
-  });
-}
-
-/** Change what a message was tagged as. Who it is passed to stays as it is. */
-export function tagChatMessage(id: ID, tag: ChatTag) {
-  mutate((db) => {
-    const m = db.chatMessages.find((x) => x.id === id);
-    if (!m?.action || m.action.tag === tag) return;
-    m.action.tag = tag;
-    log(db, "Changed a Team chat message's tag", `${chatTarget(db, m)} as ${tag}`, "chat");
-  });
-}
-
-/** Dealt with some other way (a phone call, already sorted): closed with no reply, and the draft dropped. */
-export function closeChatMessage(id: ID) {
-  mutate((db) => {
-    const m = db.chatMessages.find((x) => x.id === id);
-    const a = m?.action;
-    if (!m || !a || a.status !== "Open") return;
-    const who = actorName(db);
-    Object.assign(a, { status: "Done", outcome: "Done without reply", draft: undefined, resolvedBy: who, resolvedAt: nowStamp() });
-    log(db, "Marked a Team chat message done", chatTarget(db, m), "chat", who);
-  });
-}
-
-/** Put a message closed without a reply back on the list. One that was answered stays answered. */
-export function reopenChatMessage(id: ID) {
-  mutate((db) => {
-    const m = db.chatMessages.find((x) => x.id === id);
-    const a = m?.action;
-    if (!m || !a || a.status !== "Done" || a.outcome !== "Done without reply") return;
-    Object.assign(a, { status: "Open", outcome: undefined, resolvedBy: undefined, resolvedAt: undefined });
-    log(db, "Moved a Team chat message back to Needs action", chatTarget(db, m), "chat");
+    const ch = db.chatChannels.find((c) => c.id === channelId);
+    const me = myId(db);
+    if (!ch || !me) return;
+    const last = db.chatMessages.filter((m) => m.channelId === channelId).map((m) => m.at).sort().pop();
+    if (last && (ch.lastRead[me] ?? "") < last) ch.lastRead[me] = last;
   });
 }

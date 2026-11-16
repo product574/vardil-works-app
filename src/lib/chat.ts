@@ -1,102 +1,94 @@
 /**
- * Team chat rules (step 2, decision 64): which messages need someone, who each kind goes to and
- * why, how channels are named in Teams or Slack, and the conversation around a message.
+ * Team chat rules: who sees which channels, what a channel or direct message is called in Teams
+ * or Slack, what is unread, how messages group by day, and @mentions in the message box.
  *
  * Pure functions: no React, no store. The screen is `src/modules/chat/TeamChat.tsx`.
  */
 import type { ChatApp } from "@/config/brand";
-import type { ChatChannel, ChatMessage, ChatTag, ID, Person, Project } from "@/data/types";
-
-export const CHAT_TAGS: ChatTag[] = ["Plant request", "Supplies", "Labour", "Client query", "Complaint", "Safety", "Accounts", "Decision", "Question"];
+import type { ChatChannel, ChatMessage, ID } from "@/data/types";
+import { dShort } from "./format";
 
 export const CHAT_APP_NAME: Record<ChatApp, string> = { teams: "Microsoft Teams", slack: "Slack" };
 
-/** The office people each kind of message goes to, when it is not the project's contracts manager. */
-export const CHAT_DESK = { plant: "p-yard", safety: "p-hs", accounts: "p-acc", director: "p-md", office: "p-off", fallback: "p-cm1" } as const;
-
-/** Kinds that belong to whoever runs the project as contracts manager. */
-const PROJECT_TAGS = new Set<ChatTag>(["Supplies", "Labour", "Client query", "Complaint"]);
-
-/** Who a message with this tag goes to. Project work goes to the contracts manager running that site. */
-export function routeFor(tag: ChatTag, project?: Pick<Project, "contractsManagerId">): ID {
-  if (PROJECT_TAGS.has(tag)) return project?.contractsManagerId ?? CHAT_DESK.fallback;
-  if (tag === "Plant request") return CHAT_DESK.plant;
-  if (tag === "Safety") return CHAT_DESK.safety;
-  if (tag === "Accounts") return CHAT_DESK.accounts;
-  if (tag === "Decision") return CHAT_DESK.director;
-  return CHAT_DESK.office;
-}
-
-/** One sentence on why a message went to the person it did, for the open message. */
-export function routeReason(tag: ChatTag, to: Pick<Person, "name" | "trade">, project?: Pick<Project, "code" | "contractsManagerId">, passedBy?: string): string {
-  if (passedBy) return `${passedBy} passed it to ${to.name}.`;
-  if (PROJECT_TAGS.has(tag) && project) return `${tagWords(tag)} on ${project.code} go to ${to.name}, who runs it as contracts manager.`;
-  return `${tagWords(tag)} go to ${to.name}, ${to.trade.toLowerCase()}.`;
-}
-
-function tagWords(tag: ChatTag): string {
-  const words: Record<ChatTag, string> = {
-    "Plant request": "Plant requests",
-    Supplies: "Supplies",
-    Labour: "Requests for people",
-    "Client query": "Client queries",
-    Complaint: "Complaints",
-    Safety: "Safety issues",
-    Accounts: "Accounts questions",
-    Decision: "Decisions only a director can make",
-    Question: "General questions",
-  };
-  return words[tag];
-}
-
-/** How a channel shows: "C720 Ardmullen House" in Teams, "#c720-ardmullen-house" in Slack. */
+/** How a channel shows: "C720 Ardmullen House" in Teams, "c720-ardmullen-house" in Slack (the # is drawn beside it). */
 export function channelLabel(ch: Pick<ChatChannel, "name">, app: ChatApp): string {
   if (app === "teams") return ch.name;
-  const slug = ch.name
+  return ch.name
     .toLowerCase()
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "")
     .replace(/['’]/g, "")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "");
-  return `#${slug}`;
 }
 
-export type ChatView = "open" | "mine" | "done";
-
-const newestFirst = (a: ChatMessage, b: ChatMessage) => b.at.localeCompare(a.at);
-
-/** The list for a view: open ones, the open ones passed to one person, or those dealt with. Newest first. */
-export function chatList(messages: ChatMessage[], view: ChatView, personId: ID | null, channelIds?: ReadonlySet<ID>): ChatMessage[] {
-  return messages
-    .filter((m) => m.action && (!channelIds || channelIds.has(m.channelId)))
-    .filter((m) => (view === "done" ? m.action!.status === "Done" : m.action!.status === "Open" && (view === "open" || m.action!.toId === personId)))
-    .sort(newestFirst);
+/** The other person in a direct message. */
+export function dmOther(ch: Pick<ChatChannel, "memberIds">, me: ID | null): ID | undefined {
+  return ch.memberIds.find((id) => id !== me) ?? ch.memberIds[0];
 }
 
-/** Everything picked out in one channel: open ones first, then those dealt with, newest first in each. */
-export function channelList(messages: ChatMessage[], channelId: ID): ChatMessage[] {
-  const picked = messages.filter((m) => m.channelId === channelId && m.action);
-  return [...picked.filter((m) => m.action!.status === "Open").sort(newestFirst), ...picked.filter((m) => m.action!.status === "Done").sort(newestFirst)];
+/** What a channel is called for this person: its label, or the other person's name for a direct message. */
+export function channelTitle(ch: ChatChannel, me: ID | null, nameOf: (id: ID) => string, app: ChatApp): string {
+  return ch.kind === "dm" ? nameOf(dmOther(ch, me) ?? "") : channelLabel(ch, app);
 }
 
-export function chatCounts(messages: ChatMessage[], personId: ID | null, channelIds?: ReadonlySet<ID>) {
-  return {
-    open: chatList(messages, "open", personId, channelIds).length,
-    mine: chatList(messages, "mine", personId, channelIds).length,
-    done: chatList(messages, "done", personId, channelIds).length,
-  };
+/** The channels and direct messages one person belongs to, channels first in their own order. */
+export function myChannels(channels: ChatChannel[], me: ID | null): { channels: ChatChannel[]; dms: ChatChannel[] } {
+  const mine = channels.filter((c) => me !== null && c.memberIds.includes(me));
+  return { channels: mine.filter((c) => c.kind === "channel"), dms: mine.filter((c) => c.kind === "dm") };
 }
 
-/**
- * The conversation around a message, as it reads in the channel: up to `before` messages that
- * came before it, the message itself, and any reply posted to it from here.
- */
-export function threadAround(messages: ChatMessage[], msg: ChatMessage, before = 2): { earlier: number; shown: ChatMessage[] } {
-  const inChannel = messages.filter((m) => m.channelId === msg.channelId).sort((a, b) => a.at.localeCompare(b.at));
-  const i = inChannel.findIndex((m) => m.id === msg.id);
-  const prior = inChannel.slice(0, Math.max(0, i)).filter((m) => m.replyTo !== msg.id);
-  const kept = prior.slice(-before);
-  const replies = inChannel.filter((m) => m.replyTo === msg.id);
-  return { earlier: prior.length - kept.length, shown: [...kept, msg, ...replies] };
+/** Messages in a channel newer than this person last read it, not counting their own. */
+export function unreadCount(messages: ChatMessage[], ch: ChatChannel, me: ID | null): number {
+  if (me === null) return 0;
+  const since = ch.lastRead[me] ?? "";
+  return messages.filter((m) => m.channelId === ch.id && m.authorId !== me && m.at > since).length;
+}
+
+/** Unread across everything one person belongs to. */
+export function totalUnread(messages: ChatMessage[], channels: ChatChannel[], me: ID | null): number {
+  const { channels: cs, dms } = myChannels(channels, me);
+  return [...cs, ...dms].reduce((n, c) => n + unreadCount(messages, c, me), 0);
+}
+
+/** A channel's messages, oldest first, under a line for each day: Today, Yesterday, or the date. */
+export function byDay(messages: ChatMessage[], channelId: ID, today: string): { label: string; messages: ChatMessage[] }[] {
+  const out: { label: string; messages: ChatMessage[] }[] = [];
+  const inChannel = messages.filter((m) => m.channelId === channelId).sort((a, b) => a.at.localeCompare(b.at));
+  for (const m of inChannel) {
+    const day = m.at.slice(0, 10);
+    const diff = Math.round((Date.parse(today) - Date.parse(day)) / 86_400_000);
+    const label = diff === 0 ? "Today" : diff === 1 ? "Yesterday" : dShort(day);
+    const last = out[out.length - 1];
+    if (last && last.label === label) last.messages.push(m);
+    else out.push({ label, messages: [m] });
+  }
+  return out;
+}
+
+/** The name being typed after an @ at the end of the box, or null when there is none. */
+export function mentionQuery(text: string): string | null {
+  const m = text.match(/(?:^|\s)@([\p{L}'’-]*)$/u);
+  return m ? m[1]! : null;
+}
+
+/** Put the chosen name in place of the @ being typed. */
+export function insertMention(text: string, name: string): string {
+  return text.replace(/(^|\s)@([\p{L}'’-]*)$/u, `$1@${name} `);
+}
+
+/** Split a message so @mentions of known names can be shown in bold. */
+export function splitMentions(text: string, names: string[]): { text: string; mention: boolean }[] {
+  const sorted = [...names].sort((a, b) => b.length - a.length).map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  if (!sorted.length) return [{ text, mention: false }];
+  const re = new RegExp(`@(?:${sorted.join("|")})`, "gu");
+  const out: { text: string; mention: boolean }[] = [];
+  let at = 0;
+  for (const m of text.matchAll(re)) {
+    if (m.index! > at) out.push({ text: text.slice(at, m.index), mention: false });
+    out.push({ text: m[0], mention: true });
+    at = m.index! + m[0].length;
+  }
+  if (at < text.length) out.push({ text: text.slice(at), mention: false });
+  return out;
 }
