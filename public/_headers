@@ -1,0 +1,24 @@
+# Security headers for Cloudflare Pages. Every response from the site carries these.
+# The policy was tested by serving the built site with these exact headers and clicking
+# through every department: see "Security" in CLAUDE.md. The page talks only to its own
+# address (Cloudflare Access answers /cdn-cgi/access/... on the same address). If you add an
+# outside service (a font host, an analytics script, the Ask AI endpoint on another domain),
+# it must be added to the Content-Security-Policy line or the browser will block it.
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(self), microphone=(), geolocation=(), payment=(), usb=()
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+  Cross-Origin-Opener-Policy: same-origin
+  X-Robots-Tag: noindex, nofollow
+
+# Built files have a fingerprint in their name, so they can be cached for a year.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# The page itself is always fetched fresh, so a new release shows up straight away. Cloudflare
+# Pages already sends "max-age=0, must-revalidate" for every page (checked on the live site,
+# 15 Nov 2026), so no rule is needed here. A rule for /index.html would never apply: Pages
+# answers that address with a redirect to /.

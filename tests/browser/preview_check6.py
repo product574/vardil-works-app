@@ -1,0 +1,38 @@
+import os, sys
+HERE = os.path.dirname(os.path.abspath(__file__))
+FIX = os.path.join(HERE, "fixtures") + os.sep
+REPO = os.path.dirname(os.path.dirname(HERE))
+sys.path.insert(0, HERE)
+from playwright.sync_api import sync_playwright
+import re
+errs=[]; reqs=[]
+with sync_playwright() as p:
+    b=p.chromium.launch(executable_path=os.environ.get("CHROME", "/usr/bin/google-chrome"), args=["--no-sandbox"])
+    page=b.new_page(viewport={"width":1440,"height":900})
+    page.on("console", lambda m: errs.append(f"{m.type}: {m.text}") if m.type=="error" else None)
+    page.on("pageerror", lambda e: errs.append(f"pageerror: {e}"))
+    page.on("request", lambda r: reqs.append(r.url) if not r.url.startswith(("file:","data:","blob:")) else None)
+    page.goto("file://" + REPO + "/dist-preview/index.html"); page.wait_for_selector("#username")
+    page.fill("#username","demo"); page.fill("#password","demo"); page.keyboard.press("Enter")
+    page.get_by_role("button", name="Managing director").click(); page.wait_for_selector("text=AI overview")
+    bar=page.locator("nav[aria-label=Departments]"); side=page.locator("nav[aria-label$=screens]:visible"); main=page.locator("main")
+    bar.get_by_role("link", name="Inbox").click(); page.wait_for_selector("text=Choose an email")
+    page.get_by_role("list", name="Inbox emails").get_by_role("button", name=re.compile("Imelda Fahy")).click(); page.wait_for_selector("text=Drafted reply")
+    main.get_by_role("button", name="Send reply").click(); page.wait_for_timeout(300)
+    side.get_by_role("link", name="Sent").click(); page.wait_for_selector("text=Sent by Aidan King")
+    bar.get_by_role("link", name="Portal").click(); page.wait_for_selector("text=Quotes waiting on you")
+    main.get_by_role("button", name="Accept this quote").first.click(); page.locator("dialog[open]").get_by_role("button", name="Accept quote").click(); page.wait_for_timeout(400)
+    bar.get_by_role("link", name="Site phone").click(); page.wait_for_selector("text=Wyślij zdjęcie")
+    page.get_by_label("Phone screen").get_by_role("button", name="Mój tydzień").click(); page.wait_for_selector("dialog[open] li"); page.locator("dialog[open]").get_by_role("button", name="Close").click()
+    page.get_by_role("button", name="Account menu").click(); page.get_by_role("menuitem", name="Settings").click(); page.wait_for_selector("text=What they can do")
+    side.get_by_role("link", name="Branding").click(); page.wait_for_selector("text=How it looks")
+    main.get_by_role("button", name="Slate green").click(); page.wait_for_timeout(200)
+    side.get_by_role("link", name="Region and accounts").click(); page.wait_for_selector("text=Accounts package")
+    page.get_by_role("tab", name="United Kingdom").click(); page.locator("dialog[open]").get_by_role("button", name="Switch and rebuild the sample data").click(); page.wait_for_timeout(600)
+    bar.get_by_role("link", name="Projects").click(); page.wait_for_selector("text=Cumbria")
+    assert "£" in main.inner_text()
+    page.get_by_role("button", name="Account menu").click(); page.get_by_role("menuitem", name="Settings").click(); page.wait_for_timeout(300)
+    side.get_by_role("link", name="About this demo").click(); page.wait_for_selector("text=Built by")
+    print("preview file: inbox send, sent folder, portal accept, site phone in Polish, branding colour, UK switch, about all work")
+    print("outside requests:", reqs, "| errors:", errs)
+    b.close()
