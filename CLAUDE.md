@@ -53,6 +53,13 @@ only). Merge into `main` only when Aodhan says publish, check it live, and updat
 Each round starts from the latest version: if `main` changed while the co-founder worked,
 send him a fresh zip first, or bring his changes across with care, so the two do not clash.
 
+**On Oisin's copy, from 16 Nov evening:** Oisin directs the work himself ("forget about
+Aodhan's steps for now, I will take control of the steps from now"). The list below is
+Aodhan's plan, kept for reference; on this copy, follow Oisin's own requests and ask him,
+not Aodhan, for picks. He looks at it as a private Claude artifact, "Construction demo
+(Oisin's copy)", rebuilt with `npm run build:preview` and republished after each change
+(sign in with demo / demo; downloads do nothing inside the artifact's frame).
+
 **What is left, in order:**
 
 1. Step 2, a Slack/Teams tab to the right of Email: team chat by channel, where the AI
