@@ -477,8 +477,10 @@ export type Mail = {
   replyDraft?: { subject: string; body: string };
   attachment?: string;
   starred?: boolean;
-  /** Who a sent email went to. */
+  /** Who a sent email went to, and who was copied. */
   to?: string;
+  cc?: string;
+  bcc?: string;
 };
 
 // ── Team chat ─────────────────────────────────────────────────────────────────

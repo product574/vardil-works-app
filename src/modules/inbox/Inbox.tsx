@@ -18,10 +18,10 @@ import {
   Tag,
   Tray,
 } from "@phosphor-icons/react";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type DragEvent as ReactDragEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import { Link, NavLink, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useAccess } from "@/data/access";
-import { composeMail, discardReplyDraft, moveMail, routeMail, saveReplyDraft, sendReply, setMailRead, shareMailToChat, startReply, tagMail, toggleStar } from "@/data/actions";
+import { composeMail, discardReplyDraft, moveMail, routeMail, saveReplyDraft, sendReply, setMailRead, setStar, shareMailToChat, startReply, tagMail, toggleStar } from "@/data/actions";
 import { useData, useDay } from "@/data/store";
 import type { Db, Mail, MailIntent } from "@/data/types";
 import { tOf, when } from "@/lib/format";
@@ -50,7 +50,10 @@ const FOLDERS: { folder: MailFolder; to: string; icon: typeof Tray }[] = [
 ];
 
 type View = { folder: MailFolder } | { label: MailIntent };
-type Draft = { to: string; subject: string; body: string };
+type Draft = { to: string; cc?: string; bcc?: string; subject: string; body: string };
+
+/** What a dragged email row carries: the ids of the emails being moved. */
+const DRAG_TYPE = "application/x-abc-mail-ids";
 
 /** One folder: Inbox, Starred, Sent, Drafts or Archive. */
 export function Inbox({ folder }: { folder: MailFolder }) {
@@ -85,6 +88,12 @@ function Mailbox({ view }: { view: View }) {
   const list = oldest ? [...shown].reverse() : shown;
   const openId = params.get("mail");
   const open = openId ? db.mails.find((m) => m.id === openId) : undefined;
+  // "New email" from Team chat arrives as ?compose=1&to=address.
+  useEffect(() => {
+    if (params.get("compose") !== "1") return;
+    setCompose({ to: params.get("to") ?? "", subject: "", body: "" });
+    setParams({}, { replace: true });
+  }, [params, setParams]);
 
   return (
     <div className="flex min-w-0 flex-1">
@@ -121,6 +130,22 @@ function Mailbox({ view }: { view: View }) {
 
 // ── Side panel ────────────────────────────────────────────────────────────────
 
+/** Dropping emails on a folder or label files them there, as in Gmail. */
+function dropOn(target: { folder: MailFolder } | { label: MailIntent }, ids: string[]) {
+  if (!ids.length) return;
+  const n = ids.length === 1 ? "Email" : `${ids.length} emails`;
+  if ("label" in target) {
+    for (const id of ids) tagMail(id, target.label);
+    toast(`${n} labelled ${target.label}`);
+  } else if (target.folder === "Starred") {
+    for (const id of ids) setStar(id, true);
+    toast(`${n} starred`);
+  } else if (target.folder === "Inbox" || target.folder === "Archive") {
+    for (const id of ids) moveMail(id, target.folder);
+    toast(`${n} moved to ${target.folder.toLowerCase()}`);
+  }
+}
+
 function MailSidebar({ db, onCompose }: { db: Db; onCompose: () => void }) {
   const access = useAccess();
   const person = db.people.find((p) => p.id === access.personId);
@@ -148,7 +173,7 @@ function MailSidebar({ db, onCompose }: { db: Db; onCompose: () => void }) {
             const n = folder === "Inbox" ? counts.Inbox : folder === "Drafts" ? counts.Drafts : 0;
             return (
               <li key={folder}>
-                <SideLink to={to} end icon={<Icon size={18} />} label={folder} n={n} quiet={folder === "Drafts"} />
+                <SideLink to={to} end icon={<Icon size={18} />} label={folder} n={n} quiet={folder === "Drafts"} onDropIds={folder === "Sent" || folder === "Drafts" ? undefined : (ids) => dropOn({ folder }, ids)} />
               </li>
             );
           })}
@@ -157,7 +182,7 @@ function MailSidebar({ db, onCompose }: { db: Db; onCompose: () => void }) {
         <ul>
           {labels.map(({ l, n }) => (
             <li key={l}>
-              <SideLink to={`/inbox/label/${encodeURIComponent(l)}`} icon={<Tag size={18} />} label={l} n={n} />
+              <SideLink to={`/inbox/label/${encodeURIComponent(l)}`} icon={<Tag size={18} />} label={l} n={n} onDropIds={(ids) => dropOn({ label: l }, ids)} />
             </li>
           ))}
         </ul>
@@ -166,10 +191,28 @@ function MailSidebar({ db, onCompose }: { db: Db; onCompose: () => void }) {
   );
 }
 
-/** `quiet`: a plain count, not bold (Drafts, as in Gmail: a draft is not something new). */
-function SideLink({ to, end, icon, label, n, quiet }: { to: string; end?: boolean; icon: ReactNode; label: string; n: number; quiet?: boolean }) {
+/**
+ * `quiet`: a plain count, not bold (Drafts, as in Gmail: a draft is not something new).
+ * `onDropIds`: email rows can be dragged onto it; it lights up while one is over it.
+ */
+function SideLink({ to, end, icon, label, n, quiet, onDropIds }: { to: string; end?: boolean; icon: ReactNode; label: string; n: number; quiet?: boolean; onDropIds?: (ids: string[]) => void }) {
+  const [over, setOver] = useState(false);
+  const accepts = (e: ReactDragEvent) => !!onDropIds && e.dataTransfer.types.includes(DRAG_TYPE);
   return (
-    <NavLink to={to} end={end} title={label} className={({ isActive }) => cx("press flex h-10 items-center gap-2.5 rounded-md px-2", isActive ? "bg-surface font-medium text-accent-ink shadow-[inset_0_0_0_1px_var(--line)]" : "hover:bg-surface/70", n > 0 && !quiet && "font-semibold")}>
+    <NavLink
+      to={to}
+      end={end}
+      title={label}
+      onDragOver={(e) => { if (!accepts(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = "move"; setOver(true); }}
+      onDragLeave={() => setOver(false)}
+      onDrop={(e) => {
+        setOver(false);
+        if (!accepts(e)) return;
+        e.preventDefault();
+        try { onDropIds!(JSON.parse(e.dataTransfer.getData(DRAG_TYPE)) as string[]); } catch { /* not ours */ }
+      }}
+      className={({ isActive }) => cx("press flex h-10 items-center gap-2.5 rounded-md px-2", over ? "bg-accent-soft text-accent-ink shadow-[inset_0_0_0_2px_var(--accent)]" : isActive ? "bg-surface font-medium text-accent-ink shadow-[inset_0_0_0_1px_var(--line)]" : "hover:bg-surface/70", n > 0 && !quiet && "font-semibold")}
+    >
       <span className="text-muted">{icon}</span>
       <span className="min-w-0 flex-1 truncate">{label}</span>
       {n > 0 && (quiet ? <span className="text-[0.87rem] text-muted">{n}</span> : <span className="min-w-5 rounded bg-accent-strong px-1 text-center text-[0.87rem] leading-5 font-medium text-white">{n}</span>)}
@@ -253,6 +296,15 @@ function MailList(props: {
                 <Archive size={16} /> {archive ? "Move to inbox" : "Archive"}
               </Button>
             )}
+            {!sent && (
+              <Menu label="Label the selected emails" trigger={<span className="inline-flex h-8 items-center gap-1.5 rounded-md border border-line-strong bg-surface px-2.5 text-[0.87rem] font-medium"><Tag size={16} /> Label</span>}>
+                {(close) => LABELS.map((l) => (
+                  <MenuItem key={l} onClick={() => { close(); for (const m of chosen) tagMail(m.id, l); toast(`${chosen.length} labelled ${l}`); setPicked(new Set()); }}>
+                    <Tag size={16} className="text-faint" /> {l}
+                  </MenuItem>
+                ))}
+              </Menu>
+            )}
             <Button size="sm" onClick={() => { for (const m of chosen) setMailRead(m.id, true); setPicked(new Set()); }}>Mark as read</Button>
             <Button size="sm" onClick={() => { for (const m of chosen) setMailRead(m.id, false); setPicked(new Set()); }}>Mark as unread</Button>
           </>
@@ -274,7 +326,7 @@ function MailList(props: {
             <h2 className="border-b border-line bg-canvas px-4 py-1.5 font-sans text-[0.87rem] font-medium text-muted">{g.label}</h2>
             <ul aria-label={`${title} emails, ${g.label}`}>
               {g.mails.map((m) => (
-                <Row key={m.id} m={m} day={day} sent={sent} picked={picked.has(m.id)} onPick={() => toggle(m.id)} onOpen={() => onOpen(m)} />
+                <Row key={m.id} m={m} day={day} sent={sent} picked={picked.has(m.id)} dragIds={picked.has(m.id) ? [...picked] : [m.id]} onPick={() => toggle(m.id)} onOpen={() => onOpen(m)} />
               ))}
             </ul>
           </section>
@@ -284,11 +336,19 @@ function MailList(props: {
   );
 }
 
-function Row({ m, day, sent, picked, onPick, onOpen }: { m: Mail; day: string; sent: boolean; picked: boolean; onPick: () => void; onOpen: () => void }) {
+function Row({ m, day, sent, picked, dragIds, onPick, onOpen }: { m: Mail; day: string; sent: boolean; picked: boolean; dragIds: string[]; onPick: () => void; onOpen: () => void }) {
   const unread = !m.read && !sent;
   const who = sent ? `To: ${m.to ?? m.fromName}` : m.fromName;
   return (
-    <li className={cx("flex items-start gap-1 border-b border-line px-2 py-1.5", picked ? "bg-accent-soft" : unread ? "bg-surface" : "bg-canvas/40", "hover:bg-accent-soft/60")}>
+    <li
+      draggable={!sent}
+      onDragStart={(e) => {
+        e.dataTransfer.setData(DRAG_TYPE, JSON.stringify(dragIds));
+        e.dataTransfer.setData("text/plain", dragIds.length === 1 ? m.subject : `${dragIds.length} emails`);
+        e.dataTransfer.effectAllowed = "move";
+      }}
+      title={sent ? undefined : "Drag onto a label or folder to file it"}
+      className={cx("flex items-start gap-1 border-b border-line px-2 py-1.5", picked ? "bg-accent-soft" : unread ? "bg-surface" : "bg-canvas/40", "hover:bg-accent-soft/60")}>
       <label className="grid size-11 shrink-0 place-items-center">
         <span className="sr-only">Select {m.subject}</span>
         <input type="checkbox" className="size-[18px] accent-[var(--accent)]" checked={picked} onChange={onPick} />
@@ -409,7 +469,7 @@ function Reading({ m, list, title, onPick, onBack, onForward }: { m: Mail; list:
               <Avatar name={m.fromName} size={36} />
               <div className="min-w-0 flex-1 leading-tight">
                 <p className="font-semibold">{m.fromName}</p>
-                <p className="truncate text-[0.93rem] text-muted">{sent ? `to ${m.to ?? "the client"}` : `to ${m.mailbox}`}</p>
+                <p className="truncate text-[0.93rem] text-muted">{sent ? `to ${m.to ?? "the client"}${m.cc ? `, cc ${m.cc}` : ""}` : `to ${m.mailbox}`}</p>
               </div>
               <p className="shrink-0 text-[0.93rem] text-muted">{m.receivedAt.slice(0, 10) === day ? `Today, ${tOf(m.receivedAt)}` : when(m.receivedAt, day)}</p>
             </header>
@@ -535,13 +595,19 @@ function LinkChip({ to, children }: { to: string; children: ReactNode }) {
 function ComposeDialog({ draft, onClose }: { draft: Draft | null; onClose: () => void }) {
   const navigate = useNavigate();
   const [d, setD] = useState<Draft>({ to: "", subject: "", body: "" });
+  const [showCc, setShowCc] = useState(false);
+  const [showBcc, setShowBcc] = useState(false);
   useEffect(() => {
-    if (draft) setD(draft);
+    if (draft) {
+      setD(draft);
+      setShowCc(!!draft.cc);
+      setShowBcc(!!draft.bcc);
+    }
   }, [draft]);
   const [send] = useOnce(() => {
     if (!d.to.trim()) return;
     composeMail(d);
-    toast(`Sent to ${d.to.trim()}`);
+    toast(`Sent to ${d.to.trim()}${d.cc?.trim() ? `, copied to ${d.cc.trim()}` : ""}`);
     onClose();
     navigate("/inbox/sent");
   });
@@ -561,7 +627,17 @@ function ComposeDialog({ draft, onClose }: { draft: Draft | null; onClose: () =>
       }
     >
       <form className="grid gap-3" onSubmit={(e) => { e.preventDefault(); void send(); }}>
-        <Field label="To">{(id) => <input id={id} className="field" type="text" inputMode="email" autoComplete="email" placeholder="Name or email address" value={d.to} onChange={(e) => setD({ ...d, to: e.target.value })} autoFocus />}</Field>
+        <div className="grid gap-3">
+          <Field label="To">{(id) => <input id={id} className="field" type="text" inputMode="email" autoComplete="email" placeholder="Name or email address" value={d.to} onChange={(e) => setD({ ...d, to: e.target.value })} autoFocus={!d.to} />}</Field>
+          {showCc && <Field label="Cc">{(id) => <input id={id} className="field" type="text" inputMode="email" placeholder="Copy someone in" value={d.cc ?? ""} onChange={(e) => setD({ ...d, cc: e.target.value })} autoFocus />}</Field>}
+          {showBcc && <Field label="Bcc" hint="They get a copy, and nobody else sees they did.">{(id) => <input id={id} className="field" type="text" inputMode="email" value={d.bcc ?? ""} onChange={(e) => setD({ ...d, bcc: e.target.value })} autoFocus />}</Field>}
+          {(!showCc || !showBcc) && (
+            <div className="-mt-2 flex gap-1">
+              {!showCc && <Button variant="ghost" size="sm" onClick={() => setShowCc(true)}>Add Cc</Button>}
+              {!showBcc && <Button variant="ghost" size="sm" onClick={() => setShowBcc(true)}>Add Bcc</Button>}
+            </div>
+          )}
+        </div>
         <Field label="Subject">{(id) => <input id={id} className="field" value={d.subject} onChange={(e) => setD({ ...d, subject: e.target.value })} />}</Field>
         <Field label="Message">{(id) => <textarea id={id} rows={10} className="field" value={d.body} onChange={(e) => setD({ ...d, body: e.target.value })} />}</Field>
       </form>

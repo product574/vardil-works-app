@@ -1409,6 +1409,14 @@ export function toggleStar(id: ID) {
   });
 }
 
+/** Star an email, for dropping it on Starred. */
+export function setStar(id: ID, on: boolean) {
+  mutate((db) => {
+    const m = db.mails.find((x) => x.id === id);
+    if (m) m.starred = on;
+  });
+}
+
 /** Start a reply to an email that has no drafted one, or after the draft was discarded. */
 export function startReply(id: ID) {
   mutate((db) => {
@@ -1419,13 +1427,13 @@ export function startReply(id: ID) {
 }
 
 /** Send a new email from the shared address. In the demo it is filed under Sent; a real build sends it here. */
-export function composeMail(draft: { to: string; subject: string; body: string }) {
+export function composeMail(draft: { to: string; cc?: string; bcc?: string; subject: string; body: string }) {
   let id = "";
   mutate((db) => {
     const who = actorName(db);
     const domain = db.mails[0]?.mailbox.split("@")[1] ?? "abcconstruction.example";
     id = newId("mail");
-    db.mails.unshift({ id, mailbox: `info@${domain}`, folder: "Sent", fromName: who, fromAddress: `info@${domain}`, to: draft.to.trim(), subject: draft.subject.trim() || "(no subject)", body: draft.body, receivedAt: nowStamp(), read: true, intent: "General", routedToId: myId(db) ?? "p-md" });
+    db.mails.unshift({ id, mailbox: `info@${domain}`, folder: "Sent", fromName: who, fromAddress: `info@${domain}`, to: draft.to.trim(), ...(draft.cc?.trim() ? { cc: draft.cc.trim() } : {}), ...(draft.bcc?.trim() ? { bcc: draft.bcc.trim() } : {}), subject: draft.subject.trim() || "(no subject)", body: draft.body, receivedAt: nowStamp(), read: true, intent: "General", routedToId: myId(db) ?? "p-md" });
     log(db, "Sent an email", `${draft.subject.trim() || "(no subject)"}: to ${draft.to.trim()}`, "inbox", who);
   });
   return id;
@@ -1444,7 +1452,7 @@ export function shareMailToChat(id: ID): ID | null {
     const project = db.projects.find((p) => p.clientId === m.clientId && p.status === "Live" && db.chatChannels.some((c) => c.projectId === p.id));
     const ch = db.chatChannels.find((c) => c.projectId === project?.id) ?? db.chatChannels.find((c) => c.id === "ch-office");
     if (!ch) return;
-    const stamp = nowStamp();
+    const stamp = chatStamp(db, ch.id);
     db.chatMessages.push({ id: newId("cm"), channelId: ch.id, authorId: me, at: stamp, text: `Email from ${m.fromName}: "${m.subject}". Can we talk about this one?` });
     ch.lastRead[me] = stamp;
     if (!ch.memberIds.includes(me)) ch.memberIds.push(me);
@@ -1455,6 +1463,20 @@ export function shareMailToChat(id: ID): ID | null {
 }
 
 // ── Team chat ─────────────────────────────────────────────────────────────────
+
+/**
+ * The time for a new chat message: now, but never before the last message in that
+ * conversation. The demo's day is fixed while the clock runs on, so late at night "now" can fall
+ * before this morning's sample messages, and a message just sent must still come last.
+ */
+function chatStamp(db: Db, channelId: ID): string {
+  const now = nowStamp();
+  const last = db.chatMessages.filter((m) => m.channelId === channelId).map((m) => m.at).sort().pop();
+  if (!last || now > last) return now;
+  const t = new Date(`${last}Z`);
+  t.setUTCSeconds(t.getUTCSeconds() + 60);
+  return t.toISOString().slice(0, 19);
+}
 
 /** The signed-in person's id, for things they post themselves. */
 function myId(db: Db): ID | null {
@@ -1473,7 +1495,7 @@ export function sendChatMessage(channelId: ID, text: string, attachment?: string
     const me = myId(db);
     const body = text.trim();
     if (!ch || !me || (!body && !attachment)) return;
-    const stamp = nowStamp();
+    const stamp = chatStamp(db, channelId);
     db.chatMessages.push({ id: newId("cm"), channelId, authorId: me, at: stamp, text: body, ...(attachment ? { attachment } : {}) });
     ch.lastRead[me] = stamp;
     if (!ch.memberIds.includes(me)) ch.memberIds.push(me);
@@ -1491,4 +1513,20 @@ export function markChannelRead(channelId: ID) {
     const last = db.chatMessages.filter((m) => m.channelId === channelId).map((m) => m.at).sort().pop();
     if (last && (ch.lastRead[me] ?? "") < last) ch.lastRead[me] = last;
   });
+}
+
+/** Open a direct message with someone, starting one if the two of them have none yet. */
+export function startDirectMessage(personId: ID): ID | null {
+  let out: ID | null = null;
+  mutate((db) => {
+    const me = myId(db);
+    if (!me || me === personId) return;
+    const found = db.chatChannels.find((c) => c.kind === "dm" && c.memberIds.length === 2 && c.memberIds.includes(me) && c.memberIds.includes(personId));
+    if (found) { out = found.id; return; }
+    const id = newId("dm");
+    db.chatChannels.push({ id, kind: "dm", name: "", purpose: "Direct message", memberIds: [me, personId], lastRead: { [me]: nowStamp() } });
+    log(db, "Started a direct message", `with ${db.people.find((p) => p.id === personId)?.name ?? "someone"}`, "chat");
+    out = id;
+  });
+  return out;
 }

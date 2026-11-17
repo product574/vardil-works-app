@@ -1,13 +1,13 @@
-import { ArrowLeft, ChatsCircle, Hash, Paperclip, PaperPlaneRight, UsersThree, X } from "@phosphor-icons/react";
+import { ArrowLeft, ChatsCircle, EnvelopeSimple, MagnifyingGlass, Paperclip, PaperPlaneRight, PencilSimpleLine, UsersThree, X } from "@phosphor-icons/react";
 import { Fragment, type ReactNode, useEffect, useRef, useState } from "react";
-import { Link, NavLink, useParams } from "react-router-dom";
+import { Link, NavLink, useNavigate, useParams } from "react-router-dom";
 import { useAccess } from "@/data/access";
-import { markChannelRead, sendChatMessage } from "@/data/actions";
+import { markChannelRead, sendChatMessage, startDirectMessage } from "@/data/actions";
 import { useData, useDay, usePrefs } from "@/data/store";
 import type { ChatChannel, ChatMessage, Db } from "@/data/types";
 import { CHAT_APP_NAME, byDay, channelTitle, insertMention, mentionQuery, myChannels, splitMentions, unreadCount } from "@/lib/chat";
 import { tOf } from "@/lib/format";
-import { Avatar, cx, Empty, Menu } from "@/ui";
+import { Avatar, Button, cx, Dialog, Empty, Menu } from "@/ui";
 
 /**
  * Team chat, laid out like Ping in the reference demos (16 Nov, Oisin): a side panel with the
@@ -24,6 +24,7 @@ export function TeamChat() {
   const open = [...channels, ...dms].find((c) => c.id === channelId) ?? (channelId ? undefined : channels[0] ?? dms[0]);
   const nameOf = (id: string) => db.people.find((p) => p.id === id)?.name ?? "Someone";
   const person = db.people.find((p) => p.id === me);
+  const [starting, setStarting] = useState(false);
 
   return (
     <div className="flex min-w-0 flex-1">
@@ -32,16 +33,19 @@ export function TeamChat() {
           <span className="grid size-9 shrink-0 place-items-center rounded-full bg-ink text-surface">
             <ChatsCircle size={20} weight="fill" />
           </span>
-          <span className="min-w-0 leading-tight">
+          <span className="min-w-0 flex-1 leading-tight">
             <span className="block font-display text-[1.1rem] font-semibold">Team chat</span>
             <span className="block text-[0.87rem] text-muted">{CHAT_APP_NAME[app]}</span>
           </span>
+          <button type="button" aria-label="New message or email" title="New message or email" onClick={() => setStarting(true)} className="press grid size-11 shrink-0 place-items-center rounded-md text-muted hover:bg-surface hover:text-accent-ink">
+            <PencilSimpleLine size={20} />
+          </button>
         </div>
         <nav aria-label="Channels and direct messages" className="min-h-0 flex-1 overflow-y-auto px-2.5 pb-28">
-          <p className="px-2 pt-3 pb-1 text-[0.87rem] text-muted">Channels</p>
+          <p className="px-2 pt-3 pb-1 text-[0.87rem] text-muted">Group chats</p>
           <ul>
             {channels.map((c) => (
-              <ChannelLink key={c.id} c={c} active={c.id === open?.id} label={channelTitle(c, me, nameOf, app)} unread={unreadCount(db.chatMessages, c, me)} icon={<Hash size={18} className="shrink-0 text-muted" />} />
+              <ChannelLink key={c.id} c={c} active={c.id === open?.id} label={channelTitle(c, me, nameOf, app)} unread={unreadCount(db.chatMessages, c, me)} />
             ))}
           </ul>
           {dms.length > 0 && (
@@ -73,16 +77,63 @@ export function TeamChat() {
         ) : (
           <div className="p-5">
             <Empty title={channelId ? "This conversation is not here" : "No channels yet"}>
-              {channelId ? "It may have been closed, or you are not a member. Pick one from the list." : "Channels you are added to in Teams or Slack show here."}
+              {channelId ? "It may have been closed, or you are not a member. Pick one from the list." : "Group chats you are added to in Teams or Slack show here."}
             </Empty>
           </div>
         )}
       </section>
+      <StartDialog open={starting} onClose={() => setStarting(false)} db={db} />
     </div>
   );
 }
 
-function ChannelLink({ c, active, label, unread, icon }: { c: ChatChannel; active: boolean; label: string; unread: number; icon: ReactNode }) {
+/** "New": pick a person, then message them here or start an email to them in Email. */
+function StartDialog({ open, onClose, db }: { open: boolean; onClose: () => void; db: Db }) {
+  const access = useAccess();
+  const navigate = useNavigate();
+  const [q, setQ] = useState("");
+  const people = db.people
+    .filter((p) => p.active && p.kind === "Management" && p.id !== access.personId)
+    .filter((p) => `${p.name} ${p.trade}`.toLowerCase().includes(q.trim().toLowerCase()))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const close = () => { setQ(""); onClose(); };
+  return (
+    <Dialog open={open} onClose={close} title="New message or email">
+      <label className="relative block">
+        <span className="sr-only">Find someone</span>
+        <MagnifyingGlass size={18} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted" />
+        <input type="search" className="field pl-10" placeholder="Find someone by name or job" value={q} onChange={(e) => setQ(e.target.value)} autoFocus />
+      </label>
+      {access.can("inbox") && (
+        <Button className="mt-3 w-full" onClick={() => { close(); navigate("/inbox?compose=1"); }}>
+          <EnvelopeSimple size={18} /> New email to anyone
+        </Button>
+      )}
+      <ul className="mt-3 grid gap-0.5" aria-label="People">
+        {people.length === 0 && <li className="px-2 py-3 text-muted">Nobody by that name.</li>}
+        {people.map((p) => (
+          <li key={p.id} className="flex items-center gap-2.5 rounded-md px-2 py-1.5 hover:bg-accent-soft/50">
+            <Avatar name={p.name} />
+            <span className="min-w-0 flex-1 leading-tight">
+              <span className="block truncate font-medium">{p.name}</span>
+              <span className="block truncate text-[0.87rem] text-muted">{p.trade}</span>
+            </span>
+            <Button aria-label={`Message ${p.name}`} onClick={() => { const id = startDirectMessage(p.id); close(); if (id) navigate(`/chat/${id}`); }}>
+              Message
+            </Button>
+            {access.can("inbox") && (
+              <Button variant="ghost" aria-label={`Email ${p.name}`} onClick={() => { close(); navigate(`/inbox?compose=1&to=${encodeURIComponent(p.email)}`); }}>
+                Email
+              </Button>
+            )}
+          </li>
+        ))}
+      </ul>
+    </Dialog>
+  );
+}
+
+function ChannelLink({ c, active, label, unread, icon }: { c: ChatChannel; active: boolean; label: string; unread: number; icon?: ReactNode }) {
   return (
     <li>
       <NavLink
@@ -141,7 +192,7 @@ function Conversation({ ch, db, title }: { ch: ChatChannel; db: Db; title: strin
         <Link to="/chat" aria-label="Back to channels" className="press -ml-1 grid size-11 place-items-center rounded-md text-muted hover:bg-accent-soft md:hidden">
           <ArrowLeft size={20} />
         </Link>
-        {ch.kind === "dm" ? <Avatar name={title} /> : <Hash size={20} className="text-muted" />}
+        {ch.kind === "dm" && <Avatar name={title} />}
         <h1 className="min-w-0 truncate text-[1.15rem]">{title}</h1>
         {project && access.can("projects") && (
           <Link to={`/projects/${project.code}`} className="ml-2 hidden shrink-0 text-[0.93rem] font-medium text-accent-ink underline-offset-2 hover:underline sm:inline">

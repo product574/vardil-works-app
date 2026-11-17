@@ -51,7 +51,7 @@ export const DEPARTMENTS: Department[] = [
     key: "chat", label: "Team chat", icon: ChatsCircle, home: "/chat", inBar: true, ownLayout: true,
     badge: (db, _t, me) => totalUnread(db.chatMessages, db.chatChannels, me),
     // Not shown (the screen draws its own channel list); listed so Ask AI can link to it.
-    groups: [{ label: "Team chat", items: [{ to: "/chat", label: "Channels" }] }],
+    groups: [{ label: "Team chat", items: [{ to: "/chat", label: "Group chats" }] }],
   },
   {
     key: "sales", label: "Sales", icon: Handshake, home: "/sales", inBar: true,

@@ -10,7 +10,7 @@ import { dShort } from "./format";
 
 export const CHAT_APP_NAME: Record<ChatApp, string> = { teams: "Microsoft Teams", slack: "Slack" };
 
-/** How a channel shows: "C720 Ardmullen House" in Teams, "c720-ardmullen-house" in Slack (the # is drawn beside it). */
+/** How a group chat shows: "C720 Ardmullen House" in Teams, "c720-ardmullen-house" in Slack (no #: Oisin, 17 Nov). */
 export function channelLabel(ch: Pick<ChatChannel, "name">, app: ChatApp): string {
   if (app === "teams") return ch.name;
   return ch.name
