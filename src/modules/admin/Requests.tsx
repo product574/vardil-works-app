@@ -10,7 +10,7 @@ import { directorQueue, recentlyDecided } from "@/lib/requests";
 import { Badge, Button, Empty, PageBody, PageHead, Panel, Section } from "@/ui";
 import { toast } from "@/ui/toast";
 
-const KIND: Record<string, string> = { personnel: "People", own_plant: "Our plant", hired_plant: "Plant to hire" };
+const KIND: Record<string, string> = { personnel: "People", own_plant: "Our plant", hired_plant: "Plant to hire", other: "Something else" };
 
 /**
  * Everything waiting for the managing director's yes or no, in one place (Aodhan, 16 Nov):
@@ -116,10 +116,20 @@ export function Requests() {
                     return (
                       <tr key={r.id}>
                         <td className="whitespace-nowrap">
-                          <Link to={`/projects/${p?.code}?tab=requests`} className="font-medium text-accent-ink underline-offset-2 hover:underline">
-                            {p?.code}
-                          </Link>{" "}
-                          {p?.name}
+                          {p ? (
+                            <>
+                              <Link to={`/projects/${p.code}?tab=requests`} className="font-medium text-accent-ink underline-offset-2 hover:underline">
+                                {p.code}
+                              </Link>{" "}
+                              {p.name}
+                            </>
+                          ) : (
+                            // From a site manager's phone, not tied to one site (Oisin, 17 Nov).
+                            <>
+                              <span className="font-medium">General</span>
+                              <span className="block text-[0.87rem] text-muted">Not for one site</span>
+                            </>
+                          )}
                         </td>
                         <td>
                           <span className="font-medium">{r.description}{r.quantity > 1 ? ` x ${r.quantity}` : ""}</span>
@@ -136,7 +146,7 @@ export function Requests() {
                         {yesNo(
                           canAnswer,
                           () => { decideSiteRequest(r.id, false); toast(`Turned down: ${r.description}`); },
-                          () => { const out = decideSiteRequest(r.id, true); toast(out === "planned" ? `Agreed: ${r.description}. They are on the plan for ${p?.code} that day` : `Agreed: ${r.description}. It stays on Site requests until the office has arranged it`); },
+                          () => { const out = decideSiteRequest(r.id, true); toast(out === "planned" ? `Agreed: ${r.description}. They are on the plan for ${p?.code} that day` : `Agreed: ${r.description}. It stays on Requests until the office has arranged it`); },
                           r.description,
                         )}
                       </tr>
@@ -309,7 +319,7 @@ function Decided({ db, day, items }: { db: Db; day: string; items: ReturnType<ty
         <ul className="divide-y divide-line">
           {items.map((d) => {
             const yes = d.kind === "site" ? d.item.decision === "Approved" : d.item.status === "Approved";
-            const what = d.kind === "site" ? `${d.item.description}, ${db.projects.find((p) => p.id === d.item.projectId)?.code ?? ""}` : d.item.what;
+            const what = d.kind === "site" ? `${d.item.description}, ${db.projects.find((p) => p.id === d.item.projectId)?.code ?? "general"}` : d.item.what;
             const by = d.item.decidedBy;
             return (
               <li key={d.item.id} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-3 py-2">

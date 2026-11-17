@@ -6,10 +6,10 @@ import { co } from "@/data/place";
 import { useData, useDay } from "@/data/store";
 import { type Db, LANGUAGE_NAME, type Person, type Project } from "@/data/types";
 import { type DayState, daysLabel, openDays, partLoad, personWeek, planClashes, planShort } from "@/lib/availability";
-import { dropOutcome, firstOnSite, planSteps, stepsToPlan } from "@/lib/roster";
+import { dayRoster, dropOutcome, firstOnSite, planSteps, stepsToPlan } from "@/lib/roster";
 import { addDays } from "@/lib/dates";
 import { dShort, dWeekday, plural } from "@/lib/format";
-import { attendanceShort, nextWorkWeek, workWeek } from "@/lib/week";
+import { nextWorkWeek, workWeek } from "@/lib/week";
 import { Badge, Button, cx, Dialog, Empty, Fact, Field, Mail, NumInput, PageBody, PageHead, Panel, Section, Segmented, Tel, type Tone } from "@/ui";
 import { toast } from "@/ui/toast";
 
@@ -465,7 +465,10 @@ function WeekGrid({ sites, week, db, day, canEdit, clashes, liveIds, dragging, o
   const code = (id: string) => db.projects.find((p) => p.id === id)?.code ?? "";
   const person = (id: string) => db.people.find((p) => p.id === id);
   const draggingState = (date: string) => (dragging ? personWeek(db.plan, db.holidays, liveIds, dragging.personId, [date])[0]! : null);
-  const total = (d: string) => (d > day ? new Set(db.plan.filter((p) => p.date === d && sites.some((s) => s.id === p.projectId)).map((p) => p.personId)).size : new Set(db.attendance.filter((a) => a.date === d && sites.some((s) => s.id === a.projectId)).map((a) => a.personId)).size);
+  // One rule for who is on a site on a day, shared with the month ahead and both phones: the
+  // timesheet for a day gone (and today once the site has marked anyone), otherwise the plan.
+  const roster = (siteId: string, d: string) => dayRoster(db.attendance, db.plan, siteId, d, day);
+  const total = (d: string) => new Set(sites.flatMap((s) => roster(s.id, d).rows.map((r) => r.personId))).size;
   return (
     <div className="overflow-x-auto rounded-md border border-line bg-surface">
       <table className="w-full min-w-[56rem] table-fixed border-collapse" aria-label="Week ahead by site and day">
@@ -502,9 +505,10 @@ function WeekGrid({ sites, week, db, day, canEdit, clashes, liveIds, dragging, o
                 const running = d >= site.startDate && d <= site.endDate;
                 const past = d <= day;
                 const editable = canEdit && running && !past;
-                const entries = past
-                  ? db.attendance.filter((a) => a.projectId === site.id && a.date === d).map((a) => ({ id: a.id, personId: a.personId, text: attendanceShort(a.status, a.overtimeHours) === "Full" ? "" : attendanceShort(a.status, a.overtimeHours).toLowerCase() }))
-                  : db.plan.filter((p) => p.projectId === site.id && p.date === d).map((p) => ({ id: p.id, personId: p.personId, text: p.part === "half" ? "half day" : p.overtimeHours ? `+${p.overtimeHours}h` : "" }));
+                const shown = roster(site.id, d);
+                // Names from the timesheet are grey; today's plan, before anyone is marked, still reads as a plan.
+                const marked = shown.from === "timesheet";
+                const entries = shown.rows.map((r) => ({ id: r.personId, personId: r.personId, text: r.note }));
                 const sorted = entries.sort((a, b) => (person(a.personId)?.name ?? "").localeCompare(person(b.personId)?.name ?? ""));
                 const st = editable ? draggingState(d) : null;
                 const outcome = st && dragging ? (dragging.fromDate === d && dragging.fromSiteId && dragging.fromSiteId !== site.id ? "free" : dropOutcome(st, site.id)) : null;
@@ -549,7 +553,7 @@ function WeekGrid({ sites, week, db, day, canEdit, clashes, liveIds, dragging, o
                           {sorted.map((e) => {
                             const p = person(e.personId);
                             if (!p) return null;
-                            const clash = !past ? clashes.get(`${p.id}|${d}`)?.filter((x) => x !== site.id) : undefined;
+                            const clash = !marked ? clashes.get(`${p.id}|${d}`)?.filter((x) => x !== site.id) : undefined;
                             return (
                               <button
                                 key={e.id}
@@ -568,7 +572,7 @@ function WeekGrid({ sites, week, db, day, canEdit, clashes, liveIds, dragging, o
                                 title={clash && clash.length > 0 ? `Also on ${clash.map(code).join(", ")}: more than one day's work` : editable ? "Click for details, or drag to another site on this day" : undefined}
                                 className={cx(
                                   "press flex min-h-9 w-full items-baseline gap-1 rounded-md px-2 py-1 text-left text-[0.93rem]",
-                                  past ? "bg-canvas text-muted" : clash && clash.length > 0 ? "bg-bad-soft font-medium text-bad" : "bg-accent-soft font-medium text-accent-ink",
+                                  marked ? "bg-canvas text-muted" : clash && clash.length > 0 ? "bg-bad-soft font-medium text-bad" : "bg-accent-soft font-medium text-accent-ink",
                                   editable && "cursor-grab active:cursor-grabbing",
                                 )}
                               >

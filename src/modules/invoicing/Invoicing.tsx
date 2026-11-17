@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useAccess } from "@/data/access";
 import { clearHold, confirmSupplierInvoice, issueInvoice, markExported, markInvoicePaid, markPurchasesExported, readSupplierInvoice, reopenSupplierInvoice, signOffSupplierInvoice } from "@/data/actions";
@@ -37,11 +37,21 @@ function saveFile(fileName: string, text: string) {
 }
 const vatOf = (i: SalesInvoice) => r2((i.net * i.vatPct) / 100);
 
-function SalesTable({ rows, extra, action }: { rows: SalesInvoice[]; extra?: { head: string; cell: (i: SalesInvoice) => React.ReactNode }; action?: (i: SalesInvoice) => React.ReactNode }) {
+/**
+ * Client invoices as a table that always fits its page (Oisin, 17 Nov: no scrolling across). Text
+ * columns wrap, a short extra fact gets a column (`extra`), anything long about an invoice goes on
+ * a line of its own under it (`under`), and on a phone or a narrow window each invoice is a stacked
+ * block, not a row (below 1024 pixels, where seven columns no longer fit beside the sidebar).
+ */
+function SalesTable({ rows, extra, under, action }: { rows: SalesInvoice[]; extra?: { head: string; cell: (i: SalesInvoice) => React.ReactNode }; under?: (i: SalesInvoice) => React.ReactNode; action?: (i: SalesInvoice) => React.ReactNode }) {
   const { region, access, project, client } = useInv();
+  const cols = 3 + (extra ? 1 : 0) + (access.seeValues ? 3 : 0) + (action ? 1 : 0);
+  // On a phone a cell is a line of the invoice's block, not a column.
+  const line = "max-lg:block max-lg:border-0 max-lg:py-0.5";
+  const block = "max-lg:block max-lg:border-b max-lg:border-line max-lg:pb-2 max-lg:last:border-b-0";
   return (
-    <table className="tbl">
-      <thead>
+    <table className="tbl max-lg:block">
+      <thead className="max-lg:hidden">
         <tr>
           <th>Invoice</th>
           <th>Project</th>
@@ -53,33 +63,52 @@ function SalesTable({ rows, extra, action }: { rows: SalesInvoice[]; extra?: { h
           {action && <th />}
         </tr>
       </thead>
-      <tbody>
+      <tbody className="max-lg:block">
         {rows.map((i) => {
           const p = project(i.projectId);
           return (
-            <tr key={i.id}>
-              <td>
-                <span className="font-medium">{invoiceNo(i)}</span>
-                <span className="block text-[0.87rem] text-muted">{i.description}</span>
-              </td>
-              <td className="whitespace-nowrap">
-                <Link to={`/projects/${p?.code}`} className="text-accent-ink underline-offset-2 hover:underline">
-                  {p?.code}
-                </Link>{" "}
-                <span className="text-muted">{p?.name}</span>
-              </td>
-              <td>{client(i.clientId)?.name}</td>
-              {extra && <td>{extra.cell(i)}</td>}
-              {access.seeValues && <td className="num">{money2(i.net, region)}</td>}
-              {access.seeValues && (
-                <td className="num">
-                  {money2(vatOf(i), region)}
-                  <span className="block text-[0.87rem] text-muted">{i.vatPct}%</span>
+            <Fragment key={i.id}>
+              <tr className={cx("max-lg:block max-lg:pt-2", under ? "[&>td]:border-b-0" : block)} data-invoice={invoiceNo(i)}>
+                <td className={line}>
+                  <span className="font-medium whitespace-nowrap">{invoiceNo(i)}</span>
+                  <span className="block text-[0.87rem] text-muted max-lg:ml-2 max-lg:inline">{i.description}</span>
                 </td>
+                <td className={line}>
+                  <Link to={`/projects/${p?.code}`} className="whitespace-nowrap text-accent-ink underline-offset-2 hover:underline">
+                    {p?.code}
+                  </Link>{" "}
+                  <span className="text-muted">{p?.name}</span>
+                </td>
+                <td className={line}>{client(i.clientId)?.name}</td>
+                {extra && (
+                  <td className={line}>
+                    <span className="text-muted lg:hidden">{extra.head}: </span>
+                    {extra.cell(i)}
+                  </td>
+                )}
+                {access.seeValues && <td className="num max-lg:hidden">{money2(i.net, region)}</td>}
+                {access.seeValues && (
+                  <td className="num max-lg:hidden">
+                    {money2(vatOf(i), region)}
+                    <span className="block text-[0.87rem] text-muted">{i.vatPct}%</span>
+                  </td>
+                )}
+                {access.seeValues && (
+                  <td className={cx("num font-medium max-lg:text-left", line)}>
+                    {money2(gross(i.net, i.vatPct), region)}
+                    <span className="font-normal text-muted lg:hidden"> with VAT at {i.vatPct}%</span>
+                  </td>
+                )}
+                {action && <td className={cx("text-right whitespace-nowrap max-lg:pt-1.5 max-lg:text-left", line)}>{action(i)}</td>}
+              </tr>
+              {under && (
+                <tr className={block}>
+                  <td colSpan={cols} className={cx("pt-0", line)}>
+                    {under(i)}
+                  </td>
+                </tr>
               )}
-              {access.seeValues && <td className="num font-medium">{money2(gross(i.net, i.vatPct), region)}</td>}
-              {action && <td className="text-right whitespace-nowrap">{action(i)}</td>}
-            </tr>
+            </Fragment>
           );
         })}
       </tbody>
@@ -97,7 +126,7 @@ export function ToInvoice() {
     <>
       <PageHead title="To invoice" note={`${plural(rows.length, "invoice")} ready to go${access.seeValues ? `, ${money0(total, region)} before VAT` : ""}. ${held > 0 ? `${held} more ${held === 1 ? "is" : "are"} held until extras or snagging are settled.` : ""}`} />
       <PageBody>
-        <Panel className="max-w-6xl overflow-x-auto">
+        <Panel className="max-w-6xl">
           {rows.length === 0 ? (
             <Empty title="Nothing is waiting to be invoiced">A final account appears here when a project is marked complete, and a stage payment when its stage is reached.</Empty>
           ) : (
@@ -132,15 +161,16 @@ export function HeldInvoices() {
   const rows = db.salesInvoices.filter((i) => i.status === "Held");
   return (
     <>
-      <PageHead title="Held" note="A final account is held automatically while an extra is waiting to be agreed or snagging is open, so nothing is billed short or billed twice." />
+      <PageHead title="Held" note="A final account is held automatically while an extra is waiting to be agreed or snagging is open, so nothing is billed short or billed twice. The reason is under each invoice." />
       <PageBody>
-        <Panel className="max-w-6xl overflow-x-auto">
+        <Panel className="max-w-6xl">
           {rows.length === 0 ? (
             <Empty title="Nothing is held" />
           ) : (
             <SalesTable
               rows={rows}
-              extra={{ head: "Why it is held", cell: (i) => <Badge tone="warn">{i.holdReason ?? "Held"}</Badge> }}
+              // Why it is held, on a line of its own under the invoice, so a long reason never pushes the table off the page.
+              under={(i) => <span className="inline-block rounded bg-warn-soft px-1.5 py-0.5 text-[0.87rem] leading-snug font-medium text-warn">{i.holdReason ?? "Held"}</span>}
               action={(i) =>
                 access.may("manageProjects") ? (
                   <Button

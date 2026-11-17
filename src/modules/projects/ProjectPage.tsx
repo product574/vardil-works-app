@@ -24,7 +24,7 @@ import { toast } from "@/ui/toast";
 import { FilesTab } from "./ProjectFiles";
 
 type Tab = "overview" | "scope" | "photos" | "files" | "plant" | "requests" | "extras" | "costs" | "history";
-export const REQUEST_LABEL: Record<RequestKind, string> = { personnel: "Personnel", own_plant: "Own plant", hired_plant: "Hired plant" };
+export const REQUEST_LABEL: Record<RequestKind, string> = { personnel: "Personnel", own_plant: "Own plant", hired_plant: "Hired plant", other: "Something else" };
 
 export function ProjectPage() {
   const { code } = useParams();
@@ -510,7 +510,7 @@ function PlantTab({ p, db }: TabProps) {
 function RequestsTab({ p, db }: TabProps) {
   const day = useDay();
   const access = useAccess();
-  const canHandle = mayHandleCrewRequest(p.siteManagerId, access.personId);
+  const canHandle = mayHandleCrewRequest(p, access.personId, access.siteAccess);
   const [kind, setKind] = useState<RequestKind>("personnel");
   const [description, setDescription] = useState("");
   const [quantity, setQuantity] = useState("1");

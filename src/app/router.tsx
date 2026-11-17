@@ -122,6 +122,7 @@ export const router = create([
           screen("settings/about", settings, (m) => m.About),
           screen("admin", admin, (m) => m.Requests),
           screen("admin/access", admin, (m) => m.RolesAccess),
+          screen("admin/sites", admin, (m) => m.SiteAccess),
           screen("admin/billing", admin, (m) => m.Billing),
           screen("admin/connections", admin, (m) => m.Connections),
           screen("admin/automations", admin, (m) => m.Automations),

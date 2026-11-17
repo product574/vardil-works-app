@@ -37,7 +37,7 @@ with sync_playwright() as p:
     main.get_by_role("button", name="Approve to job costs").click(); page.wait_for_selector("text=Confirmed by Aidan King")
     side.get_by_role("link", name="Job costs").click(); page.wait_for_selector("text=All jobs shown")
     side.get_by_role("link", name="Invoiced").click(); page.wait_for_selector("text=Aged debt")
-    side.get_by_role("link", name="Held").click(); page.wait_for_selector("text=Why it is held")
+    side.get_by_role("link", name="Held").click(); page.wait_for_selector("text=The reason is under each invoice")
     print("preview file: plant, calendar, register, hire, vehicles, documents, repair spend, files, filing, photos, issue, export download (" + name + "), supplier approval, job costs, aged debt, held all work")
     print("outside requests:", reqs, "| errors:", errs)
     b.close()

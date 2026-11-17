@@ -166,12 +166,18 @@ export function ExtraSheet({ site, me, lang, onClose }: { site: Project; me: Per
 /**
  * Make a request. From an operative it goes to their site manager, who forwards it to management
  * or deals with it on site (Oisin, 17 Nov); from a site manager it goes straight to management.
+ * With no site it is the site manager's general request, not tied to one job: it is listed
+ * underneath with where it stands, so he can see the office's answer.
  */
-export function AskSheet({ site, me, lang, day, toManager, onClose }: { site: Project; me: Person; lang: Language; day: string; toManager?: boolean; onClose: () => void }) {
+export function AskSheet({ site, me, lang, day, toManager, onClose }: { site: Project | null; me: Person; lang: Language; day: string; toManager?: boolean; onClose: () => void }) {
   const t = WORDS[lang];
-  const [kind, setKind] = useState<RequestKind>("own_plant");
+  const requests = useData((s) => s.db.requests);
+  const [kind, setKind] = useState<RequestKind>(site ? "own_plant" : "other");
   const [text, setText] = useState("");
-  const kinds: [RequestKind, string][] = [["own_plant", t.ownPlant], ["hired_plant", t.hirePlant], ["personnel", t.people]];
+  // A site manager can ask for anything; the crew's form keeps to people and plant, in their own language.
+  const kinds: [RequestKind, string][] = [["own_plant", t.ownPlant], ["hired_plant", t.hirePlant], ["personnel", t.people], ...(toManager ? [] : ([["other", "Something else"]] as [RequestKind, string][]))];
+  const mine = site ? [] : requests.filter((r) => r.projectId === null && r.requestedById === me.id).slice(0, 4);
+  const state = (r: (typeof mine)[number]) => (r.decision === "Declined" ? `Turned down by ${r.decidedBy}` : r.status === "Done" ? "Dealt with" : r.decision === "Approved" ? `Agreed by ${r.decidedBy}, the office is arranging it` : "Waiting for the office");
   return (
     <Dialog
       open
@@ -187,7 +193,7 @@ export function AskSheet({ site, me, lang, day, toManager, onClose }: { site: Pr
             variant="primary"
             disabled={!text.trim()}
             onClick={() => {
-              actAs(me.id, () => addRequest({ projectId: site.id, kind, description: text.trim(), quantity: 1, neededFrom: addDays(day, 1), neededTo: addDays(day, 7), notes: lang === "en" ? "Sent from the site phone" : `Sent from the site phone in ${LANGUAGE_NAME[lang]}`, ...(toManager ? { heldBy: "site" as const } : {}) }));
+              actAs(me.id, () => addRequest({ projectId: site?.id ?? null, kind, description: text.trim(), quantity: 1, neededFrom: addDays(day, 1), neededTo: addDays(day, 7), notes: lang === "en" ? "Sent from the site phone" : `Sent from the site phone in ${LANGUAGE_NAME[lang]}`, ...(toManager && site ? { heldBy: "site" as const } : {}) }));
               toast(toManager ? t.askSent : "Request sent to the office");
               onClose();
             }}
@@ -197,6 +203,7 @@ export function AskSheet({ site, me, lang, day, toManager, onClose }: { site: Pr
         </>
       }
     >
+      {!site && <p className="mb-3 text-[0.93rem] text-muted">A general request, not for one job: a course, kit for yourself, something for all your sites. It goes to the office for a yes or no.</p>}
       <fieldset className="grid gap-2" lang={lang}>
         <legend className="mb-1 font-medium">{t.need}</legend>
         {kinds.map(([k, label]) => (
@@ -209,6 +216,19 @@ export function AskSheet({ site, me, lang, day, toManager, onClose }: { site: Pr
           {(id) => <textarea id={id} rows={2} className="field text-[1.02rem]" value={text} onChange={(e) => setText(e.target.value)} />}
         </Field>
       </fieldset>
+      {mine.length > 0 && (
+        <section className="mt-4">
+          <h3 className="mb-1 text-[0.93rem] font-medium">Your general requests</h3>
+          <ul className="divide-y divide-line rounded-md border border-line bg-surface" aria-label="Your general requests">
+            {mine.map((r) => (
+              <li key={r.id} className="px-3 py-2">
+                <span className="block">{r.description}</span>
+                <span className="block text-[0.87rem] text-muted">{state(r)}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
     </Dialog>
   );
 }

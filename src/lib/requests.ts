@@ -2,8 +2,9 @@
  * What waits for the managing director's yes or no (Admin > Requests, Aodhan's pick on 16 Nov):
  * leave, people and plant asked for by the sites, and money people want to spend.
  */
-import type { Db, Expense, Holiday, SiteRequest, SpendRequest, SupplierInvoice } from "@/data/types";
+import type { Db, Expense, Holiday, Project, SiteAccess, SiteRequest, SpendRequest, SupplierInvoice } from "@/data/types";
 import { readyToExport } from "./purchases";
+import { opensSite, seesEveryProject } from "./site-access";
 
 export type DirectorQueue = { leave: Holiday[]; site: SiteRequest[]; spend: SpendRequest[]; invoices: SupplierInvoice[]; expenses: Expense[] };
 
@@ -49,24 +50,30 @@ export const withOffice = (r: Req) => r.status === "Open" && r.heldBy !== "site"
 /** What the crew has asked a site manager for on these projects and he has not yet dealt with, oldest first. */
 export function crewRequests(requests: SiteRequest[], projectIds: Iterable<string>): SiteRequest[] {
   const ids = new Set(projectIds);
-  return requests.filter((r) => withSite(r) && ids.has(r.projectId)).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  return requests.filter((r) => withSite(r) && r.projectId !== null && ids.has(r.projectId)).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 }
 
-/** Who may forward a crew request or mark it dealt with: the site manager of that project. The office sees who it is with. */
-export const mayHandleCrewRequest = (siteManagerId: string | null | undefined, personId: string | null) => !!personId && siteManagerId === personId;
+/**
+ * Who may forward a crew request or mark it dealt with: a site manager who opens that site, which
+ * is whoever runs it and anyone the managing director has given it to (Admin, Site access). The
+ * office sees who it is with.
+ */
+export const mayHandleCrewRequest = (site: Pick<Project, "id" | "siteManagerId"> | undefined, personId: string | null, grants: Pick<SiteAccess, "personId" | "projectId">[]) => !!site && opensSite(site, personId, grants);
 
-/** Whether someone's lists cover every project ("See every project"), worked out from their level and any exception of their own. */
-function seesEveryProject(db: Pick<Db, "people" | "access" | "personAccess">, personId: string | null): boolean {
-  const p = db.people.find((x) => x.id === personId);
-  if (!p || p.kind !== "Management") return true;
-  const level = p.level ?? "site";
-  if (level === "md") return true;
-  return db.personAccess.find((a) => a.id === personId)?.perms.allProjects ?? db.access.find((a) => a.id === level)?.perms.includes("allProjects") ?? false;
-}
+/** A general request: from a site manager, not tied to one site (Oisin, 17 Nov). */
+export const isGeneral = (r: Pick<SiteRequest, "projectId">) => r.projectId === null;
 
-/** The number beside Requests in the Projects sidebar: every open request on the projects this person's screen covers, with the office or with a site manager. */
-export function openRequestCount(db: Pick<Db, "people" | "access" | "personAccess" | "projects" | "requests">, personId: string | null): number {
+/**
+ * The requests on one person's screen: those on the projects it covers, and general ones for the
+ * people who see every project and for whoever asked.
+ */
+export function requestsFor(db: Pick<Db, "people" | "access" | "personAccess" | "projects" | "requests" | "siteAccess">, personId: string | null): SiteRequest[] {
   const all = seesEveryProject(db, personId);
-  const mine = new Set(db.projects.filter((p) => all || p.siteManagerId === personId).map((p) => p.id));
-  return db.requests.filter((r) => r.status === "Open" && mine.has(r.projectId)).length;
+  const mine = new Set(db.projects.filter((p) => all || opensSite(p, personId, db.siteAccess)).map((p) => p.id));
+  return db.requests.filter((r) => (r.projectId === null ? all || r.requestedById === personId : mine.has(r.projectId)));
+}
+
+/** The number beside Requests in the Projects sidebar: every open request on this person's screen, with the office or with a site manager. */
+export function openRequestCount(db: Pick<Db, "people" | "access" | "personAccess" | "projects" | "requests" | "siteAccess">, personId: string | null): number {
+  return requestsFor(db, personId).filter((r) => r.status === "Open").length;
 }

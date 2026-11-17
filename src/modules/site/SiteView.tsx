@@ -5,9 +5,8 @@ import { co } from "@/data/place";
 import { useData, useDay, usePrefs } from "@/data/store";
 import { type Language, LANGUAGE_NAME, type Person, type Project } from "@/data/types";
 import { personWeek } from "@/lib/availability";
-import { addDays } from "@/lib/dates";
-import { dayInstruction, siteOn } from "@/lib/roster";
-import { workWeek } from "@/lib/week";
+import { dayInstruction, managerJobs, personDay, siteOn } from "@/lib/roster";
+import { nextWorkWeek, workWeek } from "@/lib/week";
 import { Dialog, PageBody, PageHead, Segmented } from "@/ui";
 import { ManagerPhone } from "./ManagerPhone";
 import { AskSheet, BIG, DrivingSheet, ExpenseSheet, ExtraSheet, longDate, ManagerCard, PhotoSheet, ProfileButton, ProfileSheet } from "./sheets";
@@ -30,7 +29,8 @@ export function SiteView() {
   const operativeId = usePrefs((s) => s.operativeId);
   const setOperative = usePrefs((s) => s.setOperative);
   const crew = db.people.filter((p) => p.active && p.kind === "Operative").sort((a, b) => a.name.localeCompare(b.name));
-  const managers = db.people.filter((p) => p.active && db.projects.some((x) => x.siteManagerId === p.id && (x.status === "Live" || x.status === "Not started"))).sort((a, b) => a.name.localeCompare(b.name));
+  // Anyone with a job on their phone: the people who run a site, and anyone given one (Admin, Site access).
+  const managers = db.people.filter((p) => p.active && p.kind === "Management" && managerJobs(db.projects, p.id, db.siteAccess).length > 0).sort((a, b) => a.name.localeCompare(b.name));
   const [of, setOf] = useState<PhoneOf>(role === "site" ? "manager" : "operative");
   // A site manager signed in sees their own phone; the office can look at anyone's.
   const [managerId, setManagerId] = useState(role === "site" && access.personId ? access.personId : (managers[0]?.id ?? ""));
@@ -214,37 +214,44 @@ function Phone_({ me, lang, day }: { me: Person; lang: Language; day: string }) 
 function WeekSheet({ me, lang, day, onClose }: { me: Person; lang: Language; day: string; onClose: () => void }) {
   const db = useData((s) => s.db);
   const t = WORDS[lang];
+  const m = MORE[lang];
   const [card, setCard] = useState<{ manager: Person; site: Project } | null>(null);
-  // After Friday's work the week that matters is the next one.
-  const week = workWeek(new Date(day + "T12:00:00Z").getUTCDay() >= 5 ? addDays(day, 3) : day);
+  // This week or the one being planned (17 Nov). After Friday's work the week that matters is the next one.
+  const [which, setWhich] = useState<"this" | "next">(new Date(day + "T12:00:00Z").getUTCDay() >= 5 ? "next" : "this");
+  const week = which === "next" ? nextWorkWeek(day) : workWeek(day);
   const live = new Set(db.projects.filter((p) => p.status === "Live" || p.status === "Not started").map((p) => p.id));
   const states = personWeek(db.plan, db.holidays, live, me.id, week);
   const project = (id: string) => db.projects.find((p) => p.id === id);
   return (
     <>
       <Dialog open onClose={onClose} title={t.week}>
-        <ul className="divide-y divide-line" lang={lang}>
+        <div className="mb-2" lang={lang}>
+          <Segmented label={t.week} value={which} onChange={setWhich} options={[{ value: "this", label: m.thisWeek }, { value: "next", label: m.nextWeek }]} />
+        </div>
+        <ul className="divide-y divide-line" lang={lang} aria-label={which === "next" ? m.nextWeek : m.thisWeek}>
           {states.map((d) => {
-            const entries = db.plan.filter((p) => p.personId === me.id && p.date === d.date && live.has(p.projectId));
+            // A day gone shows where they were marked in on the timesheet; a day to come shows the plan.
+            // The office's week and month ahead read the same two records the same way, so all three agree.
+            const mine = personDay(db.attendance, db.plan, me.id, d.date, day, live);
+            const gone = mine.from === "timesheet";
+            const entries = mine.rows;
             return (
               <li key={d.date} className="flex items-baseline gap-3 py-2.5">
                 <span className="w-24 shrink-0 text-muted">{new Date(d.date + "T12:00:00Z").toLocaleDateString(lang === "en" ? "en-IE" : lang, { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" })}</span>
                 <span className="min-w-0 flex-1 font-medium">
-                  {d.leave ? (
-                    t.leave
-                  ) : entries.length === 0 ? (
-                    <span className="font-normal text-muted">{t.free}</span>
+                  {entries.length === 0 ? (
+                    d.leave ? t.leave : <span className="font-normal text-muted">{gone ? m.notIn : t.free}</span>
                   ) : (
                     entries.map((e) => {
                       const site = project(e.projectId);
                       const manager = db.people.find((p) => p.id === site?.siteManagerId);
                       const note = dayInstruction(db.dayInstructions, e.projectId, d.date);
                       return (
-                        <span key={e.id} className="block">
+                        <span key={e.projectId} className="block">
                           <span className="flex flex-wrap items-baseline gap-x-2">
-                            <span>
+                            <span className={d.date < day ? "font-normal text-muted" : undefined}>
                               {site?.code} {site?.name}
-                              {e.part === "half" && <span className="font-normal text-muted">, {t.half}</span>}
+                              {e.half && <span className="font-normal text-muted">, {t.half}</span>}
                               {e.overtimeHours ? <span className="font-normal text-muted">, +{e.overtimeHours}h</span> : null}
                             </span>
                             {site && manager && (

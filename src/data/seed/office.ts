@@ -6,7 +6,7 @@ import { dashboardNumbers } from "../kpis";
 import { basicHours } from "@/lib/payroll";
 import { needsSignOff } from "@/lib/purchases";
 import { workWeek } from "@/lib/week";
-import type { Activity, Approval, Attendance, Automation, Client, DayInstruction, Db, Expense, FileItem, HiredPlant, Mail, PayrollExport, Person, Project, SalesInvoice, ScopeTask, SupplierInvoice } from "../types";
+import type { Activity, Approval, Attendance, Automation, Client, DayInstruction, Db, Expense, FileItem, HiredPlant, Mail, PayrollExport, Person, Project, SalesInvoice, ScopeTask, SiteAccess, SupplierInvoice } from "../types";
 import type { Craft, ProjectMeta } from "./projects";
 import { type Rng, at, lastWeekday, weekday, workdays } from "./util";
 
@@ -717,6 +717,14 @@ export function seedExpenses(today: string): Expense[] {
     { id: "ex-2", personId: "p-sm2", createdAt: at(today, "07:55"), date: today, kind: "Fuel", what: "Diesel for the crew van, the fuel card was declined", amount: 92.15, projectId: "pr-C720", status: "Waiting" },
     { id: "ex-1", personId: "p-110", createdAt: at(workdays(today, -6), "16:10"), date: workdays(today, -6), kind: "Parking and tolls", what: "M50 toll and parking at the builders' providers", amount: 9.6, projectId: null, status: "Approved", decidedBy: "Aidan King", decidedAt: at(workdays(today, -5), "09:05") },
   ];
+}
+
+/**
+ * One site given to a site manager who does not run it, so Admin, Site access opens with an
+ * example: Róisín Garvey runs two live sites, so Shane Culloty can open Granary Quay as well.
+ */
+export function seedSiteAccess(today: string): SiteAccess[] {
+  return [{ id: "sa-1", personId: "p-sm5", projectId: "pr-C725", by: "Aidan King", at: at(workdays(today, -3), "16:20") }];
 }
 
 /** What two site managers put up for their crews this morning, so the operative's phone has today's instructions. */

@@ -183,10 +183,12 @@ export type Variation = {
   approvedBy?: string;
 };
 
-export type RequestKind = "personnel" | "own_plant" | "hired_plant";
+/** "other" is anything that is not people or plant (Oisin, 17 Nov). */
+export type RequestKind = "personnel" | "own_plant" | "hired_plant" | "other";
 export type SiteRequest = {
   id: ID;
-  projectId: ID;
+  /** The site it is for. Null for a general request from a site manager, not tied to one site (Oisin, 17 Nov). */
+  projectId: ID | null;
   kind: RequestKind;
   description: string;
   quantity: number;
@@ -194,6 +196,8 @@ export type SiteRequest = {
   neededTo: Day;
   notes: string;
   requestedBy: string;
+  /** Who asked, for a general request, so it stays on their own list. */
+  requestedById?: ID;
   createdAt: Stamp;
   status: "Open" | "Done";
   /** The managing director's yes or no (Admin > Requests). A yes stays open until the office has arranged it. */
@@ -214,6 +218,12 @@ export type SiteRequest = {
   /** A named person asked for on one day, from the planner on the site manager's phone. */
   personId?: ID;
 };
+
+/**
+ * A site the managing director has let a site manager open besides the ones they run (Admin,
+ * Site access; Oisin, 17 Nov). One row per person and site.
+ */
+export type SiteAccess = { id: ID; personId: ID; projectId: ID; by: string; at: Stamp };
 
 /** What the site manager wants the crew to know on one day. It shows on the operative's phone that day (Oisin, 17 Nov). */
 export type DayInstruction = { id: ID; projectId: ID; date: Day; text: string; by: string; at: Stamp };
@@ -691,6 +701,8 @@ export type Db = {
   activity: Activity[];
   access: AccessRow[];
   personAccess: PersonAccess[];
+  /** Sites given to site managers who do not run them. */
+  siteAccess: SiteAccess[];
 };
 
 // ── Demo roles (the mock sign-in) ─────────────────────────────────────────────

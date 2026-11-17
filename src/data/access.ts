@@ -10,6 +10,7 @@
  * `useAccess()`; they never check a role name themselves.
  */
 import { DEPARTMENTS } from "@/app/departments";
+import { opensSite } from "@/lib/site-access";
 import { ALL_PERMS } from "./permissions";
 import { ROLES, type RoleDef, roleDef } from "./roles";
 import { useDb, usePrefs } from "./store";
@@ -75,6 +76,7 @@ export function useAccess() {
   const person = useDb((db) => db.personAccess.find((a) => a.id === personId));
   const resolved = resolveAccess(def, row, person);
   const allProjects = resolved.perms.includes("allProjects");
+  const siteAccess = useDb((db) => db.siteAccess);
   return {
     role,
     def,
@@ -85,8 +87,13 @@ export function useAccess() {
     /** May they do this? See src/data/permissions.ts for the list. */
     may: (p: PermKey) => resolved.perms.includes(p),
     allProjects,
-    /** People without "See every project" work only on the projects they run. */
-    scope: (projects: Project[]) => (allProjects || !personId || role === "operative" ? projects : projects.filter((p) => p.siteManagerId === personId)),
+    /**
+     * People without "See every project" work only on the sites they open: the ones they run, and
+     * any the managing director has given them (Admin, Site access).
+     */
+    scope: (projects: Project[]) => (allProjects || !personId || role === "operative" ? projects : projects.filter((p) => opensSite(p, personId, siteAccess))),
+    /** The sites given to people who do not run them, for rules that ask about one site. */
+    siteAccess,
   };
 }
 

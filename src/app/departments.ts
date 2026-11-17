@@ -165,7 +165,7 @@ export const DEPARTMENTS: Department[] = [
     groups: [
       { label: "For your yes or no", items: [{ to: "/admin", label: "Requests", end: true, count: (db) => waitingOnDirector(db).length }] },
       // Who can do what, and what the firm pays: the managing director's alone, even if Admin is given to another level.
-      { label: "Access", items: [{ to: "/admin/access", label: "Roles and access", mdOnly: true }] },
+      { label: "Access", items: [{ to: "/admin/access", label: "Roles and access", mdOnly: true }, { to: "/admin/sites", label: "Site access", mdOnly: true }] },
       { label: "Account", items: [{ to: "/admin/billing", label: "Billing", mdOnly: true }] },
       { label: "System", items: [
         { to: "/admin/connections", label: "Connections" },

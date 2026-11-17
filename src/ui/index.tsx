@@ -177,17 +177,26 @@ export function Dialog({ open, onClose, title, children, footer, wide }: { open:
     if (!open && el.open) el.close();
   }, [open]);
   // A dialog taken off the page while still open as a modal can leave Chrome refusing to start a
-  // drag anywhere (found 17 Nov on the week ahead), so close it on the way out.
+  // drag anywhere (found 17 Nov on the week ahead), so close it on the way out. That close is ours,
+  // not the person's, so it must not be reported as one: in development React runs every effect
+  // twice, and reporting it shut each dialog the moment it opened (`npm run dev` only, 17 Nov).
+  const ours = useRef(false);
   useEffect(() => {
     const el = ref.current;
     return () => {
-      if (el?.open) el.close();
+      if (el?.open) {
+        ours.current = true;
+        el.close();
+      }
     };
   }, []);
   return (
     <dialog
       ref={ref}
-      onClose={onClose}
+      onClose={() => {
+        if (ours.current) ours.current = false;
+        else onClose();
+      }}
       onClick={(e) => e.target === ref.current && onClose()}
       className={cx("rise-in m-auto w-[calc(100vw-2rem)] rounded-lg border border-line bg-surface p-0 text-ink shadow-pop backdrop:bg-black/40", wide ? "max-w-3xl" : "max-w-lg")}
     >

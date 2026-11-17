@@ -198,6 +198,11 @@ Two sources were merged (November 2026):
 | 80 | Rest of the week | Oisin, 17 Nov: on the Week ahead, the first time someone goes on a site in the week (dragged from Not placed, moved from another site, or the Add button), a bar above the grid asks "Here for the rest of the week?" with Yes and No. Yes plans the days after it where they are free (a half day where half is taken); after a move it moves the days they were wholly on the old site; days on a third site are left, and the bar says so (`planSteps`, `firstOnSite` in `src/lib/roster.ts`, `planDays` in actions). It is a bar, not a dialog, so it does not get in the way of the next drag |
 | 81 | Month ahead grid | Oisin, 17 Nov, in the layout of his own Oldstone planning tool (two screenshots): a row per site (code, name, site manager, dates), a column per day with weekends greyed and narrow, and the names in each square. Days gone show who was on site from the timesheet; days to come show the plan, the same `db.plan` as the Week ahead, so each updates the other (`dayRoster`). It scrolls sideways inside its own panel with the site names and day headings fixed, opens on today, and has Week buttons to scroll. Clicking a square opens the day: who is planned (take off), Add person (search by name or trade, where each is that day, people on leave cannot be picked), "Repeat each weekday until", a line saying what will be added, and "Add to C7xx". Someone with a full day elsewhere is added anyway and shown in red on both sites, as in his tool. The three total rows stay. `src/modules/schedule/Month.tsx` |
 | 82 | Who is where, per site | Oisin, 17 Nov: a "Per site" view beside "On site", laid out like the plant overview: a heading per live site (code, name, site manager, county, how many on site), then who is there today with status and phone; then "Not on a site today" |
+| 83 | Attendance history layout | Oisin, 17 Nov (later): "have the layout per site like the plant format as well as the other features, put this option in the top right corner" (with a picture of the plant overview's Everything or Needs attention switch). So Per site is no longer a fourth view: it is a layout switch at the top right, Everyone or Per site, and it applies to all three views (Totals for payroll, Day by day, Corrections), which now sit beside the Period and Site boxes. Per site totals carry the payroll columns (full days, half days, basic, overtime and total hours) with a total per site (`perSite` in `src/lib/roster.ts` now adds basic hours) |
+| 84 | Held fits the page | Oisin, 17 Nov (later): "remove the drag at the bottom and just make it fit the page without having to scroll across". The reason an invoice is held was one long unbroken badge in its own column, which pushed the table wider than its panel. It is now on a line of its own under each invoice (`under` on `SalesTable` in `Invoicing.tsx`); text columns wrap; below 1024 pixels each invoice is a stacked block instead of a row (seven columns do not fit beside the sidebar there). The same table serves To invoice, Invoiced and Accounts export |
+| 85 | General request | Oisin, 17 Nov (later): the site manager's phone has "Make a request" on its front page, under General, for a request that is not for one site. `SiteRequest.projectId` can be null (with `requestedById`, so it stays on the asker's own list), and there is a fourth kind, "other" (shown as "Something else"), offered to site managers on the phone and on a project's Requests tab; the operative's form keeps to people and plant. A general request goes straight to management (Admin, Requests, marked "General, not for one site"), is on the office's Requests list and the asker's own (`requestsFor` in `src/lib/requests.ts`), and the phone lists his own with the office's answer. Not seeded: there is none until someone makes one |
+| 86 | One plan, shown one way | Oisin, 17 Nov (later): "make sure the week and month ahead all syncs up together through the different apps and updates accordingly". They already shared `db.plan`; what differed was how a day was read. Now one rule everywhere a site's day is shown, `dayRoster` (the timesheet for a day gone and for today once the site has marked anyone, otherwise the plan): the office's week grid (which used to show today empty until someone was marked), the month grid, the site manager's phone (job card, Week ahead, Month ahead, the day list, site instructions) and, read from the person's side, `personDay` for the operative's My week, which now shows days gone from the timesheet and has a This week or Next week switch so the week being planned can be seen. `src/data/plan-sync.test.ts` checks every way the plan changes against every way it is shown |
+| 87 | Site access | Oisin, 17 Nov (later): "In admin add the ability to decide which sites each site manager has access to". Admin, Site access (under Roles and access; the managing director's alone, `mdOnly`): a row per site that is live or about to start, a column per site manager, a switch in each square; "Runs it" where they run the site, which cannot be switched off. `db.siteAccess` holds one row per person and site given (`setSiteAccess`); `opensSite` in `src/lib/site-access.ts` is the rule, used by `scope` in `access.ts`, the phone's jobs (`managerJobs`), the Requests count, and who may handle a crew's requests. A given site is theirs in every way their level allows: project page, timesheet, plan, requests from its crew, its group chat (they join and leave it with the switch), the job on their phone (marked "Run by ..."). The crew still see whoever runs the site as their site manager. People with "See every project" are listed under the grid, since there is nothing to pick. Sample data: Shane Culloty can open C725, which Róisín Garvey runs. Not built: changing who runs a site |
 
 Standing preferences (these come from Aodhan and are not optional):
 
@@ -275,12 +280,15 @@ src/
                         approvals.ts (client first), portal.ts (the overview's Portal panel),
                         requests.ts (what waits for the managing director's yes or no),
                         subscription.ts (Admin, Billing), pipeline.ts (moving sales cards),
-                        chat.ts (Team chat), mail.ts (Email)
+                        chat.ts (Team chat), mail.ts (Email), roster.ts (17 Nov: the week
+                        and month ahead, the phones, attendance per site), payroll.ts,
+                        purchases.ts, driving.ts, site-access.ts (which sites a site
+                        manager opens)
   ui/                   the interface kit: Button, Badge, PageHead, Panel, Dialog, Menu, toast
   modules/<department>/ one folder per department, one file per screen. dashboard/ is the
                         overview plus ApprovalsPanel.tsx; admin/ (16 Nov) holds Requests,
-                        Roles and access, Billing, Connections, Automations and the
-                        Activity log; a project's own Files tab is projects/ProjectFiles.tsx,
+                        Roles and access, Site access (17 Nov), Billing, Connections,
+                        Automations and the Activity log; a project's own Files tab is projects/ProjectFiles.tsx,
                         beside the Files section in files/Files.tsx
 functions/              Cloudflare Pages Functions: api/ask.ts (Ask AI) and ask-log.ts (the record)
 server/                 their helpers: the Access token check, the D1 record, request checks
@@ -306,11 +314,13 @@ server/                 their helpers: the Access token check, the D1 record, re
   screen, are in `src/data/permissions.ts`. `answerRequests` (16 Nov) is the yes or no on
   site requests and spending in Admin; the managing director's only by default.
 - `seeValues`, `seeMargins`: money.
-- `scope(projects)`: without the "See every project" permission, only the projects they run.
+- `scope(projects)`: without the "See every project" permission, only the sites they open:
+  the ones they run, and any the managing director has given them in Admin, Site access
+  (`opensSite` in `src/lib/site-access.ts`, decision 87).
 
-Screens never check a role name, with three exceptions that are the managing director's
-alone whatever is switched on: Ask AI (decision 46), and in Admin, Roles and access and
-Billing (16 Nov). Admin itself can be switched on for another level, so those two are marked
+Screens never check a role name, with four exceptions that are the managing director's
+alone whatever is switched on: Ask AI (decision 46), and in Admin, Roles and access,
+Site access (17 Nov) and Billing (16 Nov). Admin itself can be switched on for another level, so those are marked
 `mdOnly` in `departments.ts` (left out of everyone else's sidebar) and their screens send
 anyone else back to `/admin`. Without that, a level given Admin could open Roles and access
 and change its own access (possible from step 1, when it moved there from Settings, which
@@ -481,6 +491,23 @@ Email to match their Gmail layout and Team chat their Ping, dropping the AI in T
   so the month grid measures on-screen positions to open on today. Not tested: dragging with a real
   mouse or finger, a real phone, Safari and Firefox, the new Polish, Romanian, Portuguese and
   Lithuanian wording (Make a request, Call now, Today's instructions).
+- 17 Nov, round six (decisions 83 to 87): Attendance history per site from the top right, Held
+  fitting the page, the site manager's general request, one plan shown one way across the
+  office and both phones, and Admin, Site access. DATA_VERSION 18. 335 automated tests (new
+  `site-access.test.ts` in `src/lib` 9 and in `src/data` 8, `plan-sync.test.ts` 11;
+  `roster.test.ts` now 42; a seed check for the site access example). 917 browser checks in
+  eighteen suites (new `s6_check.py` 74; `m4_check.py` 92 and `s3_check.py` updated for the
+  Held and Attendance history layouts). `csp_check.py` 37 screens, no violations.
+  `preview_check7.py` opens the single-file preview from disk on the new screens. Found and
+  fixed: with `npm run dev` every dialog shut the moment it opened. The "close on the way
+  out" added to `Dialog` on 17 Nov was reported as the person closing it, and in development
+  React runs each effect twice. Built copies were never affected, which is why the suites
+  (which use built copies) did not catch it; `Dialog` now tells its own close from the
+  person's. Worth knowing: a `Panel` hides what overflows it, so a table too wide for one is
+  cut off, not scrolled; `s6_check.py` checks for both. Not tested: a real phone, Safari and
+  Firefox, dragging with a real mouse, the new Polish, Romanian, Portuguese and Lithuanian
+  wording (This week, Next week, Not marked in), and `npm run dev` beyond opening the new
+  dialogs by script.
 - Tests: 235 automated tests (new `mail.test.ts`, 17; `chat.test.ts` rewritten, 20); 690
   browser checks in fourteen suites (`s2_check.py` rewritten for Team chat, 34; the Email
   part of `m5_check.py` rewritten, 69 in all; `m1_check.py` counts seven departments for a

@@ -60,6 +60,14 @@ export function actorName(db: Db = useData.getState().db) {
   return db.people.find((p) => p.id === personId)?.name ?? "Demo user";
 }
 
+/** Who the prospect is signed in as, as a person. Null for a client. */
+function actorId(db: Db): ID | null {
+  if (actingAs) return actingAs;
+  const { role, operativeId, asPersonId } = usePrefs.getState();
+  if (role === "client") return null;
+  return signedInPersonId(role, asPersonId, operativeId, db.people);
+}
+
 function log(db: Db, what: string, target: string, department: DepartmentKey, who = actorName(db)) {
   db.activity.unshift({ id: newId("act"), at: nowStamp(), who, what, target, department });
 }
@@ -392,7 +400,48 @@ export function setPersonLevel(personId: ID, level: LevelKey) {
     if (!p || p.kind !== "Management" || p.level === "md") return;
     p.level = level;
     db.personAccess = db.personAccess.filter((a) => a.id !== personId);
+    // Sites are given one by one at site manager level only.
+    if (level !== "site") dropSiteAccess(db, personId);
     log(db, "Changed someone's access level", `${p.name}: ${ROLES.find((r) => r.key === level)?.title}`, "settings");
+  });
+}
+
+/** Take away every site someone was given, and their place in those sites' group chats. */
+function dropSiteAccess(db: Db, personId: ID) {
+  for (const g of db.siteAccess.filter((x) => x.personId === personId)) leaveSiteChat(db, g.projectId, personId);
+  db.siteAccess = db.siteAccess.filter((x) => x.personId !== personId);
+}
+function leaveSiteChat(db: Db, projectId: ID, personId: ID) {
+  const ch = db.chatChannels.find((c) => c.kind === "channel" && c.projectId === projectId);
+  if (!ch) return;
+  ch.memberIds = ch.memberIds.filter((id) => id !== personId);
+  delete ch.lastRead[personId];
+}
+
+/**
+ * Admin, Site access (Oisin, 17 Nov): let a site manager open a site they do not run, or take
+ * that away. With the site comes its group chat. Whoever runs a site always opens it.
+ */
+export function setSiteAccess(personId: ID, projectId: ID, on: boolean) {
+  mutate((db) => {
+    const site = db.projects.find((x) => x.id === projectId);
+    const who = db.people.find((x) => x.id === personId);
+    if (!site || !who || site.siteManagerId === personId) return;
+    const has = db.siteAccess.some((x) => x.personId === personId && x.projectId === projectId);
+    if (on === has) return;
+    const ch = db.chatChannels.find((c) => c.kind === "channel" && c.projectId === projectId);
+    if (on) {
+      db.siteAccess.push({ id: newId("sa"), personId, projectId, by: actorName(db), at: nowStamp() });
+      if (ch && !ch.memberIds.includes(personId)) {
+        ch.memberIds.push(personId);
+        // They join from now: nothing said before counts as unread.
+        ch.lastRead[personId] = db.chatMessages.filter((m) => m.channelId === ch.id).reduce((last, m) => (m.at > last ? m.at : last), "");
+      }
+    } else {
+      db.siteAccess = db.siteAccess.filter((x) => !(x.personId === personId && x.projectId === projectId));
+      leaveSiteChat(db, projectId, personId);
+    }
+    log(db, on ? "Gave a site manager access to a site" : "Took away access to a site", `${who.name}, ${site.code} ${site.name}`, "admin");
   });
 }
 
@@ -696,13 +745,16 @@ export function draftHandover(projectId: ID) {
 }
 
 /**
- * Ask for people or plant for a site. From a site manager or the office it goes to management;
- * with `heldBy: "site"` (an operative's phone) it waits with the site manager first.
+ * Ask for people, plant or something else. From a site manager or the office it goes to
+ * management; with `heldBy: "site"` (an operative's phone) it waits with the site manager first.
+ * With no project it is a general request, not tied to one site (Oisin, 17 Nov).
  */
-export function addRequest(r: { projectId: ID; kind: RequestKind; description: string; quantity: number; neededFrom: string; neededTo: string; notes: string; heldBy?: "site"; personId?: ID }) {
+export function addRequest(r: { projectId: ID | null; kind: RequestKind; description: string; quantity: number; neededFrom: string; neededTo: string; notes: string; heldBy?: "site"; personId?: ID }) {
   mutate((db) => {
-    db.requests.unshift({ ...r, id: newId("rq"), requestedBy: actorName(db), createdAt: nowStamp(), status: "Open" });
-    log(db, r.heldBy === "site" ? "Made a request to the site manager" : r.kind === "personnel" ? "Requested personnel" : "Requested plant", `${r.description}, ${db.projects.find((p) => p.id === r.projectId)?.name}`, "projects");
+    const by = actorId(db);
+    db.requests.unshift({ ...r, id: newId("rq"), requestedBy: actorName(db), ...(r.projectId === null && by ? { requestedById: by } : {}), createdAt: nowStamp(), status: "Open" });
+    const what = r.heldBy === "site" ? "Made a request to the site manager" : r.projectId === null ? "Made a general request" : r.kind === "personnel" ? "Requested personnel" : r.kind === "other" ? "Made a request" : "Requested plant";
+    log(db, what, r.projectId === null ? `${r.description}, not for one site` : `${r.description}, ${db.projects.find((p) => p.id === r.projectId)?.name}`, "projects");
   });
 }
 
@@ -715,7 +767,7 @@ export function forwardCrewRequest(id: ID) {
     r.requestedBy = actorName(db);
     r.forwardedAt = nowStamp();
     delete r.heldBy;
-    audit(db, r.projectId, `Request passed to management: ${r.description} (first asked by ${r.raisedBy})`);
+    audit(db, r.projectId ?? undefined, `Request passed to management: ${r.description} (first asked by ${r.raisedBy})`);
     log(db, "Forwarded a crew request to management", `${r.description}, ${db.projects.find((p) => p.id === r.projectId)?.name}`, "projects");
   });
 }
@@ -758,13 +810,14 @@ export function decideSiteRequest(id: ID, approve: boolean): "planned" | "open" 
     if (!approve) r.status = "Done";
     // A named person for one day (asked for on the phone planner): a yes puts them on the plan if
     // they are free that day, and the request is done. Otherwise it stays open for the office.
-    if (approve && r.personId && r.neededFrom === r.neededTo && r.neededFrom > getDay() && !isWeekend(r.neededFrom)) {
+    const siteId = r.projectId;
+    if (approve && siteId && r.personId && r.neededFrom === r.neededTo && r.neededFrom > getDay() && !isWeekend(r.neededFrom)) {
       const live = new Set(db.projects.filter((x) => x.status === "Live" || x.status === "Not started").map((x) => x.id));
       const st = personWeek(db.plan, db.holidays, live, r.personId, [r.neededFrom])[0]!;
-      const drop = dropOutcome(st, r.projectId);
+      const drop = dropOutcome(st, siteId);
       if (drop === "free") {
-        db.plan.push({ id: newId("pl"), projectId: r.projectId, personId: r.personId, date: r.neededFrom, ...(st.load === 0.5 ? { part: "half" as const } : {}) });
-        if (!db.assignments.some((a) => a.projectId === r.projectId && a.personId === r.personId)) db.assignments.push({ id: newId("as"), projectId: r.projectId, personId: r.personId });
+        db.plan.push({ id: newId("pl"), projectId: siteId, personId: r.personId, date: r.neededFrom, ...(st.load === 0.5 ? { part: "half" as const } : {}) });
+        if (!db.assignments.some((a) => a.projectId === siteId && a.personId === r.personId)) db.assignments.push({ id: newId("as"), projectId: siteId, personId: r.personId });
       }
       if (drop === "free" || drop === "already") {
         r.status = "Done";
@@ -772,9 +825,9 @@ export function decideSiteRequest(id: ID, approve: boolean): "planned" | "open" 
         outcome = "planned";
       }
     }
-    const p = db.projects.find((x) => x.id === r.projectId);
-    audit(db, r.projectId, `${approve ? "Request agreed" : "Request turned down"}: ${r.description}`);
-    log(db, approve ? "Agreed a site request" : "Turned down a site request", `${r.description}, ${p?.code ?? ""} ${p?.name ?? ""}`.trim(), "admin");
+    const p = db.projects.find((x) => x.id === siteId);
+    audit(db, siteId ?? undefined, `${approve ? "Request agreed" : "Request turned down"}: ${r.description}`);
+    log(db, approve ? "Agreed a site request" : "Turned down a site request", siteId ? `${r.description}, ${p?.code ?? ""} ${p?.name ?? ""}`.trim() : `${r.description}, not for one site`, "admin");
   });
   return outcome;
 }
@@ -983,6 +1036,7 @@ export function setEmployeeActive(personId: ID, active: boolean) {
       p.archivedAt = day;
       db.assignments = db.assignments.filter((a) => a.personId !== personId);
       db.plan = db.plan.filter((x) => !(x.personId === personId && x.date > day));
+      dropSiteAccess(db, personId);
     }
     log(db, active ? "Restored an employee" : "Archived an employee", p.name, "people");
   });

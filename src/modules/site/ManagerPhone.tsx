@@ -9,30 +9,34 @@ import { personWeek, planClashes } from "@/lib/availability";
 import { MONTHS, rollingWorkdays } from "@/lib/dates";
 import { dShort, dWeekday, plural, when } from "@/lib/format";
 import { crewRequests } from "@/lib/requests";
-import { dayInstruction, managerJobs, whereabouts } from "@/lib/roster";
+import { dayInstruction, dayRoster, managerJobs, whereabouts } from "@/lib/roster";
 import { attendanceShort, nextWorkWeek, shiftMonth, workdaysOfMonth, workWeek } from "@/lib/week";
 import { CrewRequestButtons } from "@/modules/projects/CrewRequestButtons";
 import { Badge, Button, cx, Dialog, Field, NumInput, Segmented } from "@/ui";
 import { toast } from "@/ui/toast";
 import { AskSheet, BIG, DrivingSheet, ExpenseSheet, ExtraSheet, longDate, PhotoSheet, ProfileButton, ProfileSheet } from "./sheets";
 
-type Sheet = "time" | "week" | "month" | "notes" | "crew" | "photo" | "extra" | "ask" | "expense" | "driving" | "profile" | null;
+type Sheet = "time" | "week" | "month" | "notes" | "crew" | "photo" | "extra" | "ask" | "general" | "expense" | "driving" | "profile" | null;
 
-const KIND: Record<string, string> = { personnel: "People", own_plant: "Our plant", hired_plant: "Plant to hire" };
+const KIND: Record<string, string> = { personnel: "People", own_plant: "Our plant", hired_plant: "Plant to hire", other: "Something else" };
 
 /**
- * A site manager's phone (Oisin, 17 Nov). The front page is the jobs he runs, with his profile at
- * the top left and, apart from the jobs, the driving check and reimbursements. Inside a job: the
+ * A site manager's phone (Oisin, 17 Nov). The front page is the jobs he runs and any he has been
+ * given (Admin, Site access), with his profile at the top left and, apart from the jobs, a general
+ * request that is not for one site, the driving check and reimbursements. Inside a job: the
  * timesheet, the week and month ahead (to look at and to ask for people, never to change the plan),
  * the day's site instructions, what the crew has asked for, photos, extra work and his own requests.
  */
 export function ManagerPhone({ me, day }: { me: Person; day: string }) {
   const db = useData((s) => s.db);
-  const jobs = managerJobs(db.projects, me.id);
+  const jobs = managerJobs(db.projects, me.id, db.siteAccess);
   const [jobId, setJobId] = useState<string | null>(null);
   const [sheet, setSheet] = useState<Sheet>(null);
   const job = jobs.find((p) => p.id === jobId);
-  const onToday = (id: string) => new Set(db.plan.filter((p) => p.projectId === id && p.date === day).map((p) => p.personId)).size;
+  // Marked on the timesheet once the site has marked anyone today, otherwise who is planned: the same rule as the week and month ahead.
+  const today = (id: string) => dayRoster(db.attendance, db.plan, id, day, day);
+  // His own general requests still open with the office.
+  const general = db.requests.filter((r) => r.projectId === null && r.requestedById === me.id && r.status === "Open").length;
   const waiting = (id: string) => crewRequests(db.requests, [id]).length;
   const note = job ? dayInstruction(db.dayInstructions, job.id, day) : undefined;
   const close = () => setSheet(null);
@@ -75,8 +79,9 @@ export function ManagerPhone({ me, day }: { me: Person; day: string }) {
                       {p.code} {p.name}
                     </span>
                     <span className="block text-[0.93rem] font-normal text-muted">
-                      {p.location}, {co(p.county)}. {p.status === "Live" ? `${plural(onToday(p.id), "person", "people")} on site today` : `Starts ${dShort(p.startDate)}`}
+                      {p.location}, {co(p.county)}. {p.status === "Live" ? `${plural(today(p.id).rows.length, "person", "people")} ${today(p.id).from === "timesheet" ? "on site today" : "down for today"}` : `Starts ${dShort(p.startDate)}`}
                     </span>
+                    {p.siteManagerId !== me.id && <span className="block text-[0.93rem] font-normal text-muted">Run by {db.people.find((x) => x.id === p.siteManagerId)?.name}. Given to you by the office</span>}
                     {waiting(p.id) > 0 && (
                       <span className="mt-1 block">
                         <Badge tone="warn">{plural(waiting(p.id), "request")} from the crew</Badge>
@@ -88,6 +93,15 @@ export function ManagerPhone({ me, day }: { me: Person; day: string }) {
               </li>
             ))}
           </ul>
+          <h2 className="mt-2 text-base">General</h2>
+          <button type="button" className={BIG} onClick={() => setSheet("general")}>
+            <HandPalm size={24} className="shrink-0 text-accent-ink" />
+            <span className="min-w-0 flex-1">
+              Make a request
+              <span className="block text-[0.87rem] font-normal text-muted">Not for one job. It goes to the office</span>
+            </span>
+            {general > 0 && <Badge tone="accent">{general} waiting</Badge>}
+          </button>
           <h2 className="mt-2 text-base">Vehicle and expenses</h2>
           <button type="button" className={BIG} onClick={() => setSheet("driving")}>
             <Truck size={24} className="text-accent-ink" /> Driving check
@@ -138,6 +152,7 @@ export function ManagerPhone({ me, day }: { me: Person; day: string }) {
       {job && sheet === "photo" && <PhotoSheet site={job} me={me} lang="en" onClose={close} />}
       {job && sheet === "extra" && <ExtraSheet site={job} me={me} lang="en" onClose={close} />}
       {job && sheet === "ask" && <AskSheet site={job} me={me} lang="en" day={day} onClose={close} />}
+      {sheet === "general" && <AskSheet site={null} me={me} lang="en" day={day} onClose={close} />}
       {sheet === "expense" && <ExpenseSheet me={me} day={day} siteId={null} sites={jobs} onClose={close} />}
       {sheet === "driving" && <DrivingSheet me={me} day={day} onClose={close} />}
       {sheet === "profile" && <ProfileSheet me={me} lang="en" day={day} onClose={close} />}
@@ -241,10 +256,11 @@ function DayCrew({ site, date, me, day }: { site: Project; date: string; me: Per
   const live = new Set(db.projects.filter((p) => p.status === "Live" || p.status === "Not started").map((p) => p.id));
   const code = (id: string) => db.projects.find((p) => p.id === id)?.code ?? "";
   const person = (id: string) => db.people.find((p) => p.id === id);
-  const marked = db.attendance.filter((a) => a.projectId === site.id && a.date === date);
-  const gone = date < day || (date === day && marked.length > 0);
+  // Who was marked in for a day gone, who is planned for a day to come: the rule the office's week and month ahead use.
+  const roster = dayRoster(db.attendance, db.plan, site.id, date, day);
+  const gone = roster.from === "timesheet";
   const planned = db.plan.filter((p) => p.projectId === site.id && p.date === date);
-  const rows = (gone ? marked.map((a) => ({ id: a.id, personId: a.personId, text: attendanceShort(a.status, a.overtimeHours).toLowerCase() })) : planned.map((p) => ({ id: p.id, personId: p.personId, text: p.part === "half" ? "half day" : p.overtimeHours ? `+${p.overtimeHours}h` : "" }))).sort((a, b) => (person(a.personId)?.name ?? "").localeCompare(person(b.personId)?.name ?? ""));
+  const rows = roster.rows.map((r) => ({ id: r.personId, personId: r.personId, text: gone && !r.note ? "full day" : r.note })).sort((a, b) => (person(a.personId)?.name ?? "").localeCompare(person(b.personId)?.name ?? ""));
   const clashes = gone ? new Map<string, string[]>() : planClashes(db.plan.filter((p) => live.has(p.projectId) && p.date === date));
   const asked = db.requests.filter((r) => r.projectId === site.id && r.personId && r.neededFrom === date && r.neededTo === date && (r.status === "Open" || r.decision === "Declined"));
   const canAsk = date > day && date >= site.startDate && date <= site.endDate;
@@ -339,7 +355,7 @@ function SiteWeekSheet({ site, me, day, onClose }: { site: Project; me: Person; 
       <ul className="grid gap-3">
         {week.map((d) => {
           const open = d >= site.startDate && d <= site.endDate;
-          const n = db.plan.filter((p) => p.projectId === site.id && p.date === d).length;
+          const n = dayRoster(db.attendance, db.plan, site.id, d, day).rows.length;
           return (
             <li key={d} className="rounded-lg border border-line">
               <p className="flex items-baseline justify-between border-b border-line px-3 py-2">
@@ -368,9 +384,7 @@ function SiteMonthSheet({ site, me, day, onClose }: { site: Project; me: Person;
   const [ym, setYm] = useState(day.slice(0, 7));
   const [picked, setPicked] = useState<string | null>(null);
   const days = workdaysOfMonth(ym);
-  const markedToday = db.attendance.some((a) => a.projectId === site.id && a.date === day);
-  const fromPlan = (d: string) => d > day || (d === day && !markedToday);
-  const count = (d: string) => (fromPlan(d) ? db.plan : db.attendance).filter((x) => x.projectId === site.id && x.date === d).length;
+  const count = (d: string) => dayRoster(db.attendance, db.plan, site.id, d, day).rows.length;
   const weeks = [...new Set(days.map((d) => workWeek(d)[0]!))];
   const [y, m] = ym.split("-").map(Number) as [number, number];
   return (
@@ -443,7 +457,7 @@ function InstructionsSheet({ site, me, day, onClose }: { site: Project; me: Pers
   const [date, setDate] = useState(day);
   const current = dayInstruction(db.dayInstructions, site.id, date);
   const [text, setText] = useState(current?.text ?? "");
-  const crew = new Set(db.plan.filter((p) => p.projectId === site.id && p.date === date).map((p) => p.personId)).size;
+  const crew = dayRoster(db.attendance, db.plan, site.id, date, day).rows.length;
   return (
     <Dialog
       open

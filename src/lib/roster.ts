@@ -5,9 +5,11 @@
  *
  * Pure functions: no React, no store.
  */
-import type { Attendance, DayInstruction, Holiday, ID, Project } from "@/data/types";
+import type { Attendance, DayInstruction, Holiday, ID, Project, SiteAccess } from "@/data/types";
 import type { DayState } from "./availability";
 import { addDays, datesBetween, isWeekend, MONTHS, weekStartOf } from "./dates";
+import { basicHours } from "./payroll";
+import { opensSite } from "./site-access";
 import { workdaysOfMonth, workWeek } from "./week";
 
 // ── Week ahead: dropping a person on a day ───────────────────────────────────
@@ -27,11 +29,14 @@ export function dropOutcome(state: Pick<DayState, "sites" | "load" | "leave">, s
 
 // ── Site phone: the site manager's jobs ──────────────────────────────────────
 
-/** The jobs a site manager runs, live ones first, then those not started yet, each in site code order. */
-export function managerJobs(projects: Project[], personId: ID | null): Project[] {
+/**
+ * A site manager's jobs on the phone: the ones they run and any the managing director has given
+ * them (Admin, Site access). Live ones first, then those not started yet, each in site code order.
+ */
+export function managerJobs(projects: Project[], personId: ID | null, grants: Pick<SiteAccess, "personId" | "projectId">[] = []): Project[] {
   const rank = (p: Project) => (p.status === "Live" ? 0 : 1);
   return projects
-    .filter((p) => p.siteManagerId === personId && (p.status === "Live" || p.status === "Not started"))
+    .filter((p) => opensSite(p, personId, grants) && (p.status === "Live" || p.status === "Not started"))
     .sort((a, b) => rank(a) - rank(b) || a.code.localeCompare(b.code));
 }
 
@@ -96,26 +101,30 @@ export function periodLabel(period: Period, day: string): string {
 
 // ── Attendance history: per site ─────────────────────────────────────────────
 
-export type SiteTotals = { projectId: ID; people: { personId: ID; full: number; half: number; overtime: number; days: number }[]; days: number };
+export type SiteTotals = { projectId: ID; people: { personId: ID; full: number; half: number; overtime: number; days: number; hours: number }[]; days: number; hours: number; overtime: number };
 
-/** Attendance grouped by site, then by person: full days, half days, overtime and days in all (a half day counts a half). Busiest site first. */
-export function perSite(rows: Pick<Attendance, "projectId" | "personId" | "status" | "overtimeHours">[], nameOf: (id: ID) => string): SiteTotals[] {
-  const sites = new Map<ID, Map<ID, { full: number; half: number; overtime: number }>>();
+/**
+ * Attendance grouped by site, then by person: full days, half days, overtime, days in all (a half
+ * day counts a half) and basic hours on the 39 hour week. Busiest site first.
+ */
+export function perSite(rows: Pick<Attendance, "projectId" | "personId" | "date" | "status" | "overtimeHours">[], nameOf: (id: ID) => string): SiteTotals[] {
+  const sites = new Map<ID, Map<ID, { full: number; half: number; overtime: number; hours: number }>>();
   for (const a of rows) {
     const people = sites.get(a.projectId) ?? new Map();
-    const t = people.get(a.personId) ?? { full: 0, half: 0, overtime: 0 };
+    const t = people.get(a.personId) ?? { full: 0, half: 0, overtime: 0, hours: 0 };
     if (a.status === "full") t.full++;
     else t.half++;
     t.overtime += a.overtimeHours;
+    t.hours += basicHours(a.date, a.status);
     people.set(a.personId, t);
     sites.set(a.projectId, people);
   }
   return [...sites.entries()]
     .map(([projectId, people]) => {
       const list = [...people.entries()].map(([personId, t]) => ({ personId, ...t, days: t.full + t.half / 2 })).sort((a, b) => b.days - a.days || nameOf(a.personId).localeCompare(nameOf(b.personId)));
-      return { projectId, people: list, days: list.reduce((n, p) => n + p.days, 0) };
+      return { projectId, people: list, days: list.reduce((n, p) => n + p.days, 0), hours: list.reduce((n, p) => n + p.hours, 0), overtime: list.reduce((n, p) => n + p.overtime, 0) };
     })
-    .sort((a, b) => b.days - a.days);
+    .sort((a, b) => b.days - a.days || a.projectId.localeCompare(b.projectId));
 }
 
 // ── Site phone: the day's site, its instructions, and asking for a person ────
@@ -200,4 +209,22 @@ export function dayRoster(
   const marked = attendance.filter((a) => a.projectId === siteId && a.date === date);
   if (date < today || (date === today && marked.length > 0)) return { from: "timesheet", rows: marked.map((a) => ({ personId: a.personId, note: a.status === "half" ? "half day" : a.overtimeHours > 0 ? `+${a.overtimeHours}h` : "" })) };
   return { from: "plan", rows: plan.filter((x) => x.projectId === siteId && x.date === date).map((x) => ({ personId: x.personId, note: x.part === "half" ? "half day" : x.overtimeHours ? `+${x.overtimeHours}h` : "" })) };
+}
+
+/**
+ * Where one person is on one day, for their own week on the phone: the same rule as `dayRoster`,
+ * read from the person's side. A day gone shows where they were marked in on the timesheet (or
+ * today, once they have been marked); a day to come shows where they are planned.
+ */
+export function personDay(
+  attendance: Pick<Attendance, "projectId" | "personId" | "date" | "status" | "overtimeHours">[],
+  plan: { projectId: ID; personId: ID; date: string; part?: "half"; overtimeHours?: number }[],
+  personId: ID,
+  date: string,
+  today: string,
+  siteIds: Set<ID>,
+): { from: "timesheet" | "plan"; rows: { projectId: ID; half: boolean; overtimeHours: number }[] } {
+  const marked = attendance.filter((a) => a.personId === personId && a.date === date);
+  if (date < today || (date === today && marked.length > 0)) return { from: "timesheet", rows: marked.map((a) => ({ projectId: a.projectId, half: a.status === "half", overtimeHours: a.overtimeHours })) };
+  return { from: "plan", rows: plan.filter((x) => x.personId === personId && x.date === date && siteIds.has(x.projectId)).map((x) => ({ projectId: x.projectId, half: x.part === "half", overtimeHours: x.overtimeHours ?? 0 })) };
 }

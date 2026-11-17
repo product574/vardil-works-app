@@ -18,7 +18,7 @@ import type { Db } from "../types";
 import { seedAssets } from "./assets";
 import { seedChat } from "./chat";
 import { quotedMargin, seedCommercial } from "./commercial";
-import { fillManagementDates, fillPurchases, seedDayInstructions, seedExpenses, seedActivity, seedFiles, seedMail, seedManagement, seedMoney, seedPayrollExports } from "./office";
+import { fillManagementDates, fillPurchases, seedDayInstructions, seedExpenses, seedActivity, seedFiles, seedMail, seedManagement, seedMoney, seedPayrollExports, seedSiteAccess } from "./office";
 import { seedPeople } from "./people";
 import { quoteTargets, seedProjects } from "./projects";
 import { seedSubscription } from "./subscription";
@@ -75,6 +75,8 @@ function buildIrishSeed(realToday: string, opts: { emailDomain?: string; vatPct?
   const money = seedMoney(r, day, { projects: proj.projects, meta, attendance: proj.attendance, people, scopeTasks: proj.scopeTasks, hiredPlant: assets.hiredPlant, clients, vatPct });
   const mails = seedMail(day, domain, holidays.find((h) => h.id === "hol-1")!);
 
+  const siteAccess = seedSiteAccess(day);
+
   const db: Db = {
     people,
     holidays,
@@ -95,7 +97,7 @@ function buildIrishSeed(realToday: string, opts: { emailDomain?: string; vatPct?
     files,
     ...money,
     mails,
-    ...seedChat(day, proj.projects),
+    ...seedChat(day, proj.projects, siteAccess),
     approvals,
     automations,
     activity: [],
@@ -105,6 +107,7 @@ function buildIrishSeed(realToday: string, opts: { emailDomain?: string; vatPct?
       { id: "p-hs", departments: {}, perms: { allProjects: true, manageStaff: true } },
       { id: "p-yard", departments: { schedule: false }, perms: { allProjects: true, managePlant: true } },
     ],
+    siteAccess,
   };
   // Written last, from the finished records.
   fillManagementDates(db, day, opts.region ?? "IE");

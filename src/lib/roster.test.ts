@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { buildSeed } from "@/data/seed";
 import { rollingWorkdays } from "./dates";
 import type { Holiday, Project } from "@/data/types";
-import { dayInstruction, dayRoster, dropOutcome, firstOnSite, leaveGroups, managerJobs, overlapping, perSite, periodDays, periodLabel, periodOptions, planSteps, siteOn, stepsToPlan, whereabouts, workingDays } from "./roster";
+import { dayInstruction, dayRoster, dropOutcome, firstOnSite, leaveGroups, managerJobs, overlapping, perSite, periodDays, periodLabel, periodOptions, personDay, planSteps, siteOn, stepsToPlan, whereabouts, workingDays } from "./roster";
 
 describe("dropOutcome", () => {
   it("plans someone free", () => expect(dropOutcome({ sites: [], load: 0, leave: false }, "a")).toBe("free"));
@@ -20,6 +20,12 @@ describe("managerJobs", () => {
   it("from the sample data, Eoin Brosnan runs St Finian's and Derrybawn", () => {
     const { db } = buildSeed("2026-11-16");
     expect(managerJobs(db.projects, "p-sm1").map((x) => x.code)).toEqual(["C719", "C724"]);
+  });
+  it("a site given to them in Admin is one of their jobs too, in the same order", () => {
+    const jobs = [p("C726", "Not started"), p("C724", "Live"), p("C720", "Live", "other"), p("C712", "Closed", "other")];
+    expect(managerJobs(jobs, "sm", [{ personId: "sm", projectId: "C720" }, { personId: "sm", projectId: "C712" }]).map((x) => x.code)).toEqual(["C720", "C724", "C726"]);
+    const { db } = buildSeed("2026-11-16");
+    expect(managerJobs(db.projects, "p-sm5", db.siteAccess).map((x) => x.code)).toEqual(["C723", "C725", "C726"]);
   });
 });
 
@@ -57,12 +63,17 @@ describe("periods", () => {
 });
 
 describe("perSite", () => {
-  const a = (projectId: string, personId: string, status: "full" | "half", overtimeHours = 0) => ({ projectId, personId, status, overtimeHours });
+  // Monday 16 Nov 2026: a full day is 8 basic hours, a half day 4.
+  const a = (projectId: string, personId: string, status: "full" | "half", overtimeHours = 0) => ({ projectId, personId, date: "2026-11-16", status, overtimeHours });
   it("groups by site then person, a half day counting a half, busiest first", () => {
     const out = perSite([a("s1", "p1", "full"), a("s1", "p1", "half"), a("s2", "p2", "full", 2), a("s2", "p2", "full"), a("s2", "p3", "full"), a("s1", "p4", "full")], (id) => id);
     expect(out.map((s) => [s.projectId, s.days])).toEqual([["s2", 3], ["s1", 2.5]]);
-    expect(out[0]!.people).toEqual([{ personId: "p2", full: 2, half: 0, overtime: 2, days: 2 }, { personId: "p3", full: 1, half: 0, overtime: 0, days: 1 }]);
+    expect(out[0]!.people).toEqual([{ personId: "p2", full: 2, half: 0, overtime: 2, hours: 16, days: 2 }, { personId: "p3", full: 1, half: 0, overtime: 0, hours: 8, days: 1 }]);
     expect(out[1]!.people.map((p) => [p.personId, p.days])).toEqual([["p1", 1.5], ["p4", 1]]);
+  });
+  it("adds up each site's basic and overtime hours, a Friday counting 7", () => {
+    const out = perSite([a("s1", "p1", "full", 1.5), a("s1", "p2", "half"), { projectId: "s1", personId: "p1", date: "2026-11-20", status: "full", overtimeHours: 0 }], (id) => id);
+    expect(out[0]).toMatchObject({ projectId: "s1", hours: 8 + 4 + 7, overtime: 1.5 });
   });
   it("adds up to the same days as the payroll totals, from the sample data", () => {
     const { db, day } = buildSeed("2026-11-16");
@@ -136,4 +147,20 @@ describe("who to show for a site on a day", () => {
     expect(dayRoster(att, plan, "b", "2026-11-17", "2026-11-17")).toEqual({ from: "plan", rows: [{ personId: "p4", note: "" }] });
   });
   it("a day to come is the plan", () => expect(dayRoster(att, plan, "a", "2026-11-18", "2026-11-17")).toEqual({ from: "plan", rows: [{ personId: "p5", note: "half day" }] }));
+});
+
+describe("where one person is on a day (their own week on the phone)", () => {
+  const sites = new Set(["a", "b"]);
+  const att = [{ projectId: "b", personId: "p1", date: "2026-11-16", status: "half" as const, overtimeHours: 0 }, { projectId: "a", personId: "p1", date: "2026-11-17", status: "full" as const, overtimeHours: 2 }];
+  const plan = [{ projectId: "a", personId: "p1", date: "2026-11-16" }, { projectId: "a", personId: "p1", date: "2026-11-18", part: "half" as const }, { projectId: "b", personId: "p1", date: "2026-11-18", part: "half" as const }, { projectId: "gone", personId: "p1", date: "2026-11-19" }, { projectId: "a", personId: "p2", date: "2026-11-17" }];
+  it("a day gone is where they were marked in, not where they were planned", () => expect(personDay(att, plan, "p1", "2026-11-16", "2026-11-17", sites)).toEqual({ from: "timesheet", rows: [{ projectId: "b", half: true, overtimeHours: 0 }] }));
+  it("a day gone with nothing marked is empty, whatever the plan said", () => expect(personDay([], plan, "p1", "2026-11-16", "2026-11-17", sites)).toEqual({ from: "timesheet", rows: [] }));
+  it("today is the timesheet once they are marked, else the plan", () => {
+    expect(personDay(att, plan, "p1", "2026-11-17", "2026-11-17", sites)).toEqual({ from: "timesheet", rows: [{ projectId: "a", half: false, overtimeHours: 2 }] });
+    expect(personDay(att, plan, "p2", "2026-11-17", "2026-11-17", sites)).toEqual({ from: "plan", rows: [{ projectId: "a", half: false, overtimeHours: 0 }] });
+  });
+  it("a day to come is the plan, a split day on both sites, and only sites still running", () => {
+    expect(personDay(att, plan, "p1", "2026-11-18", "2026-11-17", sites).rows.map((r) => [r.projectId, r.half])).toEqual([["a", true], ["b", true]]);
+    expect(personDay(att, plan, "p1", "2026-11-19", "2026-11-17", sites).rows).toEqual([]);
+  });
 });

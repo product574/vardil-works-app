@@ -70,7 +70,9 @@ def steps(page, ctx):
     heads = main.locator("section h2").all_inner_texts()
     check("Per site: a heading per site with code and name, then the people, like the plant overview", tables.count() >= 6 and all(re.match(r"C7\d\d ", h) for h in heads), heads)
     total = data(page, "(() => { const d = new Date(day+'T12:00:00Z'); const dow = d.getUTCDay() || 7; const mon = new Date(d); mon.setUTCDate(d.getUTCDate() - dow - 6); const days = []; for (let i=0;i<5;i++){ const x = new Date(mon); x.setUTCDate(mon.getUTCDate()+i); days.push(x.toISOString().slice(0,10)) } return db.attendance.filter(a => days.includes(a.date)).reduce((n,a) => n + (a.status==='full'?1:0.5), 0) })()")
-    shown = sum(float(t.split("\t")[-1]) for t in main.locator("table[aria-label*=', last week'] tbody tr").all_inner_texts() if t.split("\t")[-1] not in ("-",))
+    num = lambda t: 0.0 if t.strip() == "-" else float(t.replace(",", ""))
+    # Each row: name and trade, full days, half days, basic hours, overtime hours, total hours (17 Nov, later).
+    shown = sum(num(t.split("\t")[1]) + num(t.split("\t")[2]) / 2 for t in main.locator("table[aria-label*=', last week'] tbody tr").all_inner_texts())
     check("Per site: the days add up to last week's attendance", abs(shown - total) < 0.01, (shown, total))
     page.screenshot(path=f"{OUT}/301-history-per-site.png", full_page=True)
 

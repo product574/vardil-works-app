@@ -1,4 +1,4 @@
-import type { ChatChannel, ChatMessage, Project } from "../types";
+import type { ChatChannel, ChatMessage, Project, SiteAccess } from "../types";
 import { at, workdays } from "./util";
 
 /**
@@ -49,7 +49,7 @@ const ROWS: Row[] = [
   ["dm-cm1-sm2", "p-sm2", "today", "08:15", "Can you ring me when you get a minute? About the gate lodge scaffold."],
 ];
 
-export function seedChat(today: string, projects: Project[]): { chatChannels: ChatChannel[]; chatMessages: ChatMessage[] } {
+export function seedChat(today: string, projects: Project[], siteAccess: SiteAccess[] = []): { chatChannels: ChatChannel[]; chatMessages: ChatMessage[] } {
   const prev = workdays(today, -1);
   const live = projects.filter((p) => p.status === "Live").sort((a, b) => a.code.localeCompare(b.code));
   const site = live.map((p): ChatChannel => ({
@@ -58,7 +58,8 @@ export function seedChat(today: string, projects: Project[]): { chatChannels: Ch
     name: `${p.code} ${p.name}`,
     projectId: p.id,
     purpose: `Site team and office for ${p.name}`,
-    memberIds: [...new Set(["p-md", p.contractsManagerId, p.siteManagerId, "p-qs", "p-hs", "p-yard"])],
+    // The people who run it, the office, and any site manager given the site (Admin, Site access).
+    memberIds: [...new Set(["p-md", p.contractsManagerId, p.siteManagerId, "p-qs", "p-hs", "p-yard", ...siteAccess.filter((g) => g.projectId === p.id).map((g) => g.personId)])],
     lastRead: {},
   }));
   const ch = (id: string, name: string, purpose: string, memberIds: string[]): ChatChannel => ({ id, kind: "channel", name, purpose, memberIds, lastRead: {} });

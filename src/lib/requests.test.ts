@@ -19,11 +19,14 @@ describe("requests from the crew", () => {
     expect(directorQueue(db).site.every((r) => r.heldBy !== "site")).toBe(true);
     expect(directorQueue(db).site).toHaveLength(4);
   });
-  it("only the project's own site manager may deal with one", () => {
-    expect(mayHandleCrewRequest("p-sm1", "p-sm1")).toBe(true);
-    expect(mayHandleCrewRequest("p-sm1", "p-sm2")).toBe(false);
-    expect(mayHandleCrewRequest("p-sm1", "p-md")).toBe(false);
-    expect(mayHandleCrewRequest(null, null)).toBe(false);
+  it("only a site manager who opens the site may deal with one: whoever runs it, or someone given it", () => {
+    const site = { id: "pr-C719", siteManagerId: "p-sm1" };
+    expect(mayHandleCrewRequest(site, "p-sm1", [])).toBe(true);
+    expect(mayHandleCrewRequest(site, "p-sm2", [])).toBe(false);
+    expect(mayHandleCrewRequest(site, "p-md", [])).toBe(false);
+    expect(mayHandleCrewRequest(site, "p-sm2", [{ personId: "p-sm2", projectId: "pr-C719" }])).toBe(true);
+    expect(mayHandleCrewRequest(site, "p-sm2", [{ personId: "p-sm2", projectId: "pr-C720" }])).toBe(false);
+    expect(mayHandleCrewRequest(undefined, null, [])).toBe(false);
   });
   it("the sidebar number matches the screen: everything open for the office, only their own sites for a site manager", () => {
     expect(openRequestCount(db, "p-md")).toBe(6);

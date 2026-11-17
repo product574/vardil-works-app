@@ -77,6 +77,20 @@ describe("sample data", () => {
     expect(db.people.filter((p) => p.kind === "Operative").some((p) => p.level)).toBe(false);
   });
 
+  it("gives sites only to site managers who do not run them, on a working day gone, and puts them in the site's group chat", () => {
+    expect(db.siteAccess.length).toBeGreaterThan(0);
+    for (const g of db.siteAccess) {
+      const who = db.people.find((p) => p.id === g.personId)!;
+      const site = db.projects.find((p) => p.id === g.projectId)!;
+      expect(who.kind === "Management" && who.level === "site" && who.active).toBe(true);
+      expect(site.status === "Live" || site.status === "Not started").toBe(true);
+      expect(site.siteManagerId).not.toBe(g.personId);
+      expect(g.at.slice(0, 10) < day).toBe(true);
+      expect([0, 6]).not.toContain(new Date(g.at.slice(0, 10) + "T12:00:00Z").getUTCDay());
+      expect(db.chatChannels.find((c) => c.projectId === site.id)?.memberIds).toContain(g.personId);
+    }
+  });
+
   it("prices every won project from its quote, plus the extras agreed since", () => {
     for (const p of db.projects.filter((x) => x.quoteId)) {
       const q = db.quotes.find((x) => x.id === p.quoteId)!;
