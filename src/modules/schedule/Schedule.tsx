@@ -1,16 +1,16 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAccess } from "@/data/access";
-import { type PlanMark, removeFromRoster, sendWeekAhead, setPlanDay } from "@/data/actions";
+import { planDays, type PlanMark, removeFromRoster, sendWeekAhead, setPlanDay } from "@/data/actions";
 import { co } from "@/data/place";
 import { useData, useDay } from "@/data/store";
 import { type Db, LANGUAGE_NAME, type Person, type Project } from "@/data/types";
 import { type DayState, daysLabel, openDays, partLoad, personWeek, planClashes, planShort } from "@/lib/availability";
-import { dropOutcome } from "@/lib/roster";
-import { addDays, MONTHS } from "@/lib/dates";
+import { dropOutcome, firstOnSite, planSteps, stepsToPlan } from "@/lib/roster";
+import { addDays } from "@/lib/dates";
 import { dShort, dWeekday, plural } from "@/lib/format";
-import { attendanceShort, nextWorkWeek, shiftMonth, workdaysOfMonth, workWeek } from "@/lib/week";
-import { Badge, Button, cx, Dialog, Empty, Fact, Field, Mail, NumInput, PageBody, PageHead, Panel, Segmented, Tel, type Tone } from "@/ui";
+import { attendanceShort, nextWorkWeek, workWeek } from "@/lib/week";
+import { Badge, Button, cx, Dialog, Empty, Fact, Field, Mail, NumInput, PageBody, PageHead, Panel, Section, Segmented, Tel, type Tone } from "@/ui";
 import { toast } from "@/ui/toast";
 
 const wd = (d: string) => new Date(d + "T12:00:00Z").toLocaleDateString("en-IE", { weekday: "short", timeZone: "UTC" });
@@ -58,6 +58,14 @@ export function WeekAhead() {
   const [dragging, setDragging] = useState<Drag | null>(null);
   const [busy, setBusy] = useState<{ person: Person; site: Project; date: string } | null>(null);
   const [adding, setAdding] = useState<{ siteId: string; date: string } | null>(null);
+  // Someone just put on a site for the first time this week: ask whether they are there for the rest of it (Oisin, 17 Nov).
+  const [rest, setRest] = useState<{ person: Person; site: Project; date: string; moveFrom?: string } | null>(null);
+  const offerRest = (person: Person, site: Project, date: string, moveFrom?: string) => setRest(firstOnSite(db.plan, person.id, site.id, week, date) ? { person, site, date, moveFrom } : null);
+  const restSteps =
+    rest && week.includes(rest.date)
+      ? planSteps(personWeek(db.plan, db.holidays, liveIds, rest.person.id, week.filter((d) => d > rest.date)), rest.site.id, { running: (d) => d >= rest.site.startDate && d <= rest.site.endDate, onBusy: "skip", moveFrom: rest.moveFrom })
+      : [];
+  const restDays = stepsToPlan(restSteps);
 
   /** What dropping a name on a site and day does: plan, move, refuse, or ask first if it would double book. */
   const dropOn = (drag: Drag, site: Project, date: string) => {
@@ -71,6 +79,7 @@ export function WeekAhead() {
       setPlanDay(drag.fromSiteId, person.id, date, null);
       setPlanDay(site.id, person.id, date, { part: was?.part === "half" ? "half" : "full", overtimeHours: was?.overtimeHours ?? 0 });
       toast(`${person.name} moved from ${code(drag.fromSiteId)} to ${site.code}, ${dWeekday(date)}`);
+      offerRest(person, site, date, drag.fromSiteId);
       return;
     }
     const outcome = dropOutcome(state, site.id);
@@ -80,6 +89,7 @@ export function WeekAhead() {
     const half = state.load === 0.5;
     setPlanDay(site.id, person.id, date, { part: half ? "half" : "full", overtimeHours: 0 });
     toast(`${person.name} put on ${site.code}, ${dWeekday(date)}${half ? ", half day" : ""}`);
+    offerRest(person, site, date);
   };
 
   return (
@@ -130,6 +140,32 @@ export function WeekAhead() {
               </ul>
             </div>
           )}
+          {rest && restDays.length > 0 && (
+            <div role="group" aria-label="Here for the rest of the week?" className="sticky top-2 z-10 flex flex-wrap items-center gap-3 rounded-md border border-accent bg-surface px-3 py-2.5 shadow-pop">
+              <p className="min-w-0 flex-1">
+                <span className="font-medium">
+                  {rest.person.name} is on {rest.site.code} on {dWeekday(rest.date)}.
+                </span>{" "}
+                Here for the rest of the week?{" "}
+                <span className="text-muted">
+                  {daysLabel(restDays.map((x) => x.date), week)}
+                  {restDays.some((x) => x.action === "move") && rest.moveFrom ? `, moved from ${code(rest.moveFrom)}` : ""}
+                  {restSteps.some((x) => x.action === "busy") ? `. ${daysLabel(restSteps.filter((x) => x.action === "busy").map((x) => x.date), week)} stays as planned elsewhere` : ""}
+                </span>
+              </p>
+              <Button onClick={() => setRest(null)}>No</Button>
+              <Button
+                variant="primary"
+                onClick={() => {
+                  planDays(rest.site.id, rest.person.id, restDays.map((x) => ({ date: x.date, half: x.action === "half", ...(x.action === "move" ? { moveFrom: rest.moveFrom } : {}) })));
+                  toast(`${rest.person.name} is on ${rest.site.code} for the rest of the week: ${daysLabel(restDays.map((x) => x.date), week)}`);
+                  setRest(null);
+                }}
+              >
+                Yes
+              </Button>
+            </div>
+          )}
           {sites.length === 0 ? (
             <Panel>
               <Empty title="No sites are running in this week">Move to another week, or check the project start and finish dates.</Empty>
@@ -151,12 +187,12 @@ export function WeekAhead() {
               onAdd={(siteId, date) => setAdding({ siteId, date })}
             />
           )}
-          {canEdit && ahead.length > 0 && <p className="text-[0.93rem] text-muted">Drag a name from Not placed onto a site and day to put them there, or drag a name already in the grid to another site on the same day to move them. Each day also has an Add button, for phones and keyboards. Click a name for their details and their week.</p>}
+          {canEdit && ahead.length > 0 && <p className="text-[0.93rem] text-muted">Drag a name from Not placed onto a site and day to put them there, or drag a name already in the grid to another site on the same day to move them. Each day also has an Add button, for phones and keyboards. The first time someone goes on a site in the week you are asked whether they are there for the rest of it. Click a name for their details and their week.</p>}
         </div>
         {ahead.length > 0 && <NotPlaced db={db} week={week} ahead={ahead} weekOf={weekOf} canEdit={canEdit} onDragStart={setDragging} onDragEnd={() => setDragging(null)} onPerson={(person) => setOpenPerson({ person })} />}
       </PageBody>
-      {busy && <BusyDialog {...busy} db={db} onClose={() => setBusy(null)} />}
-      {adding && <AddToDayDialog {...adding} db={db} liveIds={liveIds} onClose={() => setAdding(null)} />}
+      {busy && <BusyDialog {...busy} db={db} onMoved={(from) => offerRest(busy.person, busy.site, busy.date, from)} onClose={() => setBusy(null)} />}
+      {adding && <AddToDayDialog {...adding} db={db} liveIds={liveIds} onAdded={offerRest} onClose={() => setAdding(null)} />}
       {openPerson && live && <PersonBox key={live.id + (openPerson.siteId ?? "")} person={live} siteId={openPerson.siteId} db={db} week={week} day={day} liveIds={liveIds} canEdit={canEdit} onDay={(date) => setOpenDay({ person: live, date, siteId: openPerson.siteId, lockSite: false })} onClose={() => setOpenPerson(null)} />}
       {openDay && <PlanDayDialog key={`${openDay.person.id}|${openDay.date}|${openDay.siteId ?? ""}`} {...openDay} db={db} liveIds={liveIds} sites={db.projects.filter((p) => (p.status === "Live" || p.status === "Not started") && p.startDate <= openDay.date && p.endDate >= openDay.date)} onClose={() => setOpenDay(null)} />}
     </>
@@ -563,7 +599,7 @@ function WeekGrid({ sites, week, db, day, canEdit, clashes, liveIds, dragging, o
 }
 
 /** Dropped someone on a day they already have a full day elsewhere: move them, put them on both, or leave it. */
-function BusyDialog({ person, site, date, db, onClose }: { person: Person; site: Project; date: string; db: Db; onClose: () => void }) {
+function BusyDialog({ person, site, date, db, onMoved, onClose }: { person: Person; site: Project; date: string; db: Db; onMoved: (fromSiteId?: string) => void; onClose: () => void }) {
   const elsewhere = db.plan.filter((p) => p.personId === person.id && p.date === date && p.projectId !== site.id);
   const codes = elsewhere.map((p) => db.projects.find((x) => x.id === p.projectId)?.code ?? "").join(" and ");
   return (
@@ -590,6 +626,7 @@ function BusyDialog({ person, site, date, db, onClose }: { person: Person; site:
               for (const e of elsewhere) setPlanDay(e.projectId, person.id, date, null);
               setPlanDay(site.id, person.id, date, { part: "full", overtimeHours: 0 });
               toast(`${person.name} moved from ${codes} to ${site.code}, ${dWeekday(date)}`);
+              onMoved(elsewhere.length === 1 ? elsewhere[0]!.projectId : undefined);
               onClose();
             }}
           >
@@ -606,7 +643,7 @@ function BusyDialog({ person, site, date, db, onClose }: { person: Person; site:
 }
 
 /** The Add button in a cell: everyone free that day, by trade, one tap to put them on. */
-function AddToDayDialog({ siteId, date, db, liveIds, onClose }: { siteId: string; date: string; db: Db; liveIds: Set<string>; onClose: () => void }) {
+function AddToDayDialog({ siteId, date, db, liveIds, onAdded, onClose }: { siteId: string; date: string; db: Db; liveIds: Set<string>; onAdded: (person: Person, site: Project, date: string) => void; onClose: () => void }) {
   const site = db.projects.find((p) => p.id === siteId)!;
   const [trade, setTrade] = useState("");
   const free = db.people
@@ -643,6 +680,7 @@ function AddToDayDialog({ siteId, date, db, liveIds, onClose }: { siteId: string
                     const half = st.load === 0.5;
                     setPlanDay(site.id, p.id, date, { part: half ? "half" : "full", overtimeHours: 0 });
                     toast(`${p.name} put on ${site.code}, ${dWeekday(date)}${half ? ", half day" : ""}`);
+                    onAdded(p, site, date);
                     onClose();
                   }}
                 >
@@ -661,116 +699,6 @@ function AddToDayDialog({ siteId, date, db, liveIds, onClose }: { siteId: string
   );
 }
 
-/** Headcount per site for every working day of a month. Past days show who actually attended. */
-export function MonthAhead() {
-  const db = useData((s) => s.db);
-  const day = useDay();
-  const access = useAccess();
-  const [ym, setYm] = useState(day.slice(0, 7));
-  const days = workdaysOfMonth(ym);
-  const inMonth = new Set(days);
-  // A job that finished during the month still has its days worked to show.
-  const worked = new Set(db.attendance.filter((a) => inMonth.has(a.date)).map((a) => a.projectId));
-  const sites = access
-    .scope(db.projects)
-    .filter((p) => ((p.status === "Live" || p.status === "Not started") && p.startDate <= days[days.length - 1]! && p.endDate >= days[0]!) || worked.has(p.id))
-    .sort((a, b) => a.code.localeCompare(b.code));
-  const operatives = db.people.filter((p) => p.active && p.kind === "Operative");
-  // Days gone count who attended and days to come who is planned. Today counts who is marked, or
-  // who is planned on a site that has not been marked yet.
-  const markedToday = new Set(db.attendance.filter((a) => a.date === day).map((a) => a.projectId));
-  const fromPlan = (d: string, siteId: string) => d > day || (d === day && !markedToday.has(siteId));
-  const count = (siteId: string, d: string) => (fromPlan(d, siteId) ? db.plan : db.attendance).filter((x) => x.projectId === siteId && x.date === d).length;
-  const leave = (d: string) => operatives.filter((p) => onLeave(db, p.id, d)).length;
-  const busy = (d: string) => new Set([...db.attendance.filter((a) => a.date === d && !fromPlan(d, a.projectId)), ...db.plan.filter((p) => p.date === d && fromPlan(d, p.projectId))].map((x) => x.personId)).size;
-  const max = Math.max(1, ...sites.flatMap((s) => days.map((d) => count(s.id, d))));
-  const [y, m] = ym.split("-").map(Number) as [number, number];
-
-  return (
-    <>
-      <PageHead title="Month ahead" note={`${MONTHS[m - 1]} ${y}. Each number is the people on that site that day: who attended for days gone, who is planned for days to come. Today shows who is marked, or who is planned where nothing is marked yet.`}>
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <Button size="sm" onClick={() => setYm(shiftMonth(ym, -1))}>
-            Earlier month
-          </Button>
-          <Button size="sm" onClick={() => setYm(shiftMonth(ym, 1))}>
-            Later month
-          </Button>
-          {ym !== day.slice(0, 7) && (
-            <Button size="sm" variant="ghost" onClick={() => setYm(day.slice(0, 7))}>
-              Back to this month
-            </Button>
-          )}
-        </div>
-      </PageHead>
-      <PageBody>
-        <Panel className="overflow-x-auto">
-          {sites.length === 0 ? (
-            <Empty title="No sites are running in this month" />
-          ) : (
-            <table className="tbl text-[0.93rem]">
-              <thead>
-                <tr>
-                  <th className="min-w-[13rem]">Site</th>
-                  {days.map((d) => (
-                    <th key={d} className={cx("px-1! text-center", d === day && "bg-accent-soft! text-accent-ink!", new Date(d + "T12:00:00Z").getUTCDay() === 1 && "border-l border-line")}>
-                      <span className="block font-normal">{wd(d).slice(0, 2)}</span>
-                      {Number(d.slice(8))}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {sites.map((s) => (
-                  <tr key={s.id}>
-                    <td>
-                      <Link to={`/projects/${s.code}`} className="font-medium underline-offset-2 hover:underline">
-                        {s.code}
-                      </Link>{" "}
-                      {s.name}
-                    </td>
-                    {days.map((d) => {
-                      const n = count(s.id, d);
-                      const off = d < s.startDate || d > s.endDate;
-                      return (
-                        <td key={d} className={cx("px-1! text-center", new Date(d + "T12:00:00Z").getUTCDay() === 1 && "border-l border-line", d <= day && "text-muted")} style={n > 0 ? { background: `color-mix(in srgb, var(--accent) ${Math.round(8 + (n / max) * 26)}%, transparent)` } : undefined}>
-                          {off ? "" : n || <span className="text-faint">0</span>}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                {(
-                  [
-                    ["On a site", (d: string) => busy(d)],
-                    ["On leave", (d: string) => leave(d)],
-                    ["Free", (d: string) => (d <= day ? null : Math.max(0, operatives.length - busy(d) - leave(d)))],
-                  ] as [string, (d: string) => number | null][]
-                ).map(([label, fn], i) => (
-                  <tr key={label}>
-                    <td className={cx("font-medium", i === 0 && "border-t border-line-strong")}>{label}</td>
-                    {days.map((d) => {
-                      const n = fn(d);
-                      return (
-                        <td key={d} className={cx("px-1! text-center", i === 0 && "border-t border-line-strong", new Date(d + "T12:00:00Z").getUTCDay() === 1 && "border-l border-line", label === "Free" && n != null && n > 3 && "font-medium text-warn")}>
-                          {n == null ? "" : n || <span className="text-faint">0</span>}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
-              </tfoot>
-            </table>
-          )}
-        </Panel>
-        <p className="mt-2 text-[0.93rem] text-muted">"Free" counts operatives with no site and no leave that day. More than three free is shown in amber: people are being paid with nowhere to go.</p>
-      </PageBody>
-    </>
-  );
-}
-
 type Where = "On site" | "Planned" | "On leave" | "Not planned";
 const WHERE_TONE: Record<Where, Tone> = { "On site": "ok", Planned: "accent", "On leave": "warn", "Not planned": "bad" };
 
@@ -778,7 +706,7 @@ const WHERE_TONE: Record<Where, Tone> = { "On site": "ok", Planned: "accent", "O
 export function WhoIsWhere() {
   const db = useData((s) => s.db);
   const day = useDay();
-  const [show, setShow] = useState<"All" | Where>("All");
+  const [show, setShow] = useState<"All" | Where | "Per site">("All");
   const rows = db.people
     .filter((p) => p.active && p.kind === "Operative")
     .map((p) => {
@@ -792,11 +720,99 @@ export function WhoIsWhere() {
     .sort((a, b) => (a.sites[0]?.code ?? "~").localeCompare(b.sites[0]?.code ?? "~") || a.p.name.localeCompare(b.p.name));
   const n = (w: Where) => rows.filter((r) => r.where === w).length;
   const shown = rows.filter((r) => show === "All" || r.where === show);
+  // Per site (Oisin, 17 Nov), laid out like the plant overview: a heading per live site, then who is there today.
+  const live = db.projects.filter((p) => p.status === "Live").sort((a, b) => a.code.localeCompare(b.code));
+  const onSite = (id: string) => rows.filter((r) => r.where !== "On leave" && r.where !== "Not planned" && r.sites.some((s) => s.id === id));
+  const elsewhere = rows.filter((r) => r.where === "On leave" || r.where === "Not planned" || r.sites.length === 0);
 
   return (
     <>
-      <PageHead title="Who is where" note={`${dWeekday(day)}: ${n("On site")} marked on site, ${n("Planned")} expected but not marked yet, ${n("On leave")} on leave, ${n("Not planned")} with nowhere to be.`} actions={<Segmented label="Where people are" value={show} onChange={setShow} options={[{ value: "All", label: "All", count: rows.length }, { value: "On site", label: "On site", count: n("On site") }, { value: "Planned", label: "Not marked yet", count: n("Planned") }, { value: "On leave", label: "On leave", count: n("On leave") }, { value: "Not planned", label: "Not planned", count: n("Not planned") }]} />} />
-      <PageBody>
+      <PageHead title="Who is where" note={`${dWeekday(day)}: ${n("On site")} marked on site, ${n("Planned")} expected but not marked yet, ${n("On leave")} on leave, ${n("Not planned")} with nowhere to be.`} actions={<Segmented label="Where people are" value={show} onChange={setShow} options={[{ value: "All", label: "All", count: rows.length }, { value: "On site", label: "On site", count: n("On site") }, { value: "Per site", label: "Per site" }, { value: "Planned", label: "Not marked yet", count: n("Planned") }, { value: "On leave", label: "On leave", count: n("On leave") }, { value: "Not planned", label: "Not planned", count: n("Not planned") }]} />} />
+      <PageBody className={show === "Per site" ? "grid max-w-5xl gap-6" : undefined}>
+        {show === "Per site" && (
+          <>
+            {live.map((site) => {
+              const people = onSite(site.id);
+              const marked = people.filter((r) => r.where === "On site").length;
+              return (
+                <Section
+                  key={site.id}
+                  title={
+                    <Link to={`/projects/${site.code}`} className="underline-offset-2 hover:underline">
+                      {site.code} {site.name}
+                    </Link>
+                  }
+                  aside={`${db.people.find((p) => p.id === site.siteManagerId)?.name}, ${co(site.county)}. ${marked} on site${people.length > marked ? `, ${people.length - marked} not marked yet` : ""}`}
+                >
+                  <Panel className="overflow-x-auto">
+                    {people.length === 0 ? (
+                      <p className="px-3 py-3 text-muted">Nobody is on this site today.</p>
+                    ) : (
+                      <table className="tbl table-fixed" aria-label={`${site.code} ${site.name} today`}>
+                        <thead>
+                          <tr>
+                            <th>Name</th>
+                            <th className="w-56">Trade</th>
+                            <th className="w-36">Status</th>
+                            <th className="w-36">Phone</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {people.map(({ p, where, sites }) => (
+                            <tr key={p.id}>
+                              <td className="font-medium">
+                                {p.name}
+                                {sites.length > 1 && <span className="block text-[0.87rem] font-normal text-muted">Also {sites.filter((x) => x.id !== site.id).map((x) => x.code).join(", ")} today</span>}
+                              </td>
+                              <td>{p.trade}</td>
+                              <td>
+                                <Badge tone={WHERE_TONE[where]}>{where === "Planned" ? "Not marked yet" : where}</Badge>
+                              </td>
+                              <td className="whitespace-nowrap">
+                                <Tel number={p.phone} />
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </Panel>
+                </Section>
+              );
+            })}
+            {elsewhere.length > 0 && (
+              <Section title="Not on a site today" aside={`${elsewhere.length} on leave or with nowhere to be`}>
+                <Panel className="overflow-x-auto">
+                  <table className="tbl table-fixed" aria-label="Not on a site today">
+                    <thead>
+                      <tr>
+                        <th>Name</th>
+                        <th className="w-56">Trade</th>
+                        <th className="w-36">Status</th>
+                        <th className="w-36">Phone</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {elsewhere.map(({ p, where }) => (
+                        <tr key={p.id}>
+                          <td className="font-medium">{p.name}</td>
+                          <td>{p.trade}</td>
+                          <td>
+                            <Badge tone={WHERE_TONE[where]}>{where === "Planned" ? "Not marked yet" : where}</Badge>
+                          </td>
+                          <td className="whitespace-nowrap">
+                            <Tel number={p.phone} />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </Panel>
+              </Section>
+            )}
+          </>
+        )}
+        {show !== "Per site" && (
         <Panel className="max-w-5xl overflow-x-auto">
           {shown.length === 0 ? (
             <Empty title="Nobody in this group today" />
@@ -840,6 +856,7 @@ export function WhoIsWhere() {
             </table>
           )}
         </Panel>
+        )}
       </PageBody>
     </>
   );

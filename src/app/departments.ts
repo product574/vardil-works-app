@@ -5,7 +5,7 @@
 import { Browsers, CalendarDots, ChatsCircle, DeviceMobile, EnvelopeSimple, FolderOpen, Gauge, GearSix, Handshake, HardHat, type Icon, Receipt, Truck, UserGear, UsersThree } from "@phosphor-icons/react";
 import type { Brand } from "@/config/brand";
 import { totalUnread } from "@/lib/chat";
-import { waitingOnDirector } from "@/lib/requests";
+import { openRequestCount, waitingOnDirector } from "@/lib/requests";
 import { dueState } from "@/lib/status";
 import type { Db, DepartmentKey, ID } from "@/data/types";
 
@@ -73,7 +73,7 @@ export const DEPARTMENTS: Department[] = [
         { to: "/projects/extras", label: "Extras and snagging", count: (db) => db.projects.filter((p) => p.invoiceHold).length, countTone: "warn" },
         { to: "/projects/completed", label: "Completed" },
       ] },
-      { label: "Site", items: [{ to: "/projects/requests", label: "Requests", count: (db) => db.requests.filter((r) => r.status === "Open").length }] },
+      { label: "Site", items: [{ to: "/projects/requests", label: "Requests", count: (db, _today, me) => openRequestCount(db, me) }] },
     ],
   },
   {

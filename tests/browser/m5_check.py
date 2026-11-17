@@ -149,7 +149,7 @@ def steps(page, ctx):
     if phone.get_by_role("button", name="Wyślij zdjęcie").count() == 0:
         page.get_by_role("tab", name="Polski").click(); page.wait_for_timeout(250)
     w = phone.bounding_box()["width"]
-    check("Site phone: drawn at phone width, one screen with four large buttons", w <= 390 and phone.get_by_role("button", name="Wyślij zdjęcie").count() == 1 and phone.get_by_role("button", name="Zgłoś dodatkową pracę").count() == 1 and phone.get_by_role("button", name="Poproś o coś").count() == 1 and phone.get_by_role("button", name="Mój tydzień").count() == 1 and min(b.bounding_box()["height"] for b in phone.get_by_role("button").all()[-4:]) >= 56, w)
+    check("Site phone: drawn at phone width, one screen with four large buttons", w <= 390 and phone.get_by_role("button", name="Wyślij zdjęcie").count() == 1 and phone.get_by_role("button", name="Zgłoś dodatkową pracę").count() == 1 and phone.get_by_role("button", name="Złóż prośbę").count() == 1 and phone.get_by_role("button", name="Mój tydzień").count() == 1 and min(b.bounding_box()["height"] for b in phone.get_by_role("button").all()[-4:]) >= 56, w)
     check("Site phone: a Polish stonemason sees his site and the instructions in Polish", "C719 St Finian's Church" in phone.inner_text() and "Nabożeństwa w niedzielę" in phone.inner_text() and "Przetłumaczone dla Ciebie" in phone.inner_text() and phone.get_attribute("lang") == "pl")
     check("Site phone: the site manager can be rung with one tap", phone.locator("a[href^='tel:']").count() == 1 and "Zadzwoń" in phone.inner_text())
     phone.get_by_role("button", name="Pokaż oryginał po angielsku").click(); page.wait_for_timeout(200)
@@ -166,11 +166,12 @@ def steps(page, ctx):
     d.get_by_label("Coś do dodania (opcjonalnie)").fill("Belka nad zakrystią"); d.get_by_role("button", name="Wyślij").click(); page.wait_for_timeout(400)
     v = data(page, "(() => { const v = db.variations[0]; const a = db.approvals.find(a => a.variationId===v.id); return [v.projectId, v.description, v.original, v.originalLanguage, v.status, db.people.find(p=>p.id===v.raisedById).name, a.status, db.projects.find(p=>p.id===v.projectId).invoiceHold] })()")
     check("Site phone: an extra reaches the office in English with the Polish original kept, as a draft for approval", v == ["pr-C719", "Rotten timber found once opened up", "Po odkryciu znaleziono zgniłe drewno. Belka nad zakrystią", "pl", "Draft", "Marek Wiśniewski", "Pending", True], v)
-    phone.get_by_role("button", name="Poproś o coś").click(); d = dlg()
+    phone.get_by_role("button", name="Złóż prośbę").click(); d = dlg()
     check("Site phone: a request needs a description", d.get_by_role("button", name="Wyślij").is_disabled())
     d.get_by_label("Opisz").fill("Dwa wiadra do zaprawy"); d.get_by_role("button", name="Wyślij").click(); page.wait_for_timeout(300)
-    rq = data(page, "[db.requests[0].projectId, db.requests[0].kind, db.requests[0].requestedBy, db.requests[0].status]")
-    check("Site phone: a request lands in the office's open requests", rq == ["pr-C719", "own_plant", "Marek Wiśniewski", "Open"], rq)
+    rq = data(page, "[db.requests[0].projectId, db.requests[0].kind, db.requests[0].requestedBy, db.requests[0].status, db.requests[0].heldBy]")
+    # 17 Nov (Oisin): an operative's request goes to the site manager first, not straight to the office.
+    check("Site phone: a request goes to the site manager first", rq == ["pr-C719", "own_plant", "Marek Wiśniewski", "Open", "site"] and "kierownika budowy" in page.locator("[aria-live=polite]").last.inner_text(), rq)
     phone.get_by_role("button", name="Mój tydzień").click(); d = dlg()
     check("Site phone: My week lists five days with the site for each", d.locator("li").count() == 5 and d.locator("li", has_text="C719").count() == 5, d.inner_text())
     d.get_by_role("button", name="Close").click()

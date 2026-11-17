@@ -125,15 +125,18 @@ export function Requests() {
                           <span className="font-medium">{r.description}{r.quantity > 1 ? ` x ${r.quantity}` : ""}</span>
                           <span className="block text-[0.87rem] text-muted">{KIND[r.kind]}{r.notes ? `. ${r.notes}` : ""}</span>
                         </td>
-                        <td className="whitespace-nowrap">{dShort(r.neededFrom)} to {dShort(r.neededTo)}</td>
+                        <td className="whitespace-nowrap">{r.neededFrom === r.neededTo ? dFull(r.neededFrom) : `${dShort(r.neededFrom)} to ${dShort(r.neededTo)}`}</td>
                         <td>
                           {r.requestedBy}
-                          <span className="block text-[0.87rem] text-muted">{when(r.createdAt, day)}</span>
+                          <span className="block text-[0.87rem] text-muted">
+                            {when(r.forwardedAt ?? r.createdAt, day)}
+                            {r.raisedBy ? `. First asked by ${r.raisedBy}` : ""}
+                          </span>
                         </td>
                         {yesNo(
                           canAnswer,
                           () => { decideSiteRequest(r.id, false); toast(`Turned down: ${r.description}`); },
-                          () => { decideSiteRequest(r.id, true); toast(`Agreed: ${r.description}. It stays on Site requests until the office has arranged it`); },
+                          () => { const out = decideSiteRequest(r.id, true); toast(out === "planned" ? `Agreed: ${r.description}. They are on the plan for ${p?.code} that day` : `Agreed: ${r.description}. It stays on Site requests until the office has arranged it`); },
                           r.description,
                         )}
                       </tr>

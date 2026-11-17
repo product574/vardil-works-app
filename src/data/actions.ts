@@ -11,6 +11,8 @@ import { addDays, isWeekend } from "@/lib/dates";
 import { normaliseReg } from "@/lib/fleet";
 import { basicHours } from "@/lib/payroll";
 import { needsSignOff } from "@/lib/purchases";
+import { personWeek } from "@/lib/availability";
+import { dropOutcome } from "@/lib/roster";
 import { quoteTotal } from "@/lib/quotes";
 import { attendanceShort } from "@/lib/week";
 import { levelOf, levelValue, signedInPersonId } from "./access";
@@ -693,26 +695,88 @@ export function draftHandover(projectId: ID) {
   mutate((db) => addHandoverDraft(db, projectId));
 }
 
-export function addRequest(r: { projectId: ID; kind: RequestKind; description: string; quantity: number; neededFrom: string; neededTo: string; notes: string }) {
+/**
+ * Ask for people or plant for a site. From a site manager or the office it goes to management;
+ * with `heldBy: "site"` (an operative's phone) it waits with the site manager first.
+ */
+export function addRequest(r: { projectId: ID; kind: RequestKind; description: string; quantity: number; neededFrom: string; neededTo: string; notes: string; heldBy?: "site"; personId?: ID }) {
   mutate((db) => {
     db.requests.unshift({ ...r, id: newId("rq"), requestedBy: actorName(db), createdAt: nowStamp(), status: "Open" });
-    log(db, r.kind === "personnel" ? "Requested personnel" : "Requested plant", `${r.description}, ${db.projects.find((p) => p.id === r.projectId)?.name}`, "projects");
+    log(db, r.heldBy === "site" ? "Made a request to the site manager" : r.kind === "personnel" ? "Requested personnel" : "Requested plant", `${r.description}, ${db.projects.find((p) => p.id === r.projectId)?.name}`, "projects");
+  });
+}
+
+/** The site manager passes a request from his crew to management as his own. The operative who asked is kept. */
+export function forwardCrewRequest(id: ID) {
+  mutate((db) => {
+    const r = db.requests.find((x) => x.id === id);
+    if (!r || r.status !== "Open" || r.heldBy !== "site") return;
+    r.raisedBy = r.requestedBy;
+    r.requestedBy = actorName(db);
+    r.forwardedAt = nowStamp();
+    delete r.heldBy;
+    audit(db, r.projectId, `Request passed to management: ${r.description} (first asked by ${r.raisedBy})`);
+    log(db, "Forwarded a crew request to management", `${r.description}, ${db.projects.find((p) => p.id === r.projectId)?.name}`, "projects");
+  });
+}
+
+/** Ask management for one named person on one day (the planner on the site manager's phone, which cannot change the plan itself). */
+export function requestPerson(projectId: ID, personId: ID, date: string, note: string) {
+  const name = useData.getState().db.people.find((p) => p.id === personId)?.name ?? "";
+  addRequest({ projectId, kind: "personnel", description: `${name} on site`, quantity: 1, neededFrom: date, neededTo: date, notes: note.trim() || "Asked for from the phone planner", personId });
+}
+
+/** Site instructions for one day, shown on the phone of everyone on that site that day. Empty text takes them down. */
+export function setDayInstruction(projectId: ID, date: string, text: string) {
+  mutate((db) => {
+    const i = db.dayInstructions.findIndex((x) => x.projectId === projectId && x.date === date);
+    const p = db.projects.find((x) => x.id === projectId);
+    const t = text.trim();
+    if (!t) {
+      if (i < 0) return;
+      db.dayInstructions.splice(i, 1);
+      log(db, "Took down the day's site instructions", `${p?.code} ${p?.name}, ${date}`, "projects");
+      return;
+    }
+    const row = { id: i >= 0 ? db.dayInstructions[i]!.id : newId("di"), projectId, date, text: t, by: actorName(db), at: nowStamp() };
+    if (i >= 0) db.dayInstructions[i] = row;
+    else db.dayInstructions.unshift(row);
+    log(db, "Put up site instructions for the day", `${p?.code} ${p?.name}, ${date}`, "projects");
   });
 }
 
 /** The managing director's yes or no to a site's request (Admin > Requests). A yes stays open until the office has arranged it. */
-export function decideSiteRequest(id: ID, approve: boolean) {
+export function decideSiteRequest(id: ID, approve: boolean): "planned" | "open" | "declined" | null {
+  let outcome: "planned" | "open" | "declined" | null = null;
   mutate((db) => {
     const r = db.requests.find((x) => x.id === id);
-    if (!r || r.status !== "Open" || r.decision) return;
+    if (!r || r.status !== "Open" || r.decision || r.heldBy === "site") return;
     r.decision = approve ? "Approved" : "Declined";
     r.decidedBy = actorName(db);
     r.decidedAt = nowStamp();
+    outcome = approve ? "open" : "declined";
     if (!approve) r.status = "Done";
+    // A named person for one day (asked for on the phone planner): a yes puts them on the plan if
+    // they are free that day, and the request is done. Otherwise it stays open for the office.
+    if (approve && r.personId && r.neededFrom === r.neededTo && r.neededFrom > getDay() && !isWeekend(r.neededFrom)) {
+      const live = new Set(db.projects.filter((x) => x.status === "Live" || x.status === "Not started").map((x) => x.id));
+      const st = personWeek(db.plan, db.holidays, live, r.personId, [r.neededFrom])[0]!;
+      const drop = dropOutcome(st, r.projectId);
+      if (drop === "free") {
+        db.plan.push({ id: newId("pl"), projectId: r.projectId, personId: r.personId, date: r.neededFrom, ...(st.load === 0.5 ? { part: "half" as const } : {}) });
+        if (!db.assignments.some((a) => a.projectId === r.projectId && a.personId === r.personId)) db.assignments.push({ id: newId("as"), projectId: r.projectId, personId: r.personId });
+      }
+      if (drop === "free" || drop === "already") {
+        r.status = "Done";
+        r.dealtBy = actorName(db);
+        outcome = "planned";
+      }
+    }
     const p = db.projects.find((x) => x.id === r.projectId);
     audit(db, r.projectId, `${approve ? "Request agreed" : "Request turned down"}: ${r.description}`);
     log(db, approve ? "Agreed a site request" : "Turned down a site request", `${r.description}, ${p?.code ?? ""} ${p?.name ?? ""}`.trim(), "admin");
   });
+  return outcome;
 }
 
 /** The managing director's yes or no to spending money (Admin > Requests). */
@@ -732,6 +796,7 @@ export function closeRequest(id: ID) {
     const r = db.requests.find((x) => x.id === id);
     if (!r) return;
     r.status = "Done";
+    r.dealtBy = actorName(db);
     log(db, "Dealt with a site request", r.description, "projects");
   });
 }
@@ -1027,6 +1092,29 @@ export function planPerson(projectId: ID, personId: ID, dates: string[]) {
     if (!db.assignments.some((a) => a.projectId === projectId && a.personId === personId)) db.assignments.push({ id: newId("as"), projectId, personId });
     log(db, "Planned someone on a site", `${db.people.find((p) => p.id === personId)?.name}, ${db.projects.find((p) => p.id === projectId)?.name}`, "schedule");
   });
+}
+
+/**
+ * Put someone on a site for several days in one go (the rest of the week, or "repeat each weekday
+ * until" on the month ahead). A step with `moveFrom` takes them off that site for the day first.
+ * Weekends and approved leave are never planned.
+ */
+export function planDays(projectId: ID, personId: ID, steps: { date: string; half?: boolean; moveFrom?: ID }[]) {
+  let done = 0;
+  mutate((db) => {
+    for (const st of steps) {
+      if (isWeekend(st.date) || onLeave(db, personId, st.date)) continue;
+      if (st.moveFrom) db.plan = db.plan.filter((p) => !(p.projectId === st.moveFrom && p.personId === personId && p.date === st.date));
+      if (db.plan.some((p) => p.projectId === projectId && p.personId === personId && p.date === st.date)) continue;
+      db.plan.push({ id: newId("pl"), projectId, personId, date: st.date, ...(st.half ? { part: "half" as const } : {}) });
+      done++;
+    }
+    if (done === 0) return;
+    if (!db.assignments.some((a) => a.projectId === projectId && a.personId === personId)) db.assignments.push({ id: newId("as"), projectId, personId });
+    const p = db.projects.find((x) => x.id === projectId);
+    log(db, "Planned someone on a site", `${db.people.find((x) => x.id === personId)?.name}, ${p?.code} ${p?.name}, ${done} ${done === 1 ? "day" : "days"}`, "schedule");
+  });
+  return done;
 }
 
 /** Stands in for the Friday message: records that the week was sent to everyone planned in it. */

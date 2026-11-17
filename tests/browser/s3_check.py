@@ -124,7 +124,7 @@ def steps(page, ctx):
     go(page, "/site")
     check("Site phone: two sign-in options, Operative and Site manager", [t.strip() for t in page.get_by_role("tablist", name="Phone of").get_by_role("tab").all_inner_texts()] == ["Operative", "Site manager"])
     phone = page.get_by_label("Phone screen")
-    check("Operative phone: keeps My week and Ask for something, and adds Driving check and a reimbursement", all(phone.get_by_role("button", name=n).count() == 1 for n in ["Send a photo", "Report extra work", "Ask for something", "Claim a reimbursement", "Driving check", "My week"]))
+    check("Operative phone: keeps My week, has Make a request, Driving check and a reimbursement", all(phone.get_by_role("button", name=n).count() == 1 for n in ["Send a photo", "Report extra work", "Make a request", "Claim a reimbursement", "Driving check", "My week"]) and phone.get_by_role("button", name="Ask for something").count() == 0)
     # Driving check
     phone.get_by_role("button", name="Driving check").click(); page.wait_for_timeout(250)
     dlg = page.locator("dialog[open]")
@@ -174,8 +174,8 @@ def steps(page, ctx):
     check("Site manager phone: opens on the jobs he runs", jobs.count() >= 1 and "on site today" in jobs.first.inner_text())
     jobs.first.click(); page.wait_for_timeout(250)
     phone = page.get_by_label("Phone screen")
-    names = ["Timesheet", "Week ahead", "Month ahead", "Send a photo", "Report extra work", "Make a request", "Claim a reimbursement"]
-    check("Site manager phone: a job has timesheet, week, month, photo, extra, Make a request, reimbursement, and no My week", all(phone.get_by_role("button", name=n).count() == 1 for n in names) and phone.get_by_role("button", name="My week").count() == 0 and phone.get_by_role("button", name="Ask for something").count() == 0)
+    names = ["Timesheet", "Week ahead", "Month ahead", "Site instructions", "Requests from the crew", "Send a photo", "Report extra work", "Make a request"]
+    check("Site manager phone: a job has timesheet, week, month, instructions, crew requests, photo, extra, Make a request, and no My week", all(phone.get_by_role("button", name=n).count() == 1 for n in names) and phone.get_by_role("button", name="My week").count() == 0 and phone.get_by_role("button", name="Ask for something").count() == 0)
     phone.get_by_role("button", name="Make a request").click(); page.wait_for_timeout(200)
     check("Site manager phone: the request sheet is called Make a request", page.locator("dialog[open] h2").inner_text() == "Make a request")
     page.keyboard.press("Escape"); page.wait_for_timeout(200)
@@ -206,13 +206,8 @@ def steps(page, ctx):
     page.keyboard.press("Escape"); page.wait_for_timeout(200)
     page.get_by_label("Phone screen").get_by_role("button", name="Week ahead").click(); page.wait_for_timeout(250)
     dlg = page.locator("dialog[open]")
-    before = data(page, "db.plan.filter(p => p.projectId==='pr-C719').length")
-    sel = dlg.locator("select[aria-label^='Add someone free']").first
-    if sel.locator("option").count() > 1:
-        sel.select_option(index=1); page.wait_for_timeout(250)
-        check("Phone week ahead: he can put someone free on his site", data(page, "db.plan.filter(p => p.projectId==='pr-C719').length") == before + 1)
-    else:
-        check("Phone week ahead: nobody free on Monday, so nothing to add", True)
+    # Later the same day (Oisin): the phone only shows the plan and asks for people; s4_check covers asking.
+    check("Phone week ahead: shows the plan with nothing to edit, and a request button per day", dlg.locator("select[aria-label^='Add someone']").count() == 0 and dlg.locator("button[aria-label^='Take ']").count() == 0 and dlg.get_by_role("button", name=re.compile("^Request someone for")).count() == 5)
     page.keyboard.press("Escape")
 
     # Phone width

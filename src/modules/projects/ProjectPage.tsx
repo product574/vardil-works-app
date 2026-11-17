@@ -14,9 +14,11 @@ import { hireEstimate } from "@/lib/job-costs";
 import { CATEGORIES } from "@/lib/job-costs";
 import { money0, money2, pct1 } from "@/lib/money";
 import { labourCost, scopePercent, supplierCostByCategory } from "@/lib/project-costs";
+import { mayHandleCrewRequest, withSite } from "@/lib/requests";
 import { dueLabel, dueState, nextServiceDate } from "@/lib/status";
 import { Badge, Button, cx, Dialog, Empty, Fact, Field, PageBody, PageHead, Panel, Section, Segmented, Switch } from "@/ui";
 import { PickFile } from "@/ui/files";
+import { CrewRequestButtons } from "./CrewRequestButtons";
 import { HoldBadge, Progress, ProjectBadge, Tabs } from "@/ui/status";
 import { toast } from "@/ui/toast";
 import { FilesTab } from "./ProjectFiles";
@@ -507,6 +509,8 @@ function PlantTab({ p, db }: TabProps) {
 
 function RequestsTab({ p, db }: TabProps) {
   const day = useDay();
+  const access = useAccess();
+  const canHandle = mayHandleCrewRequest(p.siteManagerId, access.personId);
   const [kind, setKind] = useState<RequestKind>("personnel");
   const [description, setDescription] = useState("");
   const [quantity, setQuantity] = useState("1");
@@ -569,10 +573,16 @@ function RequestsTab({ p, db }: TabProps) {
                       {r.quantity > 1 && <span className="font-normal text-muted"> x {r.quantity}</span>}
                     </p>
                     <p className="text-[0.93rem] text-muted">
-                      {dShort(r.neededFrom)} to {dShort(r.neededTo)}. Asked by {r.requestedBy}, {whenInline(r.createdAt, day)}.{r.notes && ` ${r.notes}.`}
+                      {r.neededFrom === r.neededTo ? dShort(r.neededFrom) : `${dShort(r.neededFrom)} to ${dShort(r.neededTo)}`}. Asked by {r.requestedBy}, {whenInline(r.forwardedAt ?? r.createdAt, day)}.{r.raisedBy && ` First asked by ${r.raisedBy}.`}
+                      {r.notes && ` ${r.notes}.`}
                     </p>
+                    {withSite(r) && canHandle && (
+                      <div className="mt-2">
+                        <CrewRequestButtons id={r.id} what={r.description} />
+                      </div>
+                    )}
                   </div>
-                  <Badge tone={r.status === "Open" ? "accent" : "ok"}>{r.status === "Open" ? "Open" : "Dealt with"}</Badge>
+                  <Badge tone={withSite(r) ? "warn" : r.status === "Open" ? "accent" : "ok"}>{withSite(r) ? "With the site manager" : r.status === "Open" ? "With the office" : r.heldBy === "site" ? "Dealt with on site" : "Dealt with"}</Badge>
                 </li>
               ))}
             </ul>

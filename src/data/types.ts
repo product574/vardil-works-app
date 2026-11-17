@@ -200,7 +200,23 @@ export type SiteRequest = {
   decision?: "Approved" | "Declined";
   decidedBy?: string;
   decidedAt?: Stamp;
+  /**
+   * Who it is with (Oisin, 17 Nov). A request made on an operative's phone waits with the site
+   * manager first ("site"): he forwards it to management as his own, or marks it dealt with.
+   * Missing means it is with the office, as every request from a site manager is.
+   */
+  heldBy?: "site";
+  /** The operative who first asked, once the site manager has forwarded it as his own. */
+  raisedBy?: string;
+  forwardedAt?: Stamp;
+  /** Who marked it dealt with. */
+  dealtBy?: string;
+  /** A named person asked for on one day, from the planner on the site manager's phone. */
+  personId?: ID;
 };
+
+/** What the site manager wants the crew to know on one day. It shows on the operative's phone that day (Oisin, 17 Nov). */
+export type DayInstruction = { id: ID; projectId: ID; date: Day; text: string; by: string; at: Stamp };
 
 /**
  * An invoice for this system (Admin > Billing, 16 Nov): one a month for the month before, per
@@ -653,6 +669,8 @@ export type Db = {
   vehicleChecks: VehicleCheck[];
   /** Reimbursements claimed from the site phone, newest first. */
   expenses: Expense[];
+  /** Site instructions for one day, put up by the site manager. One per project and day. */
+  dayInstructions: DayInstruction[];
   assignments: Assignment[];
   attendance: Attendance[];
   attendanceChanges: AttendanceChange[];

@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { buildSeed } from "@/data/seed";
+import { rollingWorkdays } from "./dates";
 import type { Holiday, Project } from "@/data/types";
-import { dropOutcome, leaveGroups, managerJobs, overlapping, perSite, periodDays, periodLabel, periodOptions, workingDays } from "./roster";
+import { dayInstruction, dayRoster, dropOutcome, firstOnSite, leaveGroups, managerJobs, overlapping, perSite, periodDays, periodLabel, periodOptions, planSteps, siteOn, stepsToPlan, whereabouts, workingDays } from "./roster";
 
 describe("dropOutcome", () => {
   it("plans someone free", () => expect(dropOutcome({ sites: [], load: 0, leave: false }, "a")).toBe("free"));
@@ -71,4 +72,68 @@ describe("perSite", () => {
     expect(perSite(rows, (id) => id).reduce((n, s) => n + s.days, 0)).toBe(total);
     expect(total).toBeGreaterThan(20);
   });
+});
+
+describe("the site for a day", () => {
+  const live = new Set(["a", "b"]);
+  it("is where they were marked in, else where they are planned", () => {
+    expect(siteOn("p", "2026-11-17", [{ personId: "p", projectId: "b", date: "2026-11-17" }], [{ personId: "p", projectId: "a", date: "2026-11-17" }], live)).toBe("b");
+    expect(siteOn("p", "2026-11-18", [], [{ personId: "p", projectId: "a", date: "2026-11-18" }], live)).toBe("a");
+    expect(siteOn("p", "2026-11-19", [], [], live)).toBeUndefined();
+  });
+  it("ignores a site that is no longer live", () => expect(siteOn("p", "2026-11-18", [], [{ personId: "p", projectId: "gone", date: "2026-11-18" }], live)).toBeUndefined());
+  it("finds the day's instructions for that site only", () => {
+    const list = [{ id: "1", projectId: "a", date: "2026-11-17", text: "Keep off the lift", by: "Eoin", at: "" }];
+    expect(dayInstruction(list, "a", "2026-11-17")?.text).toBe("Keep off the lift");
+    expect(dayInstruction(list, "a", "2026-11-18")).toBeUndefined();
+    expect(dayInstruction(list, "b", "2026-11-17")).toBeUndefined();
+  });
+  it("the day after today for instructions is the next working day", () => {
+    expect(rollingWorkdays("2026-11-20", 1)[0]).toBe("2026-11-23");
+  });
+  it("says where someone is in a few words", () => {
+    const code = (id: string) => id.toUpperCase();
+    expect([whereabouts({ sites: [], load: 0, leave: false }, code), whereabouts({ sites: ["a"], load: 1, leave: false }, code), whereabouts({ sites: ["a"], load: 0.5, leave: false }, code), whereabouts({ sites: [], load: 0, leave: true }, code)]).toEqual(["free", "on A", "half day on A", "on leave"]);
+  });
+  it("from the sample data: Marek is on C719 today, with instructions from Eoin", () => {
+    const { db, day } = buildSeed("2026-11-17");
+    const liveIds = new Set(db.projects.filter((p) => p.status === "Live").map((p) => p.id));
+    const site = siteOn("p-103", day, db.attendance, db.plan, liveIds);
+    expect(site).toBe("pr-C719");
+    expect(dayInstruction(db.dayInstructions, site, day)?.by).toBe("Eoin Brosnan");
+  });
+});
+
+describe("planning several days at once", () => {
+  const st = (date: string, sites: string[], load: number, leave = false) => ({ date, sites, load, leave });
+  const week = [st("d1", [], 0), st("d2", ["b"], 0.5), st("d3", ["b"], 1), st("d4", [], 0, true), st("d5", ["a"], 1), st("d6", ["b", "c"], 1)];
+  const running = (d: string) => d !== "d6";
+  it("rest of the week: free days and half days go on, a full day elsewhere is left alone", () => {
+    expect(planSteps(week, "a", { running, onBusy: "skip" }).map((s) => s.action)).toEqual(["add", "half", "busy", "leave", "already", "off"]);
+  });
+  it("rest of the week after a move: days wholly on the old site move across", () => {
+    expect(planSteps(week, "a", { running: () => true, onBusy: "skip", moveFrom: "b" }).map((s) => s.action)).toEqual(["add", "half", "move", "leave", "already", "busy"]);
+  });
+  it("month ahead: a full day elsewhere is planned anyway and shows as a clash", () => {
+    const steps = planSteps(week, "a", { running, onBusy: "clash" });
+    expect(steps.map((s) => s.action)).toEqual(["add", "half", "clash", "leave", "already", "off"]);
+    expect(stepsToPlan(steps).map((s) => s.date)).toEqual(["d1", "d2", "d3"]);
+  });
+  it("first time on a site means no other day that week", () => {
+    const plan = [{ personId: "p", projectId: "a", date: "d2" }, { personId: "p", projectId: "b", date: "d3" }];
+    expect(firstOnSite(plan, "p", "a", ["d1", "d2", "d3"], "d1")).toBe(false);
+    expect(firstOnSite(plan, "p", "a", ["d1", "d2", "d3"], "d2")).toBe(true);
+    expect(firstOnSite(plan, "p", "c", ["d1", "d2", "d3"], "d1")).toBe(true);
+  });
+});
+
+describe("who to show for a site on a day", () => {
+  const att = [{ projectId: "a", personId: "p1", date: "2026-11-16", status: "half" as const, overtimeHours: 0 }, { projectId: "a", personId: "p2", date: "2026-11-17", status: "full" as const, overtimeHours: 2 }];
+  const plan = [{ projectId: "a", personId: "p3", date: "2026-11-16" }, { projectId: "a", personId: "p3", date: "2026-11-17" }, { projectId: "b", personId: "p4", date: "2026-11-17" }, { projectId: "a", personId: "p5", date: "2026-11-18", part: "half" as const }];
+  it("a day gone comes from the timesheet, whatever was planned", () => expect(dayRoster(att, plan, "a", "2026-11-16", "2026-11-17")).toEqual({ from: "timesheet", rows: [{ personId: "p1", note: "half day" }] }));
+  it("today comes from the timesheet once the site has marked anyone, else from the plan", () => {
+    expect(dayRoster(att, plan, "a", "2026-11-17", "2026-11-17")).toEqual({ from: "timesheet", rows: [{ personId: "p2", note: "+2h" }] });
+    expect(dayRoster(att, plan, "b", "2026-11-17", "2026-11-17")).toEqual({ from: "plan", rows: [{ personId: "p4", note: "" }] });
+  });
+  it("a day to come is the plan", () => expect(dayRoster(att, plan, "a", "2026-11-18", "2026-11-17")).toEqual({ from: "plan", rows: [{ personId: "p5", note: "half day" }] }));
 });

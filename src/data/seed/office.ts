@@ -6,7 +6,7 @@ import { dashboardNumbers } from "../kpis";
 import { basicHours } from "@/lib/payroll";
 import { needsSignOff } from "@/lib/purchases";
 import { workWeek } from "@/lib/week";
-import type { Activity, Approval, Attendance, Automation, Client, Db, Expense, FileItem, HiredPlant, Mail, PayrollExport, Person, Project, SalesInvoice, ScopeTask, SupplierInvoice } from "../types";
+import type { Activity, Approval, Attendance, Automation, Client, DayInstruction, Db, Expense, FileItem, HiredPlant, Mail, PayrollExport, Person, Project, SalesInvoice, ScopeTask, SupplierInvoice } from "../types";
 import type { Craft, ProjectMeta } from "./projects";
 import { type Rng, at, lastWeekday, weekday, workdays } from "./util";
 
@@ -716,5 +716,13 @@ export function seedExpenses(today: string): Expense[] {
     { id: "ex-3", personId: "p-104", createdAt: at(workdays(today, -1), "17:40"), date: workdays(today, -1), kind: "Materials", what: "Bag of hydrated lime and a hawk from the builders' providers, ran short on site", amount: 46.8, projectId: "pr-C724", status: "Waiting" },
     { id: "ex-2", personId: "p-sm2", createdAt: at(today, "07:55"), date: today, kind: "Fuel", what: "Diesel for the crew van, the fuel card was declined", amount: 92.15, projectId: "pr-C720", status: "Waiting" },
     { id: "ex-1", personId: "p-110", createdAt: at(workdays(today, -6), "16:10"), date: workdays(today, -6), kind: "Parking and tolls", what: "M50 toll and parking at the builders' providers", amount: 9.6, projectId: null, status: "Approved", decidedBy: "Aidan King", decidedAt: at(workdays(today, -5), "09:05") },
+  ];
+}
+
+/** What two site managers put up for their crews this morning, so the operative's phone has today's instructions. */
+export function seedDayInstructions(today: string): DayInstruction[] {
+  return [
+    { id: "di-1", projectId: "pr-C719", date: today, text: "The scaffold inspector is on the belfry lift from 10:00. Keep off that lift until I give the all clear. Toolbox talk on working at height at 12:45 in the cabin.", by: "Eoin Brosnan", at: at(today, "07:35") },
+    { id: "di-2", projectId: "pr-C720", date: today, text: "The drawing room is sealed for the ceiling work. Boot covers on and dust sheets down before you go in. Keep the yard gate clear, the skip is being changed mid morning.", by: "Cathal Minogue", at: at(today, "07:50") },
   ];
 }

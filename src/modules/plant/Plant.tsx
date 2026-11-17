@@ -1,3 +1,4 @@
+import { withOffice } from "@/lib/requests";
 import { type FormEvent, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useAccess } from "@/data/access";
@@ -54,7 +55,7 @@ export function PlantOverview() {
   const overdue = db.plant.filter((x) => dueState(nextDue(x, day).date, day) === "overdue").length;
   const soon = db.plant.filter((x) => dueState(nextDue(x, day).date, day) === "soon").length;
   const waiting = hired.filter((h) => h.status === "Return notified").length;
-  const asked = db.requests.filter((r) => r.status === "Open" && r.kind !== "personnel" && sites.some((s) => s.id === r.projectId));
+  const asked = db.requests.filter((r) => withOffice(r) && r.kind !== "personnel" && sites.some((s) => s.id === r.projectId));
   const yard = db.plant.filter((x) => !x.projectId && x.status !== "Off for repair");
   const repair = db.plant.filter((x) => x.status === "Off for repair");
 
@@ -409,7 +410,7 @@ export function PlantCalendar() {
   const own = db.plant.filter((x) => x.projectId && sites.has(x.projectId)).sort((a, b) => where(db, a).localeCompare(where(db, b)) || a.assetRef.localeCompare(b.assetRef));
   const free = db.plant.filter((x) => !x.projectId && x.status === "Available");
   const hired = db.hiredPlant.filter((h) => h.status !== "Collected" && sites.has(h.projectId));
-  const asked = db.requests.filter((r) => r.status === "Open" && r.kind !== "personnel" && sites.has(r.projectId));
+  const asked = db.requests.filter((r) => withOffice(r) && r.kind !== "personnel" && sites.has(r.projectId));
   return (
     <>
       <PageHead title="Plant calendar" note="The next twelve weeks. Own plant is shown on its site until that project is due to finish, hired plant until it is collected, and dashed bars are what sites have asked for." />

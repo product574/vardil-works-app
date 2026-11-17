@@ -122,6 +122,11 @@ def steps(page, ctx):
     on = lambda pid, code, i: data(page, f"db.plan.some(p => p.personId==='{pid}' && p.projectId==='pr-{code}' && p.date==='{days[i]}')")
     drag(side.get_by_role("button", name=re.compile("^Rafael Mendonça")), cell("C719", 0), lambda: on(rafael, "C719", 0))
     check("Drag: a name from Not placed dropped on a site and day plans them for that day only", on(rafael, "C719", 0) and not on(rafael, "C719", 1) and chip("C719", 0, "Rafael Mendonça").count() == 1)
+    # 17 Nov (Oisin): the first time someone goes on a site in the week, ask about the rest of it
+    ask = page.get_by_role("group", name="Here for the rest of the week?")
+    check("Rest of the week: asked after someone's first day on a site, with Yes and No", ask.count() == 1 and "Rafael Mendonça is on C719 on Mon" in ask.inner_text() and "Tue to Fri" in ask.inner_text() and ask.get_by_role("button", name="Yes").count() == 1 and ask.get_by_role("button", name="No").count() == 1, ask.inner_text() if ask.count() else "")
+    ask.get_by_role("button", name="No").click(); page.wait_for_timeout(200)
+    check("Rest of the week: No leaves just that day", ask.count() == 0 and not on(rafael, "C719", 1))
     big0 = cell("C719", 1).bounding_box()["height"]
     check("Drag: the cell grows a line for the person added", cell("C719", 0).locator("button[aria-label$='contact details and options']").count() == cell("C719", 1).locator("button[aria-label$='contact details and options']").count() + 1)
     # The Add button: anyone free that day, one tap
@@ -130,7 +135,7 @@ def steps(page, ctx):
     free_names = dlg.get_by_role("list", name="Free that day").locator("li").all_inner_texts()
     check("Add: lists only people free that day", len(free_names) >= 4 and any(t.startswith("Rafael Mendonça") for t in free_names) and not any(t.startswith("Kevin Shortall") for t in free_names), free_names)
     dlg.get_by_role("button", name=re.compile("^Rafael Mendonça")).click(); page.wait_for_timeout(250)
-    check("Add: tapping a name puts them on that day", on(rafael, "C719", 1) and page.locator("dialog[open]").count() == 0)
+    check("Add: tapping a name puts them on that day, with no question the second time", on(rafael, "C719", 1) and page.locator("dialog[open]").count() == 0 and ask.count() == 0)
     # Florin is on C723 all week: dropping him on C724 asks first; Put on both double books
     florin = data(page, "db.people.find(p=>p.name==='Florin Dobre').id")
     drag(chip("C723", 0, "Florin Dobre"), cell("C724", 2), lambda: page.locator("dialog[open]").count() > 0)
@@ -150,7 +155,16 @@ def steps(page, ctx):
     check("Week ahead: and the clash he caused is gone", "Florin Dobre is on" not in main.inner_text())
     # Moving on the same day: Florin from C723 Thursday straight to C724 Thursday, no question asked
     drag(chip("C723", 3, "Florin Dobre"), cell("C724", 3), lambda: on(florin, "C724", 3))
-    check("Move: dragging a name to another site on the same day moves them, no double booking", on(florin, "C724", 3) and not on(florin, "C723", 3) and on(florin, "C723", 4) and "Florin Dobre is on" not in main.inner_text(), [on(florin, "C724", 3), on(florin, "C723", 3), on(florin, "C723", 4), main.inner_text()[:300]])
+    check("Move: dragging a name to another site on the same day moves them, no double booking", on(florin, "C724", 3) and not on(florin, "C723", 3) and on(florin, "C723", 4) and "Florin Dobre is on C723 and" not in main.inner_text(), [on(florin, "C724", 3), on(florin, "C723", 3), on(florin, "C723", 4), main.inner_text()[:300]])
+    check("Rest of the week: after a move it offers to move the rest of the week across", ask.count() == 1 and "Florin Dobre is on C724 on Thu" in ask.inner_text() and "moved from C723" in ask.inner_text(), ask.inner_text() if ask.count() else "")
+    ask.get_by_role("button", name="Yes").click(); page.wait_for_timeout(300)
+    check("Rest of the week: Yes moves Friday too, with no double booking", on(florin, "C724", 4) and not on(florin, "C723", 4) and ask.count() == 0 and "Florin Dobre is on C723 and" not in main.inner_text() and "rest of the week" in page.locator("[aria-live=polite]").last.inner_text())
+    # Yes from Not placed: Piotr, free all week, dropped on Tuesday goes on Wednesday to Friday as well
+    piotr = data(page, "db.people.find(p=>p.name==='Piotr Zieliński').id")
+    drag(side.get_by_role("button", name=re.compile("^Piotr Zieliński")), cell("C725", 1), lambda: on(piotr, "C725", 1))
+    check("Rest of the week: offered for Wednesday to Friday after a Tuesday drop", ask.count() == 1 and "Wed to Fri" in ask.inner_text(), ask.inner_text() if ask.count() else "")
+    ask.get_by_role("button", name="Yes").click(); page.wait_for_timeout(300)
+    check("Rest of the week: Yes plans the free days after it, and not the day before", [on(piotr, "C725", i) for i in range(5)] == [False, True, True, True, True], [on(piotr, "C725", i) for i in range(5)])
     # someone free: place them day by day from the Not placed list
     free_name = "Adrian Stoica"
     pid = data(page, f"db.people.find(p=>p.name==={free_name!r}).id")

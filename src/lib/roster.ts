@@ -5,7 +5,7 @@
  *
  * Pure functions: no React, no store.
  */
-import type { Attendance, Holiday, ID, Project } from "@/data/types";
+import type { Attendance, DayInstruction, Holiday, ID, Project } from "@/data/types";
 import type { DayState } from "./availability";
 import { addDays, datesBetween, isWeekend, MONTHS, weekStartOf } from "./dates";
 import { workdaysOfMonth, workWeek } from "./week";
@@ -116,4 +116,88 @@ export function perSite(rows: Pick<Attendance, "projectId" | "personId" | "statu
       return { projectId, people: list, days: list.reduce((n, p) => n + p.days, 0) };
     })
     .sort((a, b) => b.days - a.days);
+}
+
+// ── Site phone: the day's site, its instructions, and asking for a person ────
+
+/**
+ * The site someone is on for a day: where they were marked in, else where they are planned (the
+ * first if the day is split), else nothing. The operative's phone shows that site's manager and
+ * instructions for the day.
+ */
+export function siteOn(personId: ID, date: string, attendance: Pick<Attendance, "personId" | "projectId" | "date">[], plan: { personId: ID; projectId: ID; date: string }[], liveIds: Set<ID>): ID | undefined {
+  return attendance.find((a) => a.personId === personId && a.date === date && liveIds.has(a.projectId))?.projectId ?? plan.find((p) => p.personId === personId && p.date === date && liveIds.has(p.projectId))?.projectId;
+}
+
+/** The site manager's instructions for one project on one day, if he has put any up. */
+export const dayInstruction = (list: DayInstruction[], projectId: ID | undefined, date: string) => list.find((x) => x.projectId === projectId && x.date === date);
+
+/** Where someone is on a day, in a few words, for the list of people a site manager can ask for. */
+export function whereabouts(state: Pick<DayState, "sites" | "load" | "leave">, code: (projectId: ID) => string): string {
+  if (state.leave) return "on leave";
+  if (state.sites.length === 0) return "free";
+  const on = state.sites.map(code).join(" and ");
+  return state.load < 1 ? `half day on ${on}` : `on ${on}`;
+}
+
+// ── Planning several days at once (Oisin, 17 Nov) ────────────────────────────
+// Two places plan more than one day: "Here for the rest of the week?" after someone is first put
+// on a site on the week ahead, and "Repeat each weekday until" on the month ahead.
+
+/**
+ * What would happen on one day: put them on ("add", or "half" when half their day is taken),
+ * move them from the site they were dragged off ("move"), put them on although they have a full
+ * day elsewhere ("clash", which double books and is highlighted), or nothing: busy elsewhere,
+ * on leave, already here, or the site is not running that day ("off").
+ */
+export type PlanStep = { date: string; action: "add" | "half" | "move" | "clash" | "busy" | "leave" | "already" | "off" };
+
+/**
+ * Work out each day for one person and one site. `onBusy` says what a full day elsewhere means:
+ * "skip" leaves that day alone (rest of the week), "clash" plans it anyway (the month ahead, where
+ * double bookings are highlighted for whoever is planning to sort out). With `moveFrom`, a day
+ * spent wholly on that site is moved across instead.
+ */
+export function planSteps(states: DayState[], siteId: ID, opts: { running: (date: string) => boolean; onBusy: "skip" | "clash"; moveFrom?: ID }): PlanStep[] {
+  return states.map((st) => {
+    const action: PlanStep["action"] = !opts.running(st.date)
+      ? "off"
+      : st.leave
+        ? "leave"
+        : st.sites.includes(siteId)
+          ? "already"
+          : st.load >= 1
+            ? opts.moveFrom && st.sites.length === 1 && st.sites[0] === opts.moveFrom
+              ? "move"
+              : opts.onBusy === "clash"
+                ? "clash"
+                : "busy"
+            : st.load > 0
+              ? "half"
+              : "add";
+    return { date: st.date, action };
+  });
+}
+
+/** The steps that change the plan. */
+export const stepsToPlan = (steps: PlanStep[]) => steps.filter((s) => s.action === "add" || s.action === "half" || s.action === "move" || s.action === "clash");
+
+/** Whether this is the person's first day on the site in that week: no other day of the week has them there. */
+export const firstOnSite = (plan: { personId: ID; projectId: ID; date: string }[], personId: ID, siteId: ID, week: string[], date: string) => !plan.some((p) => p.personId === personId && p.projectId === siteId && p.date !== date && week.includes(p.date));
+
+/**
+ * Who to show for one site on one day: whoever was marked on the timesheet for a day gone (or
+ * today, once the site has marked anyone), otherwise whoever is planned. The month ahead and the
+ * week ahead both read the plan this way, so a change in one shows in the other.
+ */
+export function dayRoster(
+  attendance: Pick<Attendance, "projectId" | "personId" | "date" | "status" | "overtimeHours">[],
+  plan: { projectId: ID; personId: ID; date: string; part?: "half"; overtimeHours?: number }[],
+  siteId: ID,
+  date: string,
+  today: string,
+): { from: "timesheet" | "plan"; rows: { personId: ID; note: string }[] } {
+  const marked = attendance.filter((a) => a.projectId === siteId && a.date === date);
+  if (date < today || (date === today && marked.length > 0)) return { from: "timesheet", rows: marked.map((a) => ({ personId: a.personId, note: a.status === "half" ? "half day" : a.overtimeHours > 0 ? `+${a.overtimeHours}h` : "" })) };
+  return { from: "plan", rows: plan.filter((x) => x.projectId === siteId && x.date === date).map((x) => ({ personId: x.personId, note: x.part === "half" ? "half day" : x.overtimeHours ? `+${x.overtimeHours}h` : "" })) };
 }

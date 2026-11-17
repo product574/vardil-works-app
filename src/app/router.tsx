@@ -17,6 +17,7 @@ const projects = () => import("@/modules/projects");
 const people = () => import("@/modules/people");
 const schedule = () => import("@/modules/schedule/Schedule");
 const leave = () => import("@/modules/schedule/Leave");
+const month = () => import("@/modules/schedule/Month");
 const plant = () => import("@/modules/plant");
 const files = () => import("@/modules/files/Files");
 const invoicing = () => import("@/modules/invoicing/Invoicing");
@@ -83,7 +84,7 @@ export const router = create([
           screen("people/certs", people, (m) => m.TrainingTickets),
           screen("people/holidays", people, (m) => m.Holidays),
           screen("schedule", schedule, (m) => m.WeekAhead),
-          screen("schedule/month", schedule, (m) => m.MonthAhead),
+          screen("schedule/month", month, (m) => m.MonthAhead),
           screen("schedule/today", schedule, (m) => m.WhoIsWhere),
           screen("schedule/holidays", leave, (m) => m.ScheduleHolidays),
           screen("schedule/holiday-requests", leave, (m) => m.HolidayRequests),
