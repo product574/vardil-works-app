@@ -293,10 +293,10 @@ def steps(page, ctx):
     grid = page.get_by_role("table", name="What each level can see, do and open")
     groups = [grid.locator(f"tr[data-group={g}]").count() for g in ["money", "permission", "department"]]
     ndept = data(page, "db.access.find(a => a.id==='md').departments.filter(d => d !== 'settings').length")
-    check("Roles: one grid of money, permissions and departments", groups == [2, 14, ndept], (groups, ndept))
-    check("Roles: ticks and dashes, no switches", main.get_by_role("switch").count() == 0 and grid.get_by_role("checkbox").count() == 3 * (2 + 14 + ndept) - 3 and grid.locator("svg").count() >= 4 * (2 + 14))
+    check("Roles: one grid of money, permissions and departments", groups == [2, 15, ndept], (groups, ndept))
+    check("Roles: ticks and dashes, no switches", main.get_by_role("switch").count() == 0 and grid.get_by_role("checkbox").count() == 3 * (2 + 15 + ndept) - 3 and grid.locator("svg").count() >= 4 * (2 + 15))
     perms = grid.locator("tr[data-group=permission]")
-    check("Roles: the managing director's column is all ticks and cannot be changed", perms.first.get_by_role("checkbox").count() == 3 and grid.get_by_role("img", name=re.compile("^Managing director: .*: yes$")).count() == 2 + 14 + ndept and grid.get_by_role("checkbox", name=re.compile("^Managing director")).count() == 0)
+    check("Roles: the managing director's column is all ticks and cannot be changed", perms.first.get_by_role("checkbox").count() == 3 and grid.get_by_role("img", name=re.compile("^Managing director: .*: yes$")).count() == 2 + 15 + ndept and grid.get_by_role("checkbox", name=re.compile("^Managing director")).count() == 0)
     state = lambda name: grid.get_by_role("checkbox", name=name, exact=True).get_attribute("aria-checked")
     check("Roles: each tick is what the level has", state("Site manager: Plan the week ahead") == "true" and state("Site manager: Costs and margins") == "false" and state("Accounts: Handle invoices") == "true" and state("Contracts manager: Answer requests for a yes or no") == "false")
     check("Roles: a level's home department is a tick that cannot be unticked", grid.get_by_role("checkbox", name="Site manager: People", exact=True).count() == 0 and grid.get_by_role("img", name="Site manager: People: yes").count() == 1 and grid.get_by_role("img", name="Contracts manager: Projects: yes").count() == 1)

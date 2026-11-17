@@ -206,7 +206,7 @@ export function Requests() {
         )}
 
         {q.expenses.length > 0 && (
-          <Section title={`Reimbursements (${q.expenses.length})`} aside="Claimed from the site phone">
+          <Section title={`Reimbursements (${q.expenses.length})`} aside={<>Claimed from the site phone. Approved ones go to <Link to="/people/reimbursements" className="font-medium text-accent-ink underline-offset-2 hover:underline">Reimbursements to pay</Link></>}>
             <Panel className="overflow-x-auto">
               <table className="tbl">
                 <thead>
@@ -250,7 +250,7 @@ export function Requests() {
                         {yesNo(
                           canAnswer,
                           (note) => { decideExpense(x.id, false, note); toast(`Reimbursement declined for ${p?.name}${note ? ", with your note" : ""}`); },
-                          () => { decideExpense(x.id, true); toast(`Reimbursement approved for ${p?.name}. Accounts pay it back`); },
+                          () => { decideExpense(x.id, true); toast(`Reimbursement approved for ${p?.name}. It is on the office's list to pay`); },
                           `reimbursement for ${p?.name}`,
                         )}
                       </tr>

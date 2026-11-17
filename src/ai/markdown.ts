@@ -12,7 +12,7 @@ import { DEPARTMENTS } from "@/app/departments";
 export type Inline = { kind: "text"; text: string } | { kind: "bold"; text: string } | { kind: "link"; text: string; to: string; bold?: boolean };
 export type Block = { kind: "p"; lines: Inline[][] } | { kind: "ul" | "ol"; items: Inline[][] } | { kind: "table"; head: Inline[][]; rows: Inline[][][] };
 
-const SCREENS = new Set(DEPARTMENTS.flatMap((d) => d.groups.flatMap((g) => g.items.map((i) => i.to))));
+const SCREENS = new Set(DEPARTMENTS.flatMap((d) => d.groups.flatMap((g) => g.items.flatMap((i) => [i.to, ...(i.tabs ?? []).map((t) => t.to)]))));
 /** Query settings each screen understands. */
 const QUERY: Record<string, string[]> = {
   "/sales/clients": ["client"],
@@ -22,7 +22,7 @@ const QUERY: Record<string, string[]> = {
   "/dashboard": ["open"],
   "/people": ["person"],
   "/plant": ["item"],
-  "/plant/vehicles": ["vehicle"],
+  "/plant/fleet": ["vehicle"],
   "/files": ["project", "folder"],
   "/invoicing/supplier": ["inv"],
   "/admin/access": ["person"],

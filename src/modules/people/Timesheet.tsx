@@ -100,6 +100,7 @@ export function Timesheet() {
           )}
           <span className="text-[0.93rem] text-muted">Week of {dShort(week[0])}</span>
         </div>
+        <OvertimeRules className="mt-3" />
       </PageHead>
       <PageBody className="grid max-w-6xl gap-4">
         <Panel className="overflow-x-auto">
@@ -190,7 +191,6 @@ export function Timesheet() {
           </Button>
           <p className="text-[0.93rem] text-muted">Click any earlier day to correct it. Every correction keeps the old value, who changed it and why.</p>
         </div>
-        <OvertimeRules />
       </PageBody>
 
       {fix && <CorrectDialog key={`${fix.person.id}-${fix.date}`} person={fix.person} date={fix.date} a={entry(fix.person.id, fix.date)} onClose={() => setFix(null)} onSave={(mark, reason) => correctAttendance(site.id, fix.person.id, fix.date, mark, reason)} />}
@@ -295,28 +295,26 @@ function CorrectDialog({ person, date, a, onClose, onSave }: { person: Person; d
 }
 
 /**
- * The firm's overtime rule, beside where overtime is marked (Oisin, 17 Nov): which hours are at
- * time and a half and which at double time. Whoever marks the day picks the rate from it.
+ * The firm's overtime rule, at the top of the Timesheet tab (Oisin, 17 Nov, and the call with
+ * Oldstone's managing director the same day: "at the top of the tab, say double is between
+ * the hours of ... and time and a half is between ..."). Whoever marks a day picks the rate
+ * from it. One line for each rate, so it does not push the grid down the page.
  */
 export function OvertimeRules({ className }: { className?: string }) {
   return (
-    <section aria-label="Overtime rates" className={cx("max-w-3xl rounded-lg border border-line bg-surface px-4 py-3", className)}>
-      <h2 className="text-base">Overtime rates</h2>
-      <div className="mt-2 grid gap-x-8 gap-y-3 sm:grid-cols-2">
+    <section aria-label="Overtime rates" className={cx("max-w-[95ch] rounded-md bg-canvas px-3 py-2 text-[0.93rem]", className)}>
+      <h2 className="sr-only">Overtime rates</h2>
+      <dl className="grid gap-x-3 gap-y-1 sm:grid-cols-[auto_minmax(0,1fr)]">
         {OVERTIME_RULES.map((r) => (
-          <div key={r.rate}>
-            <p className="font-medium">
+          <div key={r.rate} className="contents">
+            <dt className="font-medium whitespace-nowrap">
               {r.rate === 2 ? "Double time" : "Time and a half"} <span className="font-normal text-muted">({rateShort(r.rate)})</span>
-            </p>
-            <ul className="mt-0.5 text-[0.93rem] text-muted">
-              {r.when.map((w) => (
-                <li key={w}>{w}</li>
-              ))}
-            </ul>
+            </dt>
+            <dd className="text-muted">{r.when.join(". ")}.</dd>
           </div>
         ))}
-      </div>
-      <p className="mt-3 text-[0.93rem] text-muted">Pick the rate when you mark overtime on a day. The hours at each rate carry through to attendance history, the payroll file and job costs. Pay itself is worked out in the payroll package.</p>
+      </dl>
+      <p className="mt-1 text-muted">Pick the rate when you mark overtime on a day. It carries through to attendance history, the payroll file and job costs.</p>
     </section>
   );
 }

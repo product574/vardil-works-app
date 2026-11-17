@@ -127,7 +127,7 @@ def steps(page, ctx):
     check("Plant overview: the note counts what is off for repair", "1 off for repair" in main.inner_text())
     go(page, "/plant/register", "table")
     check("A scaffold tower gets a tower inspection, not a lifting examination", "Tower inspection: overdue" in page.locator("tr", has_text="ST3").inner_text())
-    go(page, "/plant/documents", "table")
+    go(page, "/plant/fleet/documents", "table")
     tax = page.locator("tr", has_text="182-D-40117").filter(has_text="Motor tax").first.inner_text()
     dates = re.findall(r"\d{1,2} (?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sept|Oct|Nov|Dec) \d{4}", tax)
     check("Vehicle papers: a tax disc is dated a year before it runs out", len(dates) == 2 and dates[0].split(" ")[:2] == dates[1].split(" ")[:2] and int(dates[1].split(" ")[2]) == int(dates[0].split(" ")[2]) + 1, tax)

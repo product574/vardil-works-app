@@ -1,11 +1,11 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useAccess } from "@/data/access";
-import { recordPayrollExport } from "@/data/actions";
+import { checkPayrollWeek, recordPayrollExport, startDirectMessage } from "@/data/actions";
 import { useData, useDay } from "@/data/store";
 import { addDays } from "@/lib/dates";
 import { dFull, dShort, plural, when } from "@/lib/format";
-import { blocking, FLAG_TEXT, payrollCsv, payrollWeek, STANDARD_WEEK } from "@/lib/payroll";
+import { blocking, FLAG_TEXT, OVERTIME_TO_QUERY, payrollCsv, payrollWeek, STANDARD_WEEK, weekCheck } from "@/lib/payroll";
 import { workWeek } from "@/lib/week";
 import { Badge, Button, cx, Empty, PageBody, PageHead, Panel, Section } from "@/ui";
 import { toast } from "@/ui/toast";
@@ -14,14 +14,19 @@ const wd = (d: string) => new Date(d + "T12:00:00Z").toLocaleDateString("en-IE",
 const h = (n: number) => (n === 0 ? "-" : n.toLocaleString("en-IE", { maximumFractionDigits: 2 }));
 
 /**
- * The week's hours for Sage Payroll (Oldstone call, 16 Nov). Site managers record the days; here
- * the accounts reviewer checks the week and sends the hours to Sage as a file. Pay rates, tax,
- * USC, pension, union fees and the bank payment are all worked out in Sage, never here.
+ * The week's hours for Sage Payroll (Oldstone calls, 16 and 17 Nov). Three steps, each a
+ * person's: site managers send the days; a manager looks the week over here and marks it
+ * checked; then the office exports the hours to Sage as a file, by hand. Nothing is sent on
+ * its own. Pay rates, tax, USC, pension, union fees and the bank payment are all worked out in
+ * Sage, never here.
  */
 export function PayrollExport() {
   const db = useData((s) => s.db);
   const day = useDay();
-  const canExport = useAccess().may("exportPayroll");
+  const access = useAccess();
+  const navigate = useNavigate();
+  const canExport = access.may("exportPayroll");
+  const canCheck = access.may("checkPayroll");
   const thisMon = workWeek(day)[0]!;
   const weeks = Array.from({ length: 6 }, (_, i) => addDays(thisMon, -7 * (i + 1)));
   const [week, setWeek] = useState(weeks[0]!);
@@ -30,7 +35,15 @@ export function PayrollExport() {
   const ready = lines.filter((l) => !blocking(l));
   const held = lines.filter(blocking);
   const done = db.payrollExports.filter((x) => x.weekStart === week);
+  const { check, stale } = weekCheck(db.payrollChecks, db.attendanceChanges, week);
+  const checked = !!check && !stale;
   const file = payrollCsv(week, lines);
+  // Whoever runs the sites someone worked on that week: the person to ask when a line looks wrong.
+  const managers = (siteIds: string[]) => [...new Set(siteIds.map((id) => db.projects.find((p) => p.id === id)?.siteManagerId).filter((id): id is string => !!id && id !== access.personId))].map((id) => db.people.find((p) => p.id === id)).filter((p) => !!p);
+  const ask = (personId: string) => {
+    const id = startDirectMessage(personId);
+    if (id) navigate(`/chat/${id}`);
+  };
   const total = (k: "basic" | "overtime" | "timeAndHalf" | "double" | "total", list = lines) => list.reduce((n, l) => n + l[k], 0);
   const download = () => {
     const url = URL.createObjectURL(new Blob([file.text], { type: "text/csv" }));
@@ -50,11 +63,24 @@ export function PayrollExport() {
         title="Payroll export"
         note={`Week ending ${dFull(days[4])}: ${plural(lines.length, "person", "people")}, ${h(total("total"))} hours. Hours only go to Sage Payroll; rates, tax, deductions and the bank payment are done in Sage.`}
         actions={
-          canExport && (
-            <Button variant="primary" disabled={ready.length === 0} onClick={download}>
-              {done.length > 0 ? "Export again" : "Export hours to Sage Payroll"}
-            </Button>
-          )
+          <>
+            {canCheck && !checked && lines.length > 0 && (
+              <Button
+                variant="primary"
+                onClick={() => {
+                  checkPayrollWeek(week);
+                  toast(`Week ending ${dShort(days[4])} marked as checked. It can go to Sage Payroll now`);
+                }}
+              >
+                {stale ? "Mark as checked again" : "Mark the week as checked"}
+              </Button>
+            )}
+            {canExport && (
+              <Button variant={checked ? "primary" : "outline"} disabled={ready.length === 0 || !checked} onClick={download} title={checked ? undefined : "A manager checks the week first"}>
+                {done.length > 0 ? "Export again" : "Export hours to Sage Payroll"}
+              </Button>
+            )}
+          </>
         }
       >
         <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -65,6 +91,7 @@ export function PayrollExport() {
               </option>
             ))}
           </select>
+          {!check ? <Badge tone="warn">Not checked yet</Badge> : stale ? <Badge tone="warn">Corrected since {check.by} checked it</Badge> : <Badge tone="ok">Checked {when(check.at, day)} by {check.by}</Badge>}
           {done.length > 0 ? (
             <Badge tone="ok">
               Exported {when(done[0]!.at, day)} by {done[0]!.by}
@@ -73,6 +100,11 @@ export function PayrollExport() {
             <Badge tone="warn">Not exported yet</Badge>
           )}
         </div>
+        <ol className="mt-3 flex max-w-[95ch] flex-wrap gap-x-5 gap-y-1 text-[0.93rem] text-muted" aria-label="How a week gets to payroll">
+          <li>1. Site managers send each day's time stamps.</li>
+          <li>2. A manager checks the week here{checked ? "" : canCheck ? ": that is the button above" : ", which is still to do"}.</li>
+          <li>3. The office exports the file to Sage Payroll by hand. Nothing is sent on its own.</li>
+        </ol>
       </PageHead>
       <PageBody className="grid max-w-[88rem] gap-5">
         {held.length > 0 && (
@@ -134,11 +166,17 @@ export function PayrollExport() {
                     <td>
                       <span className="flex flex-wrap gap-1">
                         {l.flags.map((f) => (
-                          <Badge key={f} tone={f === "no-sage" || f === "not-sent" ? "warn" : "neutral"}>
+                          <Badge key={f} tone={f === "no-sage" || f === "not-sent" || f === "much-overtime" ? "warn" : "neutral"}>
                             {FLAG_TEXT[f]}
                           </Badge>
                         ))}
                       </span>
+                      {access.can("chat") &&
+                        managers(l.siteIds).map((m) => (
+                          <button key={m.id} type="button" className="press mt-1 block text-[0.87rem] font-medium text-accent-ink underline-offset-2 hover:underline" onClick={() => ask(m.id)} aria-label={`Ask ${m.name} about ${l.name}'s week`}>
+                            Ask {m.name}
+                          </button>
+                        ))}
                     </td>
                   </tr>
                 ))}
@@ -158,7 +196,7 @@ export function PayrollExport() {
             </table>
           )}
         </Panel>
-        <p className="text-[0.93rem] text-muted">A full week is {STANDARD_WEEK} hours: 8 a day Monday to Thursday and 7 on Friday, half that for a half day. Overtime is the hours marked over on the timesheet, at the rate marked there: x1.5 is time and a half, x2 is double time. Total is hours worked. "Under 39 hours" is only a note for the reviewer: short weeks go to Sage as they are.</p>
+        <p className="text-[0.93rem] text-muted">A full week is {STANDARD_WEEK} hours: 8 a day Monday to Thursday and 7 on Friday, half that for a half day. Overtime is the hours marked over on the timesheet, at the rate marked there: x1.5 is time and a half, x2 is double time. Total is hours worked. "A lot of overtime" marks {OVERTIME_TO_QUERY} hours or more in the week. If a line looks wrong, Ask opens a message to the site manager in Team chat. "Under 39 hours" is only a note for the reviewer: short weeks go to Sage as they are.</p>
         {ready.length > 0 && (
           <Section title="What Sage Payroll will receive" aside={file.fileName}>
             <Panel className="overflow-x-auto">

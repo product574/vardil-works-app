@@ -34,8 +34,13 @@ export type PayrollLine = {
   /** Hours worked: basic and overtime. Not hours paid, which the payroll package works out from the rates. */
   total: number;
   /** Things the reviewer should look at before exporting. */
-  flags: ("no-sage" | "not-sent" | "short" | "two-sites")[];
+  flags: ("no-sage" | "not-sent" | "short" | "two-sites" | "much-overtime")[];
+  /** The sites worked in the week, so whoever checks it knows which site manager to ask. */
+  siteIds: string[];
 };
+
+/** Overtime in one week from which the line is flagged for a second look (the call of 17 Nov: "20 hours of overtime, that doesn't seem right"). */
+export const OVERTIME_TO_QUERY = 10;
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -68,7 +73,8 @@ export function payrollWeek(weekStart: string, attendance: Att[], people: Who[])
       if (mine.some((a) => !a.sent)) flags.push("not-sent");
       if (basic < STANDARD_WEEK) flags.push("short");
       if (twoSites) flags.push("two-sites");
-      return { personId: id, name: p?.name ?? id, sageNo: p?.sageNo, days: byDay, basic: r2(basic), overtime: r2(overtime), timeAndHalf: r2(ot.timeAndHalf), double: r2(ot.double), total: r2(basic + overtime), flags };
+      if (overtime >= OVERTIME_TO_QUERY) flags.push("much-overtime");
+      return { personId: id, name: p?.name ?? id, sageNo: p?.sageNo, days: byDay, basic: r2(basic), overtime: r2(overtime), timeAndHalf: r2(ot.timeAndHalf), double: r2(ot.double), total: r2(basic + overtime), flags, siteIds: [...new Set(mine.map((a) => a.projectId))] };
     })
     .sort((a, b) => (a.sageNo ?? "9999").localeCompare(b.sageNo ?? "9999") || a.name.localeCompare(b.name));
 }
@@ -78,7 +84,38 @@ export const FLAG_TEXT: Record<PayrollLine["flags"][number], string> = {
   "not-sent": "Days not sent from site",
   short: "Under 39 hours",
   "two-sites": "Two sites on one day",
+  "much-overtime": "A lot of overtime",
 };
+
+// ── The check before the export (the call with Oldstone's managing director, 17 Nov) ──
+// Site managers send the days; a manager looks over the week and marks it checked; then the
+// office exports the file to Sage Payroll by hand. Nothing goes on its own.
+
+type Check = { weekStart: string; at: string; by: string };
+type Change = { date: string; at: string };
+
+/** The newest check of a week, and whether a day in it has been corrected since (so it needs looking at again). */
+export function weekCheck<C extends Check>(checks: C[], changes: Change[], weekStart: string): { check?: C; stale: boolean } {
+  const check = checks.filter((c) => c.weekStart === weekStart).sort((a, b) => b.at.localeCompare(a.at))[0];
+  if (!check) return { stale: false };
+  const days = workWeek(weekStart);
+  return { check, stale: changes.some((c) => days.includes(c.date) && c.at > check.at) };
+}
+
+/** Where a week stands on its way to Sage Payroll. */
+export type PayrollStage = "nothing" | "days-to-come" | "to-check" | "to-export" | "exported";
+export function payrollStage(weekStart: string, attendance: Att[], checks: Check[], changes: Change[], exports: { weekStart: string }[]): PayrollStage {
+  const days = workWeek(weekStart);
+  const rows = attendance.filter((a) => days.includes(a.date));
+  if (rows.length === 0) return "nothing";
+  if (exports.some((x) => x.weekStart === weekStart)) return "exported";
+  if (rows.some((a) => !a.sent)) return "days-to-come";
+  const { check, stale } = weekCheck(checks, changes, weekStart);
+  return check && !stale ? "to-export" : "to-check";
+}
+
+/** The Monday of the week before the one a day is in: the week payroll is waiting on. */
+export const lastWeekStart = (day: string) => addDays(workWeek(day)[0]!, -7);
 
 /** Lines that cannot go to Sage: no Sage number to match them to, or hours not yet sent from site. */
 export const blocking = (l: PayrollLine) => l.flags.includes("no-sage") || l.flags.includes("not-sent");

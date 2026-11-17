@@ -6,11 +6,14 @@ import { Browsers, CalendarDots, ChatsCircle, DeviceMobile, EnvelopeSimple, Fold
 import type { Brand } from "@/config/brand";
 import { totalUnread } from "@/lib/chat";
 import { openRequestCount, waitingOnDirector } from "@/lib/requests";
+import { lastWeekStart, payrollStage } from "@/lib/payroll";
+import { toPay } from "@/lib/reimbursements";
 import { dueState } from "@/lib/status";
 import type { Db, DepartmentKey, ID } from "@/data/types";
 
 /** `mdOnly`: shown to the managing director only, even when the department is switched on for another level. */
-export type NavItem = { to: string; label: string; count?: (db: Db, today: string, me: ID | null) => number; countTone?: "accent" | "warn" | "bad"; end?: boolean; mdOnly?: boolean };
+/** `tabs`: other addresses inside the same page (its tabs), which Ask AI may link to but the sidebar does not list. */
+export type NavItem = { to: string; label: string; count?: (db: Db, today: string, me: ID | null) => number; countTone?: "accent" | "warn" | "bad"; end?: boolean; mdOnly?: boolean; tabs?: { to: string; label: string }[] };
 /** `more`: items worked out from the records, such as one per Team chat channel. */
 export type NavGroup = { label: string; items: NavItem[]; more?: (db: Db, brand: Brand) => NavItem[] };
 export type Department = {
@@ -96,7 +99,9 @@ export const DEPARTMENTS: Department[] = [
       { label: "Labour", items: [
         { to: "/people/timesheet", label: "Timesheet" },
         { to: "/people/history", label: "Attendance history" },
-        { to: "/people/payroll", label: "Payroll export" },
+        // The numbers are what is waiting: last week's hours on their way to payroll, and approved claims to pay.
+        { to: "/people/payroll", label: "Payroll export", count: (db, today) => (["to-check", "to-export"].includes(payrollStage(lastWeekStart(today), db.attendance, db.payrollChecks, db.attendanceChanges, db.payrollExports)) ? 1 : 0) },
+        { to: "/people/reimbursements", label: "Reimbursements", count: (db) => toPay(db.expenses).length },
       ] },
       { label: "Team", items: [
         { to: "/people", label: "Employee register", end: true },
@@ -114,10 +119,9 @@ export const DEPARTMENTS: Department[] = [
         { to: "/plant/register", label: "Own plant" },
         { to: "/plant/hired", label: "Hired plant", count: (db) => db.hiredPlant.filter((h) => h.status === "Return notified").length, countTone: "warn" },
       ] },
-      { label: "Fleet", items: [
-        { to: "/plant/vehicles", label: "Vehicles" },
-        { to: "/plant/documents", label: "Vehicle documents" },
-        { to: "/plant/repairs", label: "Repair spend" },
+      // One Fleet page with three tabs across its top (17 Nov). The number is vehicles with a paper out of date.
+      { label: "Vehicles", items: [
+        { to: "/plant/fleet", label: "Fleet", count: (db, today) => db.vehicles.filter((v) => v.active && (["tax", "test", "insurance"] as const).some((i) => dueState(v.compliance[i].expiryDate, today) === "overdue")).length, countTone: "bad", tabs: [{ to: "/plant/fleet/documents", label: "Fleet, vehicle documents" }, { to: "/plant/fleet/repairs", label: "Fleet, repair spend" }] },
       ] },
     ],
   },
@@ -136,14 +140,18 @@ export const DEPARTMENTS: Department[] = [
   {
     key: "invoicing", label: "Invoicing", icon: Receipt, home: "/invoicing", inBar: true,
     groups: [
-      { label: "Client invoices", items: [
+      // Which way each invoice travels is said in the group names (the call of 17 Nov: "are these
+      // invoices coming in or invoices going out?").
+      { label: "Going out, to clients", items: [
         { to: "/invoicing", label: "To invoice", end: true, count: (db) => db.salesInvoices.filter((i) => i.status === "To invoice").length },
         { to: "/invoicing/held", label: "Held", count: (db) => db.salesInvoices.filter((i) => i.status === "Held").length, countTone: "warn" },
         { to: "/invoicing/invoiced", label: "Invoiced" },
-        { to: "/invoicing/export", label: "Accounts export" },
       ] },
-      { label: "Costs", items: [
+      { label: "Coming in, from suppliers", items: [
         { to: "/invoicing/supplier", label: "Supplier invoices", count: (db) => db.supplierInvoices.filter((i) => i.readStatus !== "confirmed").length },
+      ] },
+      { label: "Accounts", items: [
+        { to: "/invoicing/export", label: "Accounts export" },
         { to: "/invoicing/costs", label: "Job costs" },
       ] },
     ],

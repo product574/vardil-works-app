@@ -1,6 +1,6 @@
 import { addDays } from "@/lib/dates";
 import type { ServicePlan } from "@/lib/status";
-import type { FleetDoc, HiredPlant, PlantItem, Renewal, Vehicle } from "../types";
+import type { FleetDoc, HiredPlant, PlantItem, Renewal, Vehicle, VehicleCheck } from "../types";
 import { type Rng, at, workdays } from "./util";
 
 type PlantRow = [ref: string, name: string, kind: string, spec: string, site: string | null, basis: "hours" | "months", finance: string];
@@ -207,4 +207,26 @@ export function seedAssets(r: Rng, today: string, driverIds: string[]) {
   fleetDocs.sort((a, b) => b.date.localeCompare(a.date));
 
   return { plant, hiredPlant, vehicles, fleetDocs };
+}
+
+/**
+ * Drivers' walkaround checks from the site phone, so the Fleet page has them to show (17 Nov).
+ * Every vehicle with a driver was checked on the last working day; about half have been checked
+ * so far this morning. Two defects to find: a slow puncture reported yesterday and a brake
+ * light out today. Worked out from the list, not the random run, so nothing else moves.
+ */
+export function seedVehicleChecks(today: string, vehicles: Vehicle[]): VehicleCheck[] {
+  const driven = vehicles.filter((v) => v.active && v.driverId);
+  const before = workdays(today, -1);
+  const out: VehicleCheck[] = [];
+  const clock = (i: number) => `07:${String(28 + ((i * 7) % 28)).padStart(2, "0")}`;
+  driven.forEach((v, i) => {
+    out.push({ id: `vc-${out.length + 1}`, vehicleId: v.id, personId: v.driverId!, at: at(before, clock(i)), defects: i === 4 ? [{ item: "Tyres, wheels, wheel nuts, steering and brakes", note: "Slow puncture, nearside rear. Pumped up this morning" }] : [] });
+  });
+  driven.forEach((v, i) => {
+    // The first vehicle is left for whoever tries the driving check on the phone.
+    if (i === 0 || i % 2 === 0) return;
+    out.push({ id: `vc-${out.length + 1}`, vehicleId: v.id, personId: v.driverId!, at: at(today, clock(i + 3)), defects: i === 3 ? [{ item: "All lights, indicators, reflectors and number plates", note: "Offside brake light out" }] : [] });
+  });
+  return out.sort((a, b) => b.at.localeCompare(a.at));
 }

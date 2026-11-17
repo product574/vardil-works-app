@@ -547,9 +547,10 @@ export function MyClaims({ me }: { me: Person }) {
             <span className="min-w-0 flex-1">
               {x.kind}, {dShort(x.date)}
               {x.status === "Declined" && <DeclineNote note={x.declineNote} />}
+              {x.status === "Approved" && <span className="block text-[0.87rem] text-muted">{x.exportedAt ? `With the office for payment since ${dShort(x.exportedAt.slice(0, 10))}` : "On the office's list to pay"}</span>}
             </span>
             <span className="tabular-nums">{region === "UK" ? "£" : "€"}{x.amount.toFixed(2)}</span>
-            <Badge tone={x.status === "Approved" ? "ok" : x.status === "Declined" ? "bad" : "accent"}>{x.status}</Badge>
+            <Badge tone={x.status === "Approved" ? "ok" : x.status === "Declined" ? "bad" : "accent"}>{x.status === "Approved" ? (x.exportedAt ? "Sent for payment" : "Approved") : x.status}</Badge>
           </li>
         ))}
       </ul>

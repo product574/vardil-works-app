@@ -6,7 +6,7 @@ import { dashboardNumbers } from "../kpis";
 import { basicHours } from "@/lib/payroll";
 import { needsSignOff } from "@/lib/purchases";
 import { workWeek } from "@/lib/week";
-import type { Activity, Approval, Attendance, Automation, Client, DayInstruction, Db, Expense, FileItem, HiredPlant, Mail, PayrollExport, Person, Project, SalesInvoice, ScopeTask, SiteAccess, SupplierInvoice } from "../types";
+import type { Activity, Approval, Attendance, Automation, Client, DayInstruction, Db, Expense, FileItem, HiredPlant, Mail, PayrollCheck, PayrollExport, Person, Project, SalesInvoice, ScopeTask, SiteAccess, SupplierInvoice } from "../types";
 import type { Craft, ProjectMeta } from "./projects";
 import { type Rng, at, lastWeekday, weekday, workdays } from "./util";
 
@@ -710,12 +710,21 @@ export function seedPayrollExports(db: Db, today: string): PayrollExport[] {
   return out;
 }
 
-/** Two claims waiting for the director and one already paid back. Sample receipts have no picture behind them. */
+/** Each week that went to Sage Payroll was checked by a contracts manager the afternoon before (17 Nov). */
+export function seedPayrollChecks(exports: PayrollExport[]): PayrollCheck[] {
+  return exports.map((x) => ({ id: `chk-${x.weekStart}`, weekStart: x.weekStart, at: at(addDays(x.weekStart, 7), "16:20"), by: "Tadhg Morrissey" }));
+}
+
+/**
+ * Two claims waiting for the director, one approved and waiting for the office to pay, and one
+ * already sent for payment. Sample receipts have no picture behind them.
+ */
 export function seedExpenses(today: string): Expense[] {
   return [
+    { id: "ex-4", personId: "p-111", createdAt: at(workdays(today, -3), "16:35"), date: workdays(today, -3), kind: "Materials", what: "Box of slate hooks and two ridge fixings, the delivery was short", amount: 31.4, projectId: "pr-C721", status: "Approved", decidedBy: "Aidan King", decidedAt: at(workdays(today, -2), "08:50") },
     { id: "ex-3", personId: "p-104", createdAt: at(workdays(today, -1), "17:40"), date: workdays(today, -1), kind: "Materials", what: "Bag of hydrated lime and a hawk from the builders' providers, ran short on site", amount: 46.8, projectId: "pr-C724", status: "Waiting" },
     { id: "ex-2", personId: "p-sm2", createdAt: at(today, "07:55"), date: today, kind: "Fuel", what: "Diesel for the crew van, the fuel card was declined", amount: 92.15, projectId: "pr-C720", status: "Waiting" },
-    { id: "ex-1", personId: "p-110", createdAt: at(workdays(today, -6), "16:10"), date: workdays(today, -6), kind: "Parking and tolls", what: "M50 toll and parking at the builders' providers", amount: 9.6, projectId: null, status: "Approved", decidedBy: "Aidan King", decidedAt: at(workdays(today, -5), "09:05") },
+    { id: "ex-1", personId: "p-110", createdAt: at(workdays(today, -6), "16:10"), date: workdays(today, -6), kind: "Parking and tolls", what: "M50 toll and parking at the builders' providers", amount: 9.6, projectId: null, status: "Approved", decidedBy: "Aidan King", decidedAt: at(workdays(today, -5), "09:05"), exportedAt: at(workdays(today, -4), "11:20"), exportedBy: "Maeve Quirke" },
   ];
 }
 

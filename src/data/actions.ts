@@ -1370,27 +1370,63 @@ export function setVehicleDriver(id: ID, driverId: ID | null) {
   });
 }
 
-export function addVehicle(v: Pick<Vehicle, "reg" | "model" | "kind" | "baseLocation" | "purchasePrice">) {
+export function addVehicle({ driverId = null, mileage = 0, ...v }: Pick<Vehicle, "reg" | "model" | "kind" | "baseLocation" | "purchasePrice"> & { driverId?: ID | null; mileage?: number }) {
   mutate((db) => {
     const day = getDay();
     const year = addDays(day, 365);
+    const km = Math.max(0, Math.round(mileage));
     db.vehicles.unshift({
       ...v,
       reg: normaliseReg(v.reg),
       id: newId("v"),
-      driverId: null,
+      driverId,
       purchaseMonth: day.slice(0, 7),
       sellPrice: null,
       active: true,
-      mileage: 0,
+      mileage: km,
       compliance: { tax: { paidDate: day, expiryDate: year, amount: 0 }, test: { paidDate: day, expiryDate: year, amount: 0 }, insurance: { paidDate: day, expiryDate: year, amount: 0 } },
-      service: { basis: "km", intervalKm: 20000, lastServiced: day, lastMeter: 0, meterNow: 0, kmPerWeek: 500 },
+      service: { basis: "km", intervalKm: 20000, lastServiced: day, lastMeter: km, meterNow: km, kmPerWeek: 500 },
     });
     log(db, "Added a vehicle", `${normaliseReg(v.reg)} ${v.model}`, "plant");
   });
 }
 
 /** Take a vehicle off the fleet. Its documents and repair history are kept. */
+/**
+ * Fleet, Edit vehicle (Oisin, 17 Nov): put right a vehicle's registration, make and model, kind,
+ * base, driver or mileage. A registration already on the fleet is refused. Returns whether it saved.
+ */
+export function updateVehicle(id: ID, patch: Partial<Pick<Vehicle, "reg" | "model" | "kind" | "baseLocation" | "driverId" | "mileage">>): boolean {
+  let saved = false;
+  mutate((db) => {
+    const v = db.vehicles.find((x) => x.id === id);
+    if (!v) return;
+    const reg = patch.reg !== undefined ? normaliseReg(patch.reg) : v.reg;
+    if (!reg || db.vehicles.some((x) => x.id !== id && x.reg === reg)) return;
+    const before = `${v.reg} ${v.model}`;
+    const changed: string[] = [];
+    if (reg !== v.reg) {
+      // Documents already on file keep their names, with the new registration where the old one was.
+      for (const d of db.fleetDocs) if (d.vehicleId === id) d.fileName = d.fileName.replace(v.reg, reg);
+      v.reg = reg;
+      changed.push("registration");
+    }
+    if (patch.model !== undefined && patch.model.trim() && patch.model.trim() !== v.model) { v.model = patch.model.trim(); changed.push("model"); }
+    if (patch.kind !== undefined && patch.kind !== v.kind) { v.kind = patch.kind; changed.push("kind"); }
+    if (patch.baseLocation !== undefined && patch.baseLocation.trim() && patch.baseLocation.trim() !== v.baseLocation) { v.baseLocation = patch.baseLocation.trim(); changed.push("base"); }
+    if (patch.driverId !== undefined && patch.driverId !== v.driverId) { v.driverId = patch.driverId; changed.push("driver"); }
+    if (patch.mileage !== undefined && Number.isFinite(patch.mileage) && Math.round(patch.mileage) !== v.mileage && patch.mileage >= 0) {
+      v.mileage = Math.round(patch.mileage);
+      // The service clock runs on the same reading.
+      if (v.service.basis === "km") v.service.meterNow = Math.max(v.service.lastMeter, v.mileage);
+      changed.push("mileage");
+    }
+    saved = true;
+    if (changed.length) log(db, "Changed a vehicle's details", `${before}: ${changed.join(", ")}`, "plant");
+  });
+  return saved;
+}
+
 export function removeVehicle(id: ID, sellPrice: number | null) {
   mutate((db) => {
     const v = db.vehicles.find((x) => x.id === id);
@@ -1607,6 +1643,35 @@ export function recordPayrollExport(weekStart: string, personIds: ID[]) {
     const hours = rows.reduce((n, a) => n + basicHours(a.date, a.status) + a.overtimeHours, 0);
     db.payrollExports.unshift({ id: newId("pay"), weekStart, at: nowStamp(), by: actorName(db), people: personIds.length, hours });
     log(db, "Exported hours to Sage Payroll", `Week ending ${end}, ${personIds.length} people, ${hours} hours`, "people");
+  });
+}
+
+/**
+ * A manager's check of a week's hours (the call of 17 Nov): site managers send the days, a
+ * manager looks them over and marks the week checked, and only then can the office export
+ * the file to Sage Payroll. A correction made after the check means it is checked again.
+ */
+export function checkPayrollWeek(weekStart: string) {
+  mutate((db) => {
+    db.payrollChecks.unshift({ id: newId("chk"), weekStart, at: nowStamp(), by: actorName(db) });
+    log(db, "Checked a week's hours for payroll", `Week ending ${addDays(weekStart, 4)}`, "people");
+  });
+}
+
+/**
+ * Approved reimbursements exported for the office to pay (the call of 17 Nov). Each is stamped,
+ * so it is never sent twice, and the person who claimed sees it has gone for payment.
+ */
+export function exportExpenses(ids: ID[]) {
+  mutate((db) => {
+    const at = nowStamp();
+    const rows = db.expenses.filter((x) => ids.includes(x.id) && x.status === "Approved" && !x.exportedAt);
+    if (!rows.length) return;
+    for (const x of rows) {
+      x.exportedAt = at;
+      x.exportedBy = actorName(db);
+    }
+    log(db, "Exported reimbursements for payment", `${rows.length} ${rows.length === 1 ? "claim" : "claims"}, ${rows.reduce((n, x) => n + x.amount, 0).toFixed(2)}`, "people");
   });
 }
 

@@ -44,6 +44,7 @@ export const ROLES: RoleDef[] = [
     departments: ["dashboard", "inbox", "chat", "sales", "projects", "schedule", "people", "plant", "files", "portal", "site"],
     money: [true, true],
     // Everything except answering requests, which waits for the managing director (16 Nov).
+    // They check the week's hours (17 Nov); the export itself is the office's.
     perms: ALL_PERMS.filter((k) => k !== "answerRequests" && k !== "exportPayroll"),
   },
   {

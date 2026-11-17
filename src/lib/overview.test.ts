@@ -135,10 +135,10 @@ describe("requests waiting for the managing director's yes or no", () => {
   });
 
   it("keeps a fortnight of answers to look back on", () => {
-    // A reimbursement approved last week (reimbursements joined this list on 17 Nov), the office
-    // printer (agreed a week ago) and the scaffold tower for C723 (just inside the fortnight);
-    // the request agreed before that falls outside it.
-    expect(recentlyDecided(db, DAY).map((d) => d.item.id)).toEqual(["ex-1", "sp-4", "rq-5"]);
+    // Two reimbursements approved in the last week (reimbursements joined this list on 17 Nov),
+    // the office printer (agreed a week ago) and the scaffold tower for C723 (just inside the
+    // fortnight); the request agreed before that falls outside it.
+    expect(recentlyDecided(db, DAY).map((d) => d.item.id)).toEqual(["ex-4", "ex-1", "sp-4", "rq-5"]);
   });
 });
 

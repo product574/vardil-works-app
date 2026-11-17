@@ -29,13 +29,18 @@ export function AttendanceHistory() {
   const [siteId, setSiteId] = useState("all");
   const [view, setView] = useState<View>("totals");
   const [layout, setLayout] = useState<"all" | "sites">("all");
+  // Which days to count (the call of 17 Nov: a filter for time and a half and for double time).
+  const [ot, setOt] = useState<"all" | "any" | "half" | "double">("all");
   const inPeriod = useMemo(() => new Set(periodDays(period, day)), [period, day]);
   const sites = access.scope(db.projects).filter((p) => db.attendance.some((a) => a.projectId === p.id));
   const siteIds = new Set(sites.map((p) => p.id));
   const name = (id: string) => db.people.find((p) => p.id === id)?.name ?? "-";
   const code = (id: string) => db.projects.find((p) => p.id === id)?.code ?? "-";
 
-  const rows = useMemo(() => db.attendance.filter((a) => inPeriod.has(a.date) && siteIds.has(a.projectId) && (siteId === "all" || a.projectId === siteId)), [db.attendance, inPeriod, siteId, sites.length]);
+  const rows = useMemo(
+    () => db.attendance.filter((a) => inPeriod.has(a.date) && siteIds.has(a.projectId) && (siteId === "all" || a.projectId === siteId) && (ot === "all" || (a.overtimeHours > 0 && (ot === "any" || (ot === "double") === (overtimeRate(a) === 2))))),
+    [db.attendance, inPeriod, siteId, sites.length, ot],
+  );
   const totals = useMemo(() => {
     // `overtime` is every overtime hour; `double` is the part at double time, the rest being time and a half (17 Nov).
     const m = new Map<string, { full: number; half: number; overtime: number; double: number; hours: number; sites: Set<string> }>();
@@ -87,7 +92,7 @@ export function AttendanceHistory() {
     <>
       <PageHead
         title="Attendance history"
-        note={`${Label}: ${plural(rows.length, "attendance entry", "attendance entries")} for ${plural(totals.length, "person", "people")}.`}
+        note={`${Label}: ${plural(rows.length, "attendance entry", "attendance entries")} for ${plural(totals.length, "person", "people")}${ot === "all" ? "" : ot === "any" ? ", days with overtime only" : ot === "half" ? ", days with overtime at time and a half only" : ", days with overtime at double time only"}.`}
         actions={<Segmented label="Attendance layout" value={layout} onChange={setLayout} options={[{ value: "all", label: "Everyone" }, { value: "sites", label: "Per site" }]} />}
       >
         <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -105,6 +110,12 @@ export function AttendanceHistory() {
                 {p.code} {p.name}
               </option>
             ))}
+          </select>
+          <select aria-label="Overtime" className="field w-auto max-w-full" value={ot} onChange={(e) => setOt(e.target.value as typeof ot)}>
+            <option value="all">All days</option>
+            <option value="any">Days with overtime</option>
+            <option value="half">Time and a half only</option>
+            <option value="double">Double time only</option>
           </select>
           <Segmented label="History view" value={view} onChange={setView} options={[{ value: "totals", label: "Totals for payroll" }, { value: "days", label: "Day by day" }, { value: "corrections", label: "Corrections", count: changes.length }]} />
         </div>

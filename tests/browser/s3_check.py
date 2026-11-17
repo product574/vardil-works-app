@@ -85,6 +85,8 @@ def steps(page, ctx):
     check("Payroll: last week by default, not exported yet, Aoife left out until she has a Sage number", "Not exported yet" in main.inner_text() and "Aoife Kinsella: no Sage number" in main.inner_text(), main.inner_text()[:400])
     pre = page.locator("pre").inner_text()
     check("Payroll: the file has hours only, matched on Sage numbers", pre.startswith("Employee No,Surname,Forename,Period end,Basic hours,Overtime hours") and "Kinsella" not in pre and re.search(r"\n00\d\d,", pre))
+    # Since 17 Nov a manager checks the week before it can be exported (s8_check.py covers that).
+    page.get_by_role("button", name="Mark the week as checked").click(); page.wait_for_timeout(300)
     with page.expect_download() as dl:
         page.get_by_role("button", name="Export hours to Sage Payroll").click()
     page.wait_for_timeout(300)
@@ -169,7 +171,7 @@ def steps(page, ctx):
     r = main.locator("section", has_text="Reimbursements")
     check("Admin: the phone claim is there", "Parking at the builders' providers" in r.inner_text())
     r.get_by_role("button", name=re.compile("^Approve: reimbursement")).first.click(); page.wait_for_timeout(300)
-    check("Admin: approving a reimbursement records who said yes", data(page, "db.expenses.filter(x => x.status==='Approved' && x.decidedBy==='Aidan King').length") == 2)
+    check("Admin: approving a reimbursement records who said yes", data(page, "db.expenses.filter(x => x.status==='Approved' && x.decidedBy==='Aidan King').length") == 3)
 
     # Site manager phone
     go(page, "/site")

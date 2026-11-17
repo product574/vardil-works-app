@@ -124,7 +124,7 @@ export function ToInvoice() {
   const total = rows.reduce((s, i) => s + i.net, 0);
   return (
     <>
-      <PageHead title="To invoice" note={`${plural(rows.length, "invoice")} ready to go${access.seeValues ? `, ${money0(total, region)} before VAT` : ""}. ${held > 0 ? `${held} more ${held === 1 ? "is" : "are"} held until extras or snagging are settled.` : ""}`} />
+      <PageHead title="To invoice" note={`Invoices going out to clients, for the accounts office to issue. ${plural(rows.length, "invoice")} ready to go${access.seeValues ? `, ${money0(total, region)} before VAT` : ""}. ${held > 0 ? `${held} more ${held === 1 ? "is" : "are"} held until extras or snagging are settled.` : ""}`} />
       <PageBody>
         <Panel className="max-w-6xl">
           {rows.length === 0 ? (
@@ -161,7 +161,7 @@ export function HeldInvoices() {
   const rows = db.salesInvoices.filter((i) => i.status === "Held");
   return (
     <>
-      <PageHead title="Held" note="A final account is held automatically while an extra is waiting to be agreed or snagging is open, so nothing is billed short or billed twice. The reason is under each invoice." />
+      <PageHead title="Held" note="Invoices to clients that cannot go out yet. A final account is held automatically while an extra is waiting to be agreed or snagging is open, so nothing is billed short or billed twice. The reason is under each invoice." />
       <PageBody>
         <Panel className="max-w-6xl">
           {rows.length === 0 ? (
@@ -212,7 +212,7 @@ export function Invoiced() {
     <>
       <PageHead
         title="Invoiced"
-        note={`${plural(unpaid.length, "invoice")} unpaid${access.seeValues ? `, ${money0(sum(unpaid), region)} owed including VAT` : ""}. ${unpaid.filter((i) => late(i) > 0).length} past their due date.`}
+        note={`Invoices already sent to clients, and what is still owed on them. ${plural(unpaid.length, "invoice")} unpaid${access.seeValues ? `, ${money0(sum(unpaid), region)} owed including VAT` : ""}. ${unpaid.filter((i) => late(i) > 0).length} past their due date.`}
         actions={<Segmented label="Invoices shown" value={show} onChange={setShow} options={[{ value: "unpaid", label: "Unpaid", count: unpaid.length }, { value: "paid", label: "Paid", count: paid.length }]} />}
       />
       <PageBody className="grid max-w-6xl gap-5">
@@ -486,7 +486,7 @@ export function SupplierInvoices() {
   const todo = all.filter((s) => s.readStatus !== "confirmed").length;
   return (
     <>
-      <PageHead title="Supplier invoices" note={`${todo} to deal with. Each invoice is read within the hour of arriving; you check the reading against the paper, say which job each line belongs to, and approve it into job costs.`} />
+      <PageHead title="Supplier invoices" note={`Invoices coming in from suppliers, for the firm to pay. ${todo} to deal with. Each invoice is read within the hour of arriving; you check the reading against the paper, say which job each line belongs to, and approve it into job costs.`} />
       <PageBody className="grid max-w-[92rem] items-start gap-4 lg:grid-cols-[15rem_minmax(0,1fr)]">
         <Panel>
           <ul className="max-h-56 divide-y divide-line overflow-y-auto lg:max-h-[calc(100dvh-17rem)]" aria-label="Supplier invoices">

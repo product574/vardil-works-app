@@ -35,7 +35,7 @@ export const RECORD_LINKS: [pattern: string, what: string][] = [
   ["/dashboard?open=ap-1", "one draft in Approvals, opened on the overview"],
   ["/people?person=p-101", "one person"],
   ["/plant?item=pl-MX1", "one item of own plant"],
-  ["/plant/vehicles?vehicle=v-1", "one vehicle"],
+  ["/plant/fleet?vehicle=v-1", "one vehicle"],
   ["/files?project=C719", "one project's files in the Files section"],
 ];
 
@@ -113,7 +113,12 @@ export function buildSnapshot(db: Db, today: string, brand: Brand): string {
 
   // Screens
   const screens: string[] = ["## Screens you can link to (use these paths exactly)"];
-  for (const d of DEPARTMENTS) for (const g of d.groups) for (const i of g.items) screens.push(`${i.to} | ${d.title ?? d.label}: ${i.label}`);
+  for (const d of DEPARTMENTS)
+    for (const g of d.groups)
+      for (const i of g.items) {
+        screens.push(`${i.to} | ${d.title ?? d.label}: ${i.label}`);
+        for (const t of i.tabs ?? []) screens.push(`${t.to} | ${d.title ?? d.label}: ${t.label}`);
+      }
   screens.push("Links to one record:");
   for (const [p, what] of RECORD_LINKS) screens.push(`${p} | ${what}`);
   out.push(screens.join("\n"));

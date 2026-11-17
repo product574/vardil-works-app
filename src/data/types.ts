@@ -273,6 +273,9 @@ export type Expense = {
   status: "Waiting" | "Approved" | "Declined";
   decidedBy?: string;
   decidedAt?: Stamp;
+  /** When an approved claim went to the office for payment, and who exported it (17 Nov). */
+  exportedAt?: Stamp;
+  exportedBy?: string;
   /** Why it was declined, if whoever declined it said (17 Nov). */
   declineNote?: string;
 };
@@ -500,6 +503,8 @@ export type SupplierInvoice = {
 
 /** A week of timesheet hours sent to Sage Payroll: hours only, pay is worked out in Sage. */
 export type PayrollExport = { id: ID; weekStart: Day; at: Stamp; by: string; people: number; hours: number };
+/** A manager's check of a week's hours, before the office exports them to Sage Payroll by hand (17 Nov). */
+export type PayrollCheck = { id: ID; weekStart: Day; at: Stamp; by: string };
 
 export type SalesInvoiceStatus = "To invoice" | "Held" | "Invoiced" | "Paid";
 export type SalesInvoice = {
@@ -665,7 +670,7 @@ export type AccessRow = {
 };
 
 /** Things a person may do. The list with its wording is in src/data/permissions.ts. */
-export type PermKey = "allProjects" | "manageProjects" | "priceQuotes" | "approveDrafts" | "answerRequests" | "planWeek" | "markTime" | "correctTime" | "manageStaff" | "approveLeave" | "seeRates" | "managePlant" | "manageInvoices" | "exportPayroll";
+export type PermKey = "allProjects" | "manageProjects" | "priceQuotes" | "approveDrafts" | "answerRequests" | "planWeek" | "markTime" | "correctTime" | "manageStaff" | "approveLeave" | "seeRates" | "managePlant" | "manageInvoices" | "checkPayroll" | "exportPayroll";
 export type AccessKey = PermKey | "seeValues" | "seeMargins";
 
 /**
@@ -698,6 +703,7 @@ export type Db = {
   subscriptionInvoices: SubscriptionInvoice[];
   /** Weeks of hours sent to Sage Payroll, newest first. */
   payrollExports: PayrollExport[];
+  payrollChecks: PayrollCheck[];
   /** Drivers' walkaround checks, newest first. */
   vehicleChecks: VehicleCheck[];
   /** Reimbursements claimed from the site phone, newest first. */

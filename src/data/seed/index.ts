@@ -15,10 +15,10 @@ import { DEFAULT_BRAND } from "@/config/brand";
 import { REGION } from "@/lib/money";
 import { ROLES } from "../roles";
 import type { Db } from "../types";
-import { seedAssets } from "./assets";
+import { seedAssets, seedVehicleChecks } from "./assets";
 import { seedChat } from "./chat";
 import { quotedMargin, seedCommercial } from "./commercial";
-import { fillManagementDates, fillPurchases, seedDayInstructions, seedExpenses, seedActivity, seedFiles, seedMail, seedManagement, seedMoney, seedPayrollExports, seedSiteAccess } from "./office";
+import { fillManagementDates, fillPurchases, seedDayInstructions, seedExpenses, seedActivity, seedFiles, seedMail, seedManagement, seedMoney, seedPayrollChecks, seedPayrollExports, seedSiteAccess } from "./office";
 import { seedPeople } from "./people";
 import { quoteTargets, seedProjects } from "./projects";
 import { seedSubscription } from "./subscription";
@@ -89,7 +89,8 @@ function buildIrishSeed(realToday: string, opts: { emailDomain?: string; vatPct?
     portalNotes: seedPortalNotes(day),
     subscriptionInvoices: seedSubscription(day, people),
     payrollExports: [],
-    vehicleChecks: [],
+    payrollChecks: [],
+    vehicleChecks: seedVehicleChecks(day, assets.vehicles),
     expenses: seedExpenses(day),
     dayInstructions: seedDayInstructions(day),
     attendanceChanges: [],
@@ -113,6 +114,7 @@ function buildIrishSeed(realToday: string, opts: { emailDomain?: string; vatPct?
   fillManagementDates(db, day, opts.region ?? "IE");
   fillPurchases(db, day);
   db.payrollExports = seedPayrollExports(db, day);
+  db.payrollChecks = seedPayrollChecks(db.payrollExports);
   db.activity = seedActivity(db, day);
   return { day, db };
 }

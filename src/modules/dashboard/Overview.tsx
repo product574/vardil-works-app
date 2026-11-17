@@ -102,6 +102,8 @@ function AiOverview() {
     seeMargins: access.seeMargins,
     canAsk: access.role === "md",
     answersRequests: access.can("admin") && access.may("answerRequests"),
+    checksPayroll: access.can("people") && access.may("checkPayroll"),
+    exportsPayroll: access.can("people") && access.may("exportPayroll"),
   });
   return (
     <Section title="AI overview" aside={<span className="text-[0.93rem] text-muted">Worked out from today's records</span>} className="flex flex-col">

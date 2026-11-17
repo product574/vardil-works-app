@@ -18,7 +18,8 @@ export const PERMISSIONS: { key: PermKey; group: "Projects" | "Sales" | "People"
   { key: "approveLeave", group: "People", label: "Approve leave", hint: "Approve or decline holiday requests and record leave" },
   { key: "seeRates", group: "People", label: "See hourly rates", hint: "Pay rates on the employee register" },
   { key: "managePlant", group: "Plant", label: "Manage plant and fleet", hint: "Move plant, record services and renewals, collect hired plant, add and remove vehicles and their documents" },
-  { key: "exportPayroll", group: "People", label: "Export hours to Sage Payroll", hint: "Review the week's hours and send them to Sage Payroll. Pay, tax and deductions stay in Sage" },
+  { key: "checkPayroll", group: "People", label: "Check the week's hours for payroll", hint: "Look over what the site managers sent in and mark the week checked. Nothing can be exported before that" },
+  { key: "exportPayroll", group: "People", label: "Export hours and reimbursements for payment", hint: "Send a checked week's hours to Sage Payroll, and approved reimbursements to be paid. Pay, tax and deductions stay in Sage" },
   { key: "manageInvoices", group: "Invoicing", label: "Handle invoices", hint: "Confirm supplier invoices to job costs, issue sales invoices, mark them paid, export to the accounts package" },
 ];
 
