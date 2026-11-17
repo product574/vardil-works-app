@@ -59,7 +59,9 @@ Aodhan's steps for now, I will take control of the steps from now"). The list be
 Aodhan's plan, kept for reference; on this copy, follow Oisin's own requests and ask him,
 not Aodhan, for picks. He looks at it as a private Claude artifact, "Construction demo
 (Oisin's copy)", rebuilt with `npm run build:preview` and republished after each change
-(sign in with demo / demo; downloads do nothing inside the artifact's frame).
+(sign in with demo / demo; downloads do nothing inside the artifact's frame). From 17 Nov he
+shares that artifact with other people himself (decision 88): its sign-in page no longer
+prints the login, and `npm run build:preview` takes the login from `.env.preview`.
 Oisin's standing rule (17 Nov): after finishing a task, always give him a checklist of every
 change, so he can check each one, ask for changes, and tick it off when happy. Since 17 Nov
 the checklist is a Sheets artifact, "Construction demo: changes to check".
@@ -203,6 +205,7 @@ Two sources were merged (November 2026):
 | 85 | General request | Oisin, 17 Nov (later): the site manager's phone has "Make a request" on its front page, under General, for a request that is not for one site. `SiteRequest.projectId` can be null (with `requestedById`, so it stays on the asker's own list), and there is a fourth kind, "other" (shown as "Something else"), offered to site managers on the phone and on a project's Requests tab; the operative's form keeps to people and plant. A general request goes straight to management (Admin, Requests, marked "General, not for one site"), is on the office's Requests list and the asker's own (`requestsFor` in `src/lib/requests.ts`), and the phone lists his own with the office's answer. Not seeded: there is none until someone makes one |
 | 86 | One plan, shown one way | Oisin, 17 Nov (later): "make sure the week and month ahead all syncs up together through the different apps and updates accordingly". They already shared `db.plan`; what differed was how a day was read. Now one rule everywhere a site's day is shown, `dayRoster` (the timesheet for a day gone and for today once the site has marked anyone, otherwise the plan): the office's week grid (which used to show today empty until someone was marked), the month grid, the site manager's phone (job card, Week ahead, Month ahead, the day list, site instructions) and, read from the person's side, `personDay` for the operative's My week, which now shows days gone from the timesheet and has a This week or Next week switch so the week being planned can be seen. `src/data/plan-sync.test.ts` checks every way the plan changes against every way it is shown |
 | 87 | Site access | Oisin, 17 Nov (later): "In admin add the ability to decide which sites each site manager has access to". Admin, Site access (under Roles and access; the managing director's alone, `mdOnly`): a row per site that is live or about to start, a column per site manager, a switch in each square; "Runs it" where they run the site, which cannot be switched off. `db.siteAccess` holds one row per person and site given (`setSiteAccess`); `opensSite` in `src/lib/site-access.ts` is the rule, used by `scope` in `access.ts`, the phone's jobs (`managerJobs`), the Requests count, and who may handle a crew's requests. A given site is theirs in every way their level allows: project page, timesheet, plan, requests from its crew, its group chat (they join and leave it with the switch), the job on their phone (marked "Run by ..."). The crew still see whoever runs the site as their site manager. People with "See every project" are listed under the grid, since there is nothing to pick. Sample data: Shane Culloty can open C725, which Róisín Garvey runs. Not built: changing who runs a site |
+| 88 | Sharing the preview | Oisin, 17 Nov (later): "make this up to date link be able to be opened by other people also with the right username and password". Claude's tools cannot change who can open an artifact; Oisin does it himself with Share on the artifact's page (people invited by email, his organisation, or anyone with the link). What Claude changed: the preview's sign-in page used to print "The default is username demo, password demo", which hands the login to everyone the link reaches. `.env.preview` now sets `VITE_DEMO_USERNAME` and `VITE_DEMO_PASSWORD_SHA256` (the hash of "demo" for now), which switches that line off; the login is still demo / demo until he picks his own (`npm run hash-password`, paste the hash there, rebuild). The login is checked inside the page, so it is a courtesy gate, not protection: anyone who can open the artifact has the whole app, and the Share setting is what decides who that is. Prospects belong on demo.vardil.com behind Cloudflare Access (Aodhan's). Each viewer has their own sample data in their own browser. Once the artifact is shared, republishing it needs `shared_live` set to its read mode (and its title when public) |
 
 Standing preferences (these come from Aodhan and are not optional):
 
@@ -508,6 +511,11 @@ Email to match their Gmail layout and Team chat their Ping, dropping the AI in T
   Firefox, dragging with a real mouse, the new Polish, Romanian, Portuguese and Lithuanian
   wording (This week, Next week, Not marked in), and `npm run dev` beyond opening the new
   dialogs by script.
+- 17 Nov, later still (decision 88): the preview's sign-in page no longer prints the login, so
+  the artifact can be shared. `preview_check7.py` now also checks that the page does not show
+  the login and that a wrong username or password is refused. No change to the other builds
+  (`.env.preview` is read only by `npm run build:preview`). Not tested: opening the shared
+  artifact as another person, which needs Oisin to share it first.
 - Tests: 235 automated tests (new `mail.test.ts`, 17; `chat.test.ts` rewritten, 20); 690
   browser checks in fourteen suites (`s2_check.py` rewritten for Team chat, 34; the Email
   part of `m5_check.py` rewritten, 69 in all; `m1_check.py` counts seven departments for a
@@ -1109,7 +1117,9 @@ checked on the live site on 13 and 15 Nov 2026.
    default for testing.
 3. **Built-in password mode is weak by design. Documented.** The hash of the shared
    password is compiled into the page (plain SHA-256, no salt), so it can be guessed
-   offline. Use it on your own machine only.
+   offline. Use it on your own machine only. The one exception is Oisin's preview artifact
+   (decision 88), where the artifact's own Share setting decides who can open it and the
+   built-in login is only a courtesy gate on top; it holds sample data and no keys.
 4. **No way to inject script. Checked.** No `dangerouslySetInnerHTML`, `innerHTML`, `eval`
    or `new Function` anywhere. Everything typed in (captions, notes, replies, names) is
    shown as text by React. The brand colour is checked against a strict pattern before it
@@ -1118,7 +1128,10 @@ checked on the live site on 13 and 15 Nov 2026.
    download only, never opened inside the page.
 5. **Links out. Checked.** Every link that opens a new tab has `rel="noopener noreferrer"`.
 6. **Secrets. Checked.** No keys or tokens in the repository. `.env` and `.env.local` are
-   ignored by git. `.env.preview` is committed on purpose and holds one harmless setting.
+   ignored by git. `.env.preview` is committed on purpose and holds the preview's settings: the
+   router mode and, since 17 Nov, the preview's username and the SHA-256 of its password
+   (decision 88). That hash is not a secret in the way a key is, since the same value is in
+   the published page, but a short password can be guessed from it, so a real one should be long.
    The Supabase keys from the old Oldstone project were never copied in, and the Supabase
    library has since been removed. No secret may ever go in a `VITE_` variable, because
    every `VITE_` value ends up in the page.

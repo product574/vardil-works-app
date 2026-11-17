@@ -13,6 +13,14 @@ with sync_playwright() as p:
     page.on("pageerror", lambda e: errs.append(f"pageerror: {e}"))
     page.on("request", lambda r: reqs.append(r.url) if not r.url.startswith(("file:", "data:", "blob:")) else None)
     page.goto("file://" + REPO + "/dist-preview/index.html"); page.wait_for_selector("#username")
+    # The preview is shared with other people (17 Nov), so the sign-in page must not print the login,
+    # and a wrong password is refused with a plain message.
+    assert "default is username" not in page.locator("body").inner_text() and "No password has been set" not in page.locator("body").inner_text()
+    page.fill("#username", "demo"); page.fill("#password", "Demo"); page.keyboard.press("Enter")
+    page.wait_for_selector("text=That username or password is not right")
+    assert page.locator("#username").count() == 1
+    page.fill("#username", "someone"); page.fill("#password", "demo"); page.keyboard.press("Enter")
+    page.wait_for_selector("text=That username or password is not right")
     page.fill("#username", "demo"); page.fill("#password", "demo"); page.keyboard.press("Enter")
     page.get_by_role("button", name="Managing director").click(); page.wait_for_selector("text=AI overview")
     bar = page.locator("nav[aria-label=Departments]"); side = page.locator("nav[aria-label$=screens]:visible"); main = page.locator("main")
