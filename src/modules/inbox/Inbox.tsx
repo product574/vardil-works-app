@@ -7,7 +7,9 @@ import {
   CaretLeft,
   CaretRight,
   ChatsCircle,
+  DownloadSimple,
   EnvelopeSimple,
+  FilePdf,
   FileText,
   FolderSimple,
   MagnifyingGlass,
@@ -17,15 +19,17 @@ import {
   Star,
   Tag,
   Tray,
+  X,
 } from "@phosphor-icons/react";
 import { type DragEvent as ReactDragEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import { Link, NavLink, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useAccess } from "@/data/access";
-import { composeMail, discardReplyDraft, moveMail, routeMail, saveReplyDraft, sendReply, setMailRead, setStar, shareMailToChat, startReply, tagMail, toggleStar } from "@/data/actions";
+import { composeMail, discardReplyDraft, fileMail, moveMail, routeMail, saveReplyDraft, sendReply, setMailRead, setStar, shareMailToChat, startReply, tagMail, toggleStar } from "@/data/actions";
 import { useData, useDay } from "@/data/store";
-import type { Db, Mail, MailIntent } from "@/data/types";
+import type { Db, Mail, MailAttachment, MailIntent } from "@/data/types";
+import { isPdf, readAttachment } from "@/lib/image";
 import { tOf, when } from "@/lib/format";
-import { actionItems, byDay, folderCounts, inFolder, isFocused, type MailFolder, newestFirst, rowWhen, searchMail, snippet, summary, withLabel } from "@/lib/mail";
+import { actionItems, attachmentsOf, byDay, folderCounts, inFolder, isFocused, labelUnread, MAX_ATTACHMENTS, type MailFolder, newestFirst, rowWhen, searchMail, sizeLabel, snippet, summary, whereKept, withLabel } from "@/lib/mail";
 import { Avatar, Badge, Button, cx, Dialog, Empty, Field, Menu, MenuItem, type Tone, useOnce } from "@/ui";
 import { toast } from "@/ui/toast";
 
@@ -50,7 +54,7 @@ const FOLDERS: { folder: MailFolder; to: string; icon: typeof Tray }[] = [
 ];
 
 type View = { folder: MailFolder } | { label: MailIntent };
-type Draft = { to: string; cc?: string; bcc?: string; subject: string; body: string };
+type Draft = { to: string; cc?: string; bcc?: string; subject: string; body: string; attachments?: MailAttachment[] };
 
 /** What a dragged email row carries: the ids of the emails being moved. */
 const DRAG_TYPE = "application/x-abc-mail-ids";
@@ -130,13 +134,16 @@ function Mailbox({ view }: { view: View }) {
 
 // ── Side panel ────────────────────────────────────────────────────────────────
 
-/** Dropping emails on a folder or label files them there, as in Gmail. */
+/**
+ * Dropping emails on a folder or label files them there, as in Gmail. Under a label they leave
+ * the Inbox (Oisin, 17 Nov): they are found under that label from then on.
+ */
 function dropOn(target: { folder: MailFolder } | { label: MailIntent }, ids: string[]) {
   if (!ids.length) return;
   const n = ids.length === 1 ? "Email" : `${ids.length} emails`;
   if ("label" in target) {
-    for (const id of ids) tagMail(id, target.label);
-    toast(`${n} labelled ${target.label}`);
+    for (const id of ids) fileMail(id, target.label);
+    toast(`${n} moved to ${target.label}, out of the inbox`);
   } else if (target.folder === "Starred") {
     for (const id of ids) setStar(id, true);
     toast(`${n} starred`);
@@ -150,7 +157,7 @@ function MailSidebar({ db, onCompose }: { db: Db; onCompose: () => void }) {
   const access = useAccess();
   const person = db.people.find((p) => p.id === access.personId);
   const counts = folderCounts(db.mails);
-  const labels = LABELS.map((l) => ({ l, n: db.mails.filter((m) => m.folder === "Inbox" && m.intent === l && !m.read).length, any: withLabel(db.mails, l).length > 0 })).filter((x) => x.any);
+  const labels = LABELS.map((l) => ({ l, n: labelUnread(db.mails, l), any: withLabel(db.mails, l).length > 0 })).filter((x) => x.any);
   return (
     <aside aria-label="Email folders" className="hidden w-64 shrink-0 flex-col border-r border-line bg-side md:flex">
       <div className="flex items-center gap-2.5 px-4 pt-4 pb-3">
@@ -258,6 +265,8 @@ function MailList(props: {
   const sent = "folder" in view && view.folder === "Sent";
   const archive = "folder" in view && view.folder === "Archive";
   const chosen = list.filter((m) => picked.has(m.id));
+  // Anything picked that is filed under a label or archived can go back to the inbox.
+  const outOfInbox = chosen.some((m) => m.folder === "Filed" || m.folder === "Archive");
   const allPicked = list.length > 0 && chosen.length === list.length;
   const toggle = (id: string) => setPicked((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const groups = byDay(list, day);
@@ -291,15 +300,20 @@ function MailList(props: {
         {chosen.length > 0 ? (
           <>
             <span className="text-[0.93rem] text-muted">{chosen.length} selected</span>
-            {!sent && (
-              <Button size="sm" onClick={() => { for (const m of chosen) moveMail(m.id, archive ? "Inbox" : "Archive"); toast(archive ? `${chosen.length} moved to the inbox` : `${chosen.length} archived`); setPicked(new Set()); }}>
-                <Archive size={16} /> {archive ? "Move to inbox" : "Archive"}
+            {!sent && !archive && (
+              <Button size="sm" onClick={() => { for (const m of chosen) moveMail(m.id, "Archive"); toast(`${chosen.length} archived`); setPicked(new Set()); }}>
+                <Archive size={16} /> Archive
+              </Button>
+            )}
+            {!sent && outOfInbox && (
+              <Button size="sm" onClick={() => { for (const m of chosen) moveMail(m.id, "Inbox"); toast(`${chosen.length} moved to the inbox`); setPicked(new Set()); }}>
+                <Tray size={16} /> Move to inbox
               </Button>
             )}
             {!sent && (
-              <Menu label="Label the selected emails" trigger={<span className="inline-flex h-8 items-center gap-1.5 rounded-md border border-line-strong bg-surface px-2.5 text-[0.87rem] font-medium"><Tag size={16} /> Label</span>}>
+              <Menu label="Move the selected emails to a label" trigger={<span className="inline-flex h-8 items-center gap-1.5 rounded-md border border-line-strong bg-surface px-2.5 text-[0.87rem] font-medium"><Tag size={16} /> Move to</span>}>
                 {(close) => LABELS.map((l) => (
-                  <MenuItem key={l} onClick={() => { close(); for (const m of chosen) tagMail(m.id, l); toast(`${chosen.length} labelled ${l}`); setPicked(new Set()); }}>
+                  <MenuItem key={l} onClick={() => { close(); for (const m of chosen) fileMail(m.id, l); toast(`${chosen.length} moved to ${l}, out of the inbox`); setPicked(new Set()); }}>
                     <Tag size={16} className="text-faint" /> {l}
                   </MenuItem>
                 ))}
@@ -326,7 +340,7 @@ function MailList(props: {
             <h2 className="border-b border-line bg-canvas px-4 py-1.5 font-sans text-[0.87rem] font-medium text-muted">{g.label}</h2>
             <ul aria-label={`${title} emails, ${g.label}`}>
               {g.mails.map((m) => (
-                <Row key={m.id} m={m} day={day} sent={sent} picked={picked.has(m.id)} dragIds={picked.has(m.id) ? [...picked] : [m.id]} onPick={() => toggle(m.id)} onOpen={() => onOpen(m)} />
+                <Row key={m.id} m={m} day={day} sent={sent} inLabel={"label" in view} picked={picked.has(m.id)} dragIds={picked.has(m.id) ? [...picked] : [m.id]} onPick={() => toggle(m.id)} onOpen={() => onOpen(m)} />
               ))}
             </ul>
           </section>
@@ -336,8 +350,9 @@ function MailList(props: {
   );
 }
 
-function Row({ m, day, sent, picked, dragIds, onPick, onOpen }: { m: Mail; day: string; sent: boolean; picked: boolean; dragIds: string[]; onPick: () => void; onOpen: () => void }) {
+function Row({ m, day, sent, inLabel, picked, dragIds, onPick, onOpen }: { m: Mail; day: string; sent: boolean; inLabel: boolean; picked: boolean; dragIds: string[]; onPick: () => void; onOpen: () => void }) {
   const unread = !m.read && !sent;
+  const files = attachmentsOf(m);
   const who = sent ? `To: ${m.to ?? m.fromName}` : m.fromName;
   return (
     <li
@@ -362,19 +377,22 @@ function Row({ m, day, sent, picked, dragIds, onPick, onOpen }: { m: Mail; day: 
           <span className={cx("block truncate", unread && "font-semibold")}>{who}</span>
           <span className={cx("block truncate", unread ? "font-semibold" : "font-medium")}>{m.subject}</span>
           <span className="block truncate text-[0.93rem] text-muted">{snippet(m.body)}</span>
-          {m.attachment && (
+          {files.length > 0 && (
             <span className="mt-1.5 inline-flex max-w-full items-center gap-1.5 rounded-md border border-line bg-surface px-2 py-0.5 text-[0.87rem]">
-              <Paperclip size={14} className="shrink-0 text-muted" /> <span className="truncate">{m.attachment}</span>
+              <Paperclip size={14} className="shrink-0 text-muted" /> <span className="truncate">{files[0]!.name}</span>
+              {files.length > 1 && <span className="shrink-0 text-muted">and {files.length - 1} more</span>}
             </span>
           )}
         </span>
         <span className="flex shrink-0 flex-col items-end gap-1.5">
           <span className={cx("text-[0.87rem]", unread ? "font-semibold text-ink" : "text-muted")}>{rowWhen(m.receivedAt, day)}</span>
           <span className="flex items-center gap-1.5">
-            {m.attachment && <Paperclip size={14} className="text-muted" aria-label="Has an attachment" />}
+            {files.length > 0 && <Paperclip size={14} className="text-muted" aria-label="Has an attachment" />}
             {unread && <span className="size-2 rounded-full bg-accent" aria-label="Unread" />}
           </span>
           {!sent && <Badge tone={TONE[m.intent] ?? "neutral"}>{m.intent}</Badge>}
+          {/* Under a label, as in Gmail: which of these are still in the inbox too. */}
+          {inLabel && m.folder === "Inbox" && <Badge tone="neutral">Inbox</Badge>}
         </span>
       </button>
     </li>
@@ -382,6 +400,70 @@ function Row({ m, day, sent, picked, dragIds, onPick, onOpen }: { m: Mail; day: 
 }
 
 // ── An open email ─────────────────────────────────────────────────────────────
+
+/** A forward starts from the email's words and carries its files, as in Gmail. */
+const forwardOf = (m: Mail): Draft => {
+  const files = attachmentsOf(m);
+  return { to: "", subject: `Fwd: ${m.subject}`, body: `\n\n---------- Forwarded message ----------\nFrom: ${m.fromName} <${m.fromAddress}>\nSubject: ${m.subject}\n\n${m.body}`, ...(files.length ? { attachments: files } : {}) };
+};
+
+/**
+ * The files on an email. One attached in the demo opens to look at, with a download; a sample
+ * email only names its file, so that one is shown as a name.
+ */
+function Attachments({ files, className, onRemove }: { files: MailAttachment[]; className?: string; onRemove?: (i: number) => void }) {
+  const [open, setOpen] = useState<MailAttachment | null>(null);
+  if (!files.length) return null;
+  const chip = "inline-flex min-h-9 max-w-full items-center gap-1.5 rounded-md border border-line bg-surface px-2 text-[0.93rem]";
+  return (
+    <>
+      <ul aria-label="Attachments" className={cx("flex flex-wrap gap-2", className)}>
+        {files.map((f, i) => (
+          <li key={`${f.name}-${i}`} className="flex max-w-full items-center">
+            {f.dataUrl ? (
+              <button type="button" className={cx(chip, "press hover:bg-accent-soft", onRemove && "rounded-r-none border-r-0")} onClick={() => setOpen(f)} aria-label={`Open ${f.name}`}>
+                <Paperclip size={15} className="shrink-0 text-muted" /> <span className="truncate">{f.name}</span>
+                {f.sizeKb !== undefined && <span className="shrink-0 text-muted">{sizeLabel(f.sizeKb)}</span>}
+              </button>
+            ) : (
+              <span className={cx(chip, onRemove && "rounded-r-none border-r-0")}>
+                <Paperclip size={15} className="shrink-0 text-muted" /> <span className="truncate">{f.name}</span>
+              </span>
+            )}
+            {onRemove && (
+              <button type="button" aria-label={`Remove ${f.name}`} onClick={() => onRemove(i)} className="press grid size-9 shrink-0 place-items-center rounded-r-md border border-line bg-surface text-muted hover:bg-accent-soft hover:text-accent-ink">
+                <X size={15} />
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+      <Dialog
+        open={!!open}
+        onClose={() => setOpen(null)}
+        title={open?.name ?? ""}
+        wide
+        footer={
+          open?.dataUrl && (
+            <a href={open.dataUrl} download={open.name} className="press inline-flex h-9 items-center gap-1.5 rounded-md border border-line-strong px-3 font-medium hover:bg-accent-soft">
+              <DownloadSimple size={16} /> Download
+            </a>
+          )
+        }
+      >
+        {open?.dataUrl &&
+          (isPdf(open.dataUrl) ? (
+            <p className="flex items-center gap-2">
+              <FilePdf size={22} className="text-muted" /> {open.name}
+              {open.sizeKb !== undefined && <span className="text-muted">{sizeLabel(open.sizeKb)}</span>}
+            </p>
+          ) : (
+            <img src={open.dataUrl} alt={open.name} className="mx-auto max-h-[55dvh] rounded-md border border-line" />
+          ))}
+      </Dialog>
+    </>
+  );
+}
 
 function Reading({ m, list, title, onPick, onBack, onForward }: { m: Mail; list: Mail[]; title: string; onPick: (id: string) => void; onBack: () => void; onForward: (d: Draft) => void }) {
   const db = useData((s) => s.db);
@@ -429,6 +511,11 @@ function Reading({ m, list, title, onPick, onBack, onForward }: { m: Mail; list:
             {m.folder === "Archive" ? <Tray size={18} /> : <Archive size={18} />}
           </IconButton>
         )}
+        {!sent && m.folder === "Filed" && (
+          <IconButton label="Move to inbox" onClick={() => { moveMail(m.id, "Inbox"); toast("Moved back to the inbox"); onBack(); }}>
+            <Tray size={18} />
+          </IconButton>
+        )}
         <IconButton label={m.starred ? "Unstar" : "Star"} pressed={!!m.starred} onClick={() => toggleStar(m.id)}>
           <Star size={18} weight={m.starred ? "fill" : "regular"} className={m.starred ? "text-accent" : undefined} />
         </IconButton>
@@ -448,11 +535,21 @@ function Reading({ m, list, title, onPick, onBack, onForward }: { m: Mail; list:
         )}
         {!sent && (
           <Menu label="Move" trigger={<span className="inline-flex h-9 items-center gap-1.5 rounded-md px-2.5 text-[0.93rem] font-medium text-muted hover:bg-accent-soft hover:text-accent-ink"><FolderSimple size={18} /> Move</span>}>
-            {(close) => (["Inbox", "Archive"] as const).map((f) => (
-              <MenuItem key={f} onClick={() => { close(); moveMail(m.id, f); toast(`Moved to ${f.toLowerCase()}`); onBack(); }}>
-                {f === "Inbox" ? <Tray size={16} className="text-faint" /> : <Archive size={16} className="text-faint" />} {f}
-              </MenuItem>
-            ))}
+            {(close) => (
+              <>
+                {(["Inbox", "Archive"] as const).map((f) => (
+                  <MenuItem key={f} onClick={() => { close(); moveMail(m.id, f); toast(`Moved to ${f.toLowerCase()}`); onBack(); }}>
+                    {f === "Inbox" ? <Tray size={16} className="text-faint" /> : <Archive size={16} className="text-faint" />} {f}
+                  </MenuItem>
+                ))}
+                <p className="mt-1 border-t border-line px-2.5 pt-2 pb-1 text-[0.87rem] text-muted">Under a label, out of the inbox</p>
+                {LABELS.map((l) => (
+                  <MenuItem key={l} onClick={() => { close(); fileMail(m.id, l); toast(`Moved to ${l}, out of the inbox`); onBack(); }}>
+                    <Tag size={16} className="text-faint" /> {l}
+                  </MenuItem>
+                ))}
+              </>
+            )}
           </Menu>
         )}
       </div>
@@ -461,7 +558,12 @@ function Reading({ m, list, title, onPick, onBack, onForward }: { m: Mail; list:
         <div className="grid min-w-0 gap-4">
           <div>
             <h1 className="text-[1.45rem] [text-wrap:balance]">{m.subject}</h1>
-            {!sent && <Badge tone={TONE[m.intent] ?? "neutral"} className="mt-1.5">{m.intent}</Badge>}
+            {!sent && (
+              <p className="mt-1.5 flex flex-wrap items-center gap-2">
+                <Badge tone={TONE[m.intent] ?? "neutral"}>{m.intent}</Badge>
+                {m.folder !== "Inbox" && <span className="text-[0.93rem] text-muted">{whereKept(m)}</span>}
+              </p>
+            )}
           </div>
 
           <article className="rounded-lg border border-line bg-surface">
@@ -474,11 +576,7 @@ function Reading({ m, list, title, onPick, onBack, onForward }: { m: Mail; list:
               <p className="shrink-0 text-[0.93rem] text-muted">{m.receivedAt.slice(0, 10) === day ? `Today, ${tOf(m.receivedAt)}` : when(m.receivedAt, day)}</p>
             </header>
             <p className="max-w-[72ch] px-4 py-3 whitespace-pre-line">{m.body}</p>
-            {m.attachment && (
-              <p className="mx-4 mb-3 inline-flex items-center gap-1.5 rounded-md border border-line px-2 py-1 text-[0.93rem]">
-                <Paperclip size={15} className="text-muted" /> {m.attachment}
-              </p>
-            )}
+            <Attachments files={attachmentsOf(m)} className="mx-4 mb-3" />
             {(link || project) && (
               <div className="mx-4 mb-4 flex flex-wrap items-center gap-2 rounded-md bg-canvas px-3 py-2">
                 <span className="text-[0.87rem] font-medium text-muted">Linked</span>
@@ -510,7 +608,7 @@ function Reading({ m, list, title, onPick, onBack, onForward }: { m: Mail; list:
                       <p className="text-[0.93rem] text-muted">Sending needs the "Approve drafts" permission.</p>
                     )}
                     <span className="ml-auto flex flex-wrap gap-2">
-                      <Button onClick={() => onForward({ to: "", subject: `Fwd: ${m.subject}`, body: `\n\n---------- Forwarded message ----------\nFrom: ${m.fromName} <${m.fromAddress}>\nSubject: ${m.subject}\n\n${m.body}` })}>
+                      <Button onClick={() => onForward(forwardOf(m))}>
                         <ArrowBendUpRight size={16} /> Forward
                       </Button>
                     </span>
@@ -519,7 +617,7 @@ function Reading({ m, list, title, onPick, onBack, onForward }: { m: Mail; list:
               ) : (
                 <div className="flex flex-wrap gap-2">
                   <Button onClick={reply} disabled={!canSend}><ArrowBendUpLeft size={16} /> Reply</Button>
-                  <Button onClick={() => onForward({ to: "", subject: `Fwd: ${m.subject}`, body: `\n\n---------- Forwarded message ----------\nFrom: ${m.fromName} <${m.fromAddress}>\nSubject: ${m.subject}\n\n${m.body}` })}>
+                  <Button onClick={() => onForward(forwardOf(m))}>
                     <ArrowBendUpRight size={16} /> Forward
                   </Button>
                 </div>
@@ -597,6 +695,22 @@ function ComposeDialog({ draft, onClose }: { draft: Draft | null; onClose: () =>
   const [d, setD] = useState<Draft>({ to: "", subject: "", body: "" });
   const [showCc, setShowCc] = useState(false);
   const [showBcc, setShowBcc] = useState(false);
+  const pick = useRef<HTMLInputElement>(null);
+  const files = d.attachments ?? [];
+  // Pictures and PDFs, a few at a time: the demo keeps them in the browser (see src/lib/image.ts).
+  const attach = async (chosen: File[]) => {
+    const room = MAX_ATTACHMENTS - files.length;
+    if (chosen.length > room) toast(`An email takes up to ${MAX_ATTACHMENTS} files in the demo`);
+    const added: MailAttachment[] = [];
+    for (const f of chosen.slice(0, Math.max(0, room))) {
+      try {
+        added.push(await readAttachment(f));
+      } catch (e) {
+        toast(e instanceof Error ? e.message : `${f.name} could not be attached`);
+      }
+    }
+    if (added.length) setD((now) => ({ ...now, attachments: [...(now.attachments ?? []), ...added] }));
+  };
   useEffect(() => {
     if (draft) {
       setD(draft);
@@ -607,7 +721,7 @@ function ComposeDialog({ draft, onClose }: { draft: Draft | null; onClose: () =>
   const [send] = useOnce(() => {
     if (!d.to.trim()) return;
     composeMail(d);
-    toast(`Sent to ${d.to.trim()}${d.cc?.trim() ? `, copied to ${d.cc.trim()}` : ""}`);
+    toast(`Sent to ${d.to.trim()}${d.cc?.trim() ? `, copied to ${d.cc.trim()}` : ""}${files.length ? `, with ${files.length === 1 ? "1 file" : `${files.length} files`}` : ""}`);
     onClose();
     navigate("/inbox/sent");
   });
@@ -640,6 +754,29 @@ function ComposeDialog({ draft, onClose }: { draft: Draft | null; onClose: () =>
         </div>
         <Field label="Subject">{(id) => <input id={id} className="field" value={d.subject} onChange={(e) => setD({ ...d, subject: e.target.value })} />}</Field>
         <Field label="Message">{(id) => <textarea id={id} rows={10} className="field" value={d.body} onChange={(e) => setD({ ...d, body: e.target.value })} />}</Field>
+        <div className="grid gap-2">
+          <Attachments files={files} onRemove={(i) => setD({ ...d, attachments: files.filter((_, n) => n !== i) })} />
+          <div className="flex flex-wrap items-center gap-2">
+            <Button onClick={() => pick.current?.click()} disabled={files.length >= MAX_ATTACHMENTS}>
+              <Paperclip size={16} /> Attach files
+            </Button>
+            <span className="text-[0.87rem] text-muted">{files.length === 0 ? "Pictures and PDFs." : `${files.length} of ${MAX_ATTACHMENTS} attached.`}</span>
+          </div>
+          <input
+            ref={pick}
+            type="file"
+            multiple
+            accept="image/*,application/pdf"
+            className="sr-only"
+            tabIndex={-1}
+            aria-label="Choose files"
+            onChange={(e) => {
+              const chosen = [...(e.target.files ?? [])];
+              e.target.value = "";
+              void attach(chosen);
+            }}
+          />
+        </div>
       </form>
     </Dialog>
   );

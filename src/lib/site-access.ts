@@ -49,3 +49,16 @@ export const siteCell = (site: Site, personId: ID, grants: Grant[]): SiteCell =>
 export function siteCounts(sites: Site[], personId: ID, grants: Grant[]): { runs: number; given: number } {
   return { runs: sites.filter((s) => s.siteManagerId === personId).length, given: sites.filter((s) => s.siteManagerId !== personId && givenSite(grants, personId, s.id)).length };
 }
+
+/**
+ * Who can be put in charge of a site (Admin, Site access, 17 Nov): everyone active at site
+ * manager level, by name, and whoever runs it now even if they have since moved level.
+ */
+export function siteManagerChoices(db: Pick<Db, "people">, site: Pick<Project, "siteManagerId">): Person[] {
+  return db.people.filter((p) => p.kind === "Management" && ((p.active && (p.level ?? "site") === "site") || p.id === site.siteManagerId)).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** The sites someone runs and the ones they have been given, as site codes, for the summary beside their name. */
+export function siteCodes(sites: Pick<Project, "id" | "code" | "siteManagerId">[], personId: ID, grants: Grant[]): { runs: string[]; given: string[] } {
+  return { runs: sites.filter((s) => s.siteManagerId === personId).map((s) => s.code), given: sites.filter((s) => s.siteManagerId !== personId && givenSite(grants, personId, s.id)).map((s) => s.code) };
+}

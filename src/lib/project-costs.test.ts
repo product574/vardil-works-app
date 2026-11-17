@@ -6,6 +6,10 @@ describe("project cost to date", () => {
     expect(paidHours("full", 0)).toBe(8);
     expect(paidHours("half", 0)).toBe(4);
     expect(paidHours("full", 2)).toBe(11);
+    // Double time overtime is paid at twice the rate (17 Nov); a half day has no overtime to double.
+    expect(paidHours("full", 2, 2)).toBe(12);
+    expect(paidHours("full", 2, 1.5)).toBe(11);
+    expect(labourCost([{ status: "full", overtimeHours: 2, overtimeRate: 2, hourlyRate: 20 }])).toBe(240);
   });
   it("costs labour at each person's own rate", () => {
     expect(labourCost([{ status: "full", overtimeHours: 0, hourlyRate: 30 }, { status: "half", overtimeHours: 0, hourlyRate: 20 }])).toBe(320);

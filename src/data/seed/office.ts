@@ -214,7 +214,7 @@ export function seedMoney(r: Rng, today: string, ctx: Ctx) {
   for (const p of ctx.projects) {
     if (p.status === "Not started") continue;
     const m = ctx.meta.get(p.code)!;
-    const labour = labourCost(ctx.attendance.filter((a) => a.projectId === p.id).map((a) => ({ status: a.status, overtimeHours: a.overtimeHours, hourlyRate: rate.get(a.personId) ?? 0 })));
+    const labour = labourCost(ctx.attendance.filter((a) => a.projectId === p.id).map((a) => ({ status: a.status, overtimeHours: a.overtimeHours, overtimeRate: a.overtimeRate, hourlyRate: rate.get(a.personId) ?? 0 })));
     const pct = p.status === "Live" ? scopePercent(ctx.scopeTasks.filter((t) => t.projectId === p.id)) : 100;
     const earned = ((p.value ?? 0) * pct) / 100;
     const known = drafts.filter((d) => d.readStatus === "confirmed").flatMap((d) => d.allocations.filter((a) => a.projectId === p.id).map((a) => (d.docType === "credit_note" ? -a.amount : a.amount))).reduce((s, x) => s + x, 0);

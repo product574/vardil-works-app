@@ -5,7 +5,7 @@
  *
  * Pure functions: no React, no store. The screen is `src/modules/inbox/Inbox.tsx`.
  */
-import type { Mail, MailIntent } from "@/data/types";
+import type { Mail, MailAttachment, MailIntent } from "@/data/types";
 import { dShort } from "./format";
 
 export type MailFolder = "Inbox" | "Starred" | "Sent" | "Drafts" | "Archive";
@@ -22,6 +22,42 @@ export function withLabel(mails: Mail[], label: MailIntent): Mail[] {
   return mails.filter((m) => m.folder !== "Sent" && m.intent === label);
 }
 
+/**
+ * Putting an email under a label takes it out of the Inbox, as in Gmail (Oisin, 17 Nov): it is
+ * then "Filed", and found under that label. One already archived stays archived, and one already
+ * filed stays filed; either way it takes the label. Sent copies are never filed.
+ */
+export function filedFolder(folder: Mail["folder"]): Mail["folder"] {
+  return folder === "Inbox" ? "Filed" : folder;
+}
+
+/** Unread emails under a label, in the Inbox or filed under it. Archived ones were read on the way. */
+export function labelUnread(mails: Mail[], label: MailIntent): number {
+  return mails.filter((m) => (m.folder === "Inbox" || m.folder === "Filed") && m.intent === label && !m.read).length;
+}
+
+/** Where an email is, in words, for the open email. */
+export function whereKept(m: Pick<Mail, "folder" | "intent">): string {
+  if (m.folder === "Filed") return `Filed under ${m.intent}, out of the inbox`;
+  if (m.folder === "Archive") return "Archived";
+  return m.folder;
+}
+
+/** The files on an email: the ones attached here, or the one a sample email names. */
+export function attachmentsOf(m: Pick<Mail, "attachment" | "attachments">): MailAttachment[] {
+  if (m.attachments?.length) return m.attachments;
+  return m.attachment ? [{ name: m.attachment }] : [];
+}
+
+/** At most this many files on one email written in the demo: they are kept in the browser. */
+export const MAX_ATTACHMENTS = 5;
+
+/** "240 KB" or "1.2 MB". */
+export function sizeLabel(kb: number): string {
+  const whole = Math.max(1, Math.round(kb));
+  return whole >= 1000 ? `${(whole / 1000).toFixed(1)} MB` : `${whole} KB`;
+}
+
 /** Supplier paperwork and general mail go under Other; anything someone has to act on is Focused. */
 const OTHER = new Set<MailIntent>(["Supplier statement", "General"]);
 export const isFocused = (m: Mail) => !OTHER.has(m.intent);
@@ -35,7 +71,7 @@ export function searchMail(mails: Mail[], q: string): Mail[] {
   const words = q.toLowerCase().split(/\s+/).filter(Boolean);
   if (!words.length) return mails;
   return mails.filter((m) => {
-    const hay = `${m.fromName} ${m.fromAddress} ${m.to ?? ""} ${m.subject} ${m.body} ${m.attachment ?? ""}`.toLowerCase();
+    const hay = `${m.fromName} ${m.fromAddress} ${m.to ?? ""} ${m.subject} ${m.body} ${attachmentsOf(m).map((a) => a.name).join(" ")}`.toLowerCase();
     return words.every((w) => hay.includes(w));
   });
 }

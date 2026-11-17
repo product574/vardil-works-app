@@ -31,7 +31,7 @@ export function PayrollExport() {
   const held = lines.filter(blocking);
   const done = db.payrollExports.filter((x) => x.weekStart === week);
   const file = payrollCsv(week, lines);
-  const total = (k: "basic" | "overtime" | "total", list = lines) => list.reduce((n, l) => n + l[k], 0);
+  const total = (k: "basic" | "overtime" | "timeAndHalf" | "double" | "total", list = lines) => list.reduce((n, l) => n + l[k], 0);
   const download = () => {
     const url = URL.createObjectURL(new Blob([file.text], { type: "text/csv" }));
     const a = document.createElement("a");
@@ -111,7 +111,8 @@ export function PayrollExport() {
                     </th>
                   ))}
                   <th className="num">Basic hours</th>
-                  <th className="num">Overtime</th>
+                  <th className="num">Overtime x1.5</th>
+                  <th className="num">Overtime x2</th>
                   <th className="num">Total</th>
                   <th>To check</th>
                 </tr>
@@ -127,7 +128,8 @@ export function PayrollExport() {
                       </td>
                     ))}
                     <td className="num">{h(l.basic)}</td>
-                    <td className="num">{h(l.overtime)}</td>
+                    <td className="num">{l.timeAndHalf ? h(l.timeAndHalf) : "-"}</td>
+                    <td className="num">{l.double ? h(l.double) : "-"}</td>
                     <td className="num font-medium">{h(l.total)}</td>
                     <td>
                       <span className="flex flex-wrap gap-1">
@@ -147,7 +149,8 @@ export function PayrollExport() {
                     Total
                   </td>
                   <td className="num border-t border-line-strong">{h(total("basic"))}</td>
-                  <td className="num border-t border-line-strong">{h(total("overtime"))}</td>
+                  <td className="num border-t border-line-strong">{h(total("timeAndHalf"))}</td>
+                  <td className="num border-t border-line-strong">{h(total("double"))}</td>
                   <td className="num border-t border-line-strong font-medium">{h(total("total"))}</td>
                   <td className="border-t border-line-strong" />
                 </tr>
@@ -155,13 +158,13 @@ export function PayrollExport() {
             </table>
           )}
         </Panel>
-        <p className="text-[0.93rem] text-muted">A full week is {STANDARD_WEEK} hours: 8 a day Monday to Thursday and 7 on Friday, half that for a half day. Overtime is the hours marked over on the timesheet. "Under 39 hours" is only a note for the reviewer: short weeks go to Sage as they are.</p>
+        <p className="text-[0.93rem] text-muted">A full week is {STANDARD_WEEK} hours: 8 a day Monday to Thursday and 7 on Friday, half that for a half day. Overtime is the hours marked over on the timesheet, at the rate marked there: x1.5 is time and a half, x2 is double time. Total is hours worked. "Under 39 hours" is only a note for the reviewer: short weeks go to Sage as they are.</p>
         {ready.length > 0 && (
           <Section title="What Sage Payroll will receive" aside={file.fileName}>
             <Panel className="overflow-x-auto">
               <pre className="px-3 py-2.5 font-mono text-[0.87rem] leading-relaxed whitespace-pre">{file.text.trim()}</pre>
             </Panel>
-            <p className="mt-2 text-[0.93rem] text-muted">One row per person, matched on their Sage employee number, with basic and overtime hours. The column layout will be set to the sample payroll file from the accounts office before this goes live.</p>
+            <p className="mt-2 text-[0.93rem] text-muted">One row per person, matched on their Sage employee number, with basic hours and overtime hours at each rate. The column layout will be set to the sample payroll file from the accounts office before this goes live.</p>
           </Section>
         )}
         <Section title="Weeks already sent">

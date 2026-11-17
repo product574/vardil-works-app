@@ -6,7 +6,7 @@ import { useData, useDay, usePrefs } from "@/data/store";
 import { type Language, LANGUAGE_NAME, type Person, type Project } from "@/data/types";
 import { personWeek } from "@/lib/availability";
 import { dayInstruction, managerJobs, personDay, siteOn } from "@/lib/roster";
-import { nextWorkWeek, workWeek } from "@/lib/week";
+import { nextWorkWeek, overtimeNote, workWeek } from "@/lib/week";
 import { Dialog, PageBody, PageHead, Segmented } from "@/ui";
 import { ManagerPhone } from "./ManagerPhone";
 import { AskSheet, BIG, DrivingSheet, ExpenseSheet, ExtraSheet, longDate, ManagerCard, PhotoSheet, ProfileButton, ProfileSheet } from "./sheets";
@@ -252,7 +252,7 @@ function WeekSheet({ me, lang, day, onClose }: { me: Person; lang: Language; day
                             <span className={d.date < day ? "font-normal text-muted" : undefined}>
                               {site?.code} {site?.name}
                               {e.half && <span className="font-normal text-muted">, {t.half}</span>}
-                              {e.overtimeHours ? <span className="font-normal text-muted">, +{e.overtimeHours}h</span> : null}
+                              {e.overtimeHours ? <span className="font-normal text-muted">, {gone ? overtimeNote(e.overtimeHours, e.overtimeRate) : `+${e.overtimeHours}h`}</span> : null}
                             </span>
                             {site && manager && (
                               <button type="button" aria-label={`${t.manager}: ${manager.name}, ${site.code}`} className="press -my-1 inline-flex min-h-9 items-center gap-1 rounded text-[0.93rem] font-normal text-accent-ink underline decoration-line-strong underline-offset-2" onClick={() => setCard({ manager, site })}>

@@ -6,9 +6,11 @@
  * backend means rewriting these bodies as API calls; no screen needs to change.
  */
 import { ASK_ACTIVITY } from "@/ai/tools";
+import { filedFolder, MAX_ATTACHMENTS } from "@/lib/mail";
 import { finalAccountNet, holdReason, invoiceNo, invoicedLine, paidLine, salesInvoiceFile } from "@/lib/billing";
 import { addDays, isWeekend } from "@/lib/dates";
 import { normaliseReg } from "@/lib/fleet";
+import { type OvertimeRate, storedRate } from "@/lib/overtime";
 import { basicHours } from "@/lib/payroll";
 import { needsSignOff } from "@/lib/purchases";
 import { personWeek } from "@/lib/availability";
@@ -21,7 +23,7 @@ import { ROLES } from "./roles";
 import { costingFor, linesFor, type WorkKind } from "./seed/commercial";
 import { rng } from "./seed/util";
 import { getDay, useData, usePrefs } from "./store";
-import type { AccessKey, AccessRow, Allocation, Cert, Client, Db, Expense, DepartmentKey, Enquiry, ID, LevelKey, PermKey, Person, PhotoStage, Language, Mail, MailIntent, Proof, RequestKind, RoleKey, FileCategory, FileKind, FleetDocCategory, Project, Variation, Vehicle } from "./types";
+import type { AccessKey, AccessRow, Allocation, Attendance, Cert, Client, Db, Expense, DepartmentKey, Enquiry, ID, LevelKey, PermKey, Person, PhotoStage, Language, Mail, MailAttachment, MailIntent, Proof, RequestKind, RoleKey, FileCategory, FileKind, FleetDocCategory, Project, Variation, Vehicle } from "./types";
 
 const mutate = (fn: (db: Db) => void) => useData.getState().mutate(fn);
 
@@ -67,6 +69,13 @@ function actorId(db: Db): ID | null {
   if (role === "client") return null;
   return signedInPersonId(role, asPersonId, operativeId, db.people);
 }
+
+/**
+ * A no can carry a note saying why (Oisin, 17 Nov). It is optional everywhere: blank means no
+ * note is kept. `withNote` adds it to the line that goes in a log.
+ */
+const cleanNote = (note?: string) => note?.trim().replace(/\s+/g, " ") || undefined;
+const withNote = (text: string, note?: string) => (cleanNote(note) ? `${text}. Note: ${cleanNote(note)}` : text);
 
 function log(db: Db, what: string, target: string, department: DepartmentKey, who = actorName(db)) {
   db.activity.unshift({ id: newId("act"), at: nowStamp(), who, what, target, department });
@@ -185,13 +194,16 @@ export function approveApproval(id: ID) {
   });
 }
 
-export function discardApproval(id: ID) {
+/** Discard a draft waiting in Approvals, with an optional note saying why (17 Nov). */
+export function discardApproval(id: ID, note?: string) {
   mutate((db) => {
     const a = db.approvals.find((x) => x.id === id);
     if (!a || a.status !== "Pending") return;
     a.status = "Discarded";
     a.resolvedBy = actorName(db);
     a.resolvedAt = nowStamp();
+    if (cleanNote(note)) a.discardNote = cleanNote(note);
+    else delete a.discardNote;
     if (a.kind === "variation" && a.variationId) {
       const v = db.variations.find((x) => x.id === a.variationId);
       if (v) {
@@ -201,7 +213,7 @@ export function discardApproval(id: ID) {
         if (p) settleExtras(db, p);
       }
     }
-    log(db, "Discarded a draft", a.title, "dashboard");
+    log(db, "Discarded a draft", withNote(a.title, note), "dashboard");
   });
 }
 
@@ -275,6 +287,7 @@ export function reopenApproval(id: ID) {
     a.status = "Pending";
     delete a.resolvedBy;
     delete a.resolvedAt;
+    delete a.discardNote;
     const v = a.kind === "variation" ? db.variations.find((x) => x.id === a.variationId) : undefined;
     if (v && v.status === "Rejected") {
       v.status = "Draft";
@@ -442,6 +455,35 @@ export function setSiteAccess(personId: ID, projectId: ID, on: boolean) {
       leaveSiteChat(db, projectId, personId);
     }
     log(db, on ? "Gave a site manager access to a site" : "Took away access to a site", `${who.name}, ${site.code} ${site.name}`, "admin");
+  });
+}
+
+/**
+ * Admin, Site access (Oisin, 17 Nov: "make it easier to assign which site manager should be at
+ * which site"): say who runs a site. Everything that follows the site manager follows the new
+ * one from then on: the project page, the timesheet and plan, requests from its crew, the job on
+ * their phone, and the name the crew see. The one before no longer opens it unless they are
+ * given it again; they leave its group chat and the new one joins.
+ */
+export function setSiteManager(projectId: ID, personId: ID) {
+  mutate((db) => {
+    const site = db.projects.find((x) => x.id === projectId);
+    const who = db.people.find((x) => x.id === personId);
+    if (!site || !who || !who.active || who.kind !== "Management" || (who.level ?? "site") !== "site") return;
+    if (site.siteManagerId === personId || (site.status !== "Live" && site.status !== "Not started")) return;
+    const before = db.people.find((x) => x.id === site.siteManagerId);
+    // Running it covers what being given it did.
+    db.siteAccess = db.siteAccess.filter((x) => !(x.personId === personId && x.projectId === projectId));
+    site.siteManagerId = personId;
+    const ch = db.chatChannels.find((c) => c.kind === "channel" && c.projectId === projectId);
+    if (ch && !ch.memberIds.includes(personId)) {
+      ch.memberIds.push(personId);
+      ch.lastRead[personId] = db.chatMessages.filter((m) => m.channelId === ch.id).reduce((last, m) => (m.at > last ? m.at : last), "");
+    }
+    // A site manager was in the chat because they ran the site. Office people are in every site's chat anyway.
+    if (before && (before.level ?? "site") === "site" && before.id !== site.contractsManagerId) leaveSiteChat(db, projectId, before.id);
+    audit(db, projectId, `Site manager changed to ${who.name}${before ? `, was ${before.name}` : ""}`);
+    log(db, "Changed who runs a site", `${site.code} ${site.name}: ${who.name}${before ? `, was ${before.name}` : ""}`, "admin");
   });
 }
 
@@ -798,7 +840,7 @@ export function setDayInstruction(projectId: ID, date: string, text: string) {
 }
 
 /** The managing director's yes or no to a site's request (Admin > Requests). A yes stays open until the office has arranged it. */
-export function decideSiteRequest(id: ID, approve: boolean): "planned" | "open" | "declined" | null {
+export function decideSiteRequest(id: ID, approve: boolean, note?: string): "planned" | "open" | "declined" | null {
   let outcome: "planned" | "open" | "declined" | null = null;
   mutate((db) => {
     const r = db.requests.find((x) => x.id === id);
@@ -806,6 +848,7 @@ export function decideSiteRequest(id: ID, approve: boolean): "planned" | "open" 
     r.decision = approve ? "Approved" : "Declined";
     r.decidedBy = actorName(db);
     r.decidedAt = nowStamp();
+    if (!approve && cleanNote(note)) r.declineNote = cleanNote(note);
     outcome = approve ? "open" : "declined";
     if (!approve) r.status = "Done";
     // A named person for one day (asked for on the phone planner): a yes puts them on the plan if
@@ -826,21 +869,23 @@ export function decideSiteRequest(id: ID, approve: boolean): "planned" | "open" 
       }
     }
     const p = db.projects.find((x) => x.id === siteId);
-    audit(db, siteId ?? undefined, `${approve ? "Request agreed" : "Request turned down"}: ${r.description}`);
-    log(db, approve ? "Agreed a site request" : "Turned down a site request", siteId ? `${r.description}, ${p?.code ?? ""} ${p?.name ?? ""}`.trim() : `${r.description}, not for one site`, "admin");
+    const why = approve ? undefined : note;
+    audit(db, siteId ?? undefined, withNote(`${approve ? "Request agreed" : "Request turned down"}: ${r.description}`, why));
+    log(db, approve ? "Agreed a site request" : "Turned down a site request", withNote(siteId ? `${r.description}, ${p?.code ?? ""} ${p?.name ?? ""}`.trim() : `${r.description}, not for one site`, why), "admin");
   });
   return outcome;
 }
 
 /** The managing director's yes or no to spending money (Admin > Requests). */
-export function decideSpend(id: ID, approve: boolean) {
+export function decideSpend(id: ID, approve: boolean, note?: string) {
   mutate((db) => {
     const x = db.spendRequests.find((s) => s.id === id);
     if (!x || x.status !== "Waiting") return;
     x.status = approve ? "Approved" : "Declined";
     x.decidedBy = actorName(db);
     x.decidedAt = nowStamp();
-    log(db, approve ? "Agreed to spend" : "Turned down spending", `${x.what}, ${x.amount.toFixed(2)}`, "admin");
+    if (!approve && cleanNote(note)) x.declineNote = cleanNote(note);
+    log(db, approve ? "Agreed to spend" : "Turned down spending", withNote(`${x.what}, ${x.amount.toFixed(2)}`, approve ? undefined : note), "admin");
   });
 }
 
@@ -948,8 +993,17 @@ export function addPhoto(projectId: ID, caption: string, stage: PhotoStage, pict
 
 // ── Labour: timesheet ─────────────────────────────────────────────────────────
 
-type Mark = { status: "full" | "half"; overtimeHours: number } | null;
-const markText = (m: Mark) => (m ? attendanceShort(m.status, m.overtimeHours) : "Not in");
+/** A day's mark on the timesheet. Overtime is at time and a half unless `overtimeRate` is 2, double time (17 Nov). */
+type Mark = { status: "full" | "half"; overtimeHours: number; overtimeRate?: OvertimeRate } | null;
+const markText = (m: Mark) => (m ? attendanceShort(m.status, m.overtimeHours, m.overtimeRate) : "Not in");
+/** Write a mark on an entry. The rate is kept only where there is double time overtime, so an old one never lingers. */
+function applyMark(a: Attendance, m: NonNullable<Mark>) {
+  a.status = m.status;
+  a.overtimeHours = m.status === "full" ? m.overtimeHours : 0;
+  if (a.overtimeHours > 0 && m.overtimeRate === 2) a.overtimeRate = 2;
+  else delete a.overtimeRate;
+}
+const markFields = (m: NonNullable<Mark>) => ({ status: m.status, overtimeHours: m.status === "full" ? m.overtimeHours : 0, ...storedRate(m.status === "full" ? m.overtimeHours : 0, m.overtimeRate) });
 
 /** Mark today for one person. Stays editable until the day's time stamps are sent. */
 export function markAttendance(projectId: ID, personId: ID, date: string, mark: Mark) {
@@ -961,8 +1015,11 @@ export function markAttendance(projectId: ID, personId: ID, date: string, mark: 
       if (i >= 0) db.attendance.splice(i, 1);
       return;
     }
-    if (existing) Object.assign(existing, mark, { savedBy: actorName(db), savedAt: nowStamp() });
-    else db.attendance.push({ id: newId("att"), projectId, personId, date, ...mark, savedBy: actorName(db), savedAt: nowStamp(), sent: false });
+    if (existing) {
+      applyMark(existing, mark);
+      existing.savedBy = actorName(db);
+      existing.savedAt = nowStamp();
+    } else db.attendance.push({ id: newId("att"), projectId, personId, date, ...markFields(mark), savedBy: actorName(db), savedAt: nowStamp(), sent: false });
   });
 }
 
@@ -980,16 +1037,19 @@ export function correctAttendance(projectId: ID, personId: ID, date: string, mar
   mutate((db) => {
     const i = db.attendance.findIndex((a) => a.projectId === projectId && a.personId === personId && a.date === date);
     const existing = db.attendance[i];
-    const from = markText(existing ? { status: existing.status, overtimeHours: existing.overtimeHours } : null);
+    const from = markText(existing ? { status: existing.status, overtimeHours: existing.overtimeHours, overtimeRate: existing.overtimeRate } : null);
     const to = markText(mark);
     if (from === to) return;
     const who = actorName(db);
     let attendanceId = existing?.id ?? "";
     if (!mark && i >= 0) db.attendance.splice(i, 1);
-    else if (mark && existing) Object.assign(existing, mark, { savedBy: who, savedAt: nowStamp() });
-    else if (mark) {
+    else if (mark && existing) {
+      applyMark(existing, mark);
+      existing.savedBy = who;
+      existing.savedAt = nowStamp();
+    } else if (mark) {
       attendanceId = newId("att");
-      db.attendance.push({ id: attendanceId, projectId, personId, date, ...mark, savedBy: who, savedAt: nowStamp(), sent: true });
+      db.attendance.push({ id: attendanceId, projectId, personId, date, ...markFields(mark), savedBy: who, savedAt: nowStamp(), sent: true });
     }
     db.attendanceChanges.unshift({ id: newId("chg"), attendanceId, projectId, personId, date, at: nowStamp(), by: who, from, to, reason: reason.trim() });
     log(db, "Corrected attendance", `${db.people.find((p) => p.id === personId)?.name}, ${date}: ${from} to ${to}`, "people", who);
@@ -1095,14 +1155,18 @@ export function addHoliday(personId: ID, from: string, to: string, note: string)
   return cleared;
 }
 
-export function decideHoliday(id: ID, approve: boolean) {
+/** Yes or no to a leave request. A no can say why (17 Nov); the person sees it on their phone. */
+export function decideHoliday(id: ID, approve: boolean, note?: string) {
   let cleared = 0;
   mutate((db) => {
     const h = db.holidays.find((x) => x.id === id);
     if (!h) return;
     h.status = approve ? "Approved" : "Declined";
+    h.decidedBy = actorName(db);
+    if (!approve && cleanNote(note)) h.declineNote = cleanNote(note);
+    else delete h.declineNote;
     if (approve) cleared = clearPlanForLeave(db, h.personId, h.from, h.to);
-    log(db, approve ? "Approved leave" : "Declined leave", `${db.people.find((p) => p.id === h.personId)?.name}, ${h.from} to ${h.to}`, "people");
+    log(db, approve ? "Approved leave" : "Declined leave", withNote(`${db.people.find((p) => p.id === h.personId)?.name}, ${h.from} to ${h.to}`, approve ? undefined : note), "people");
   });
   return cleared;
 }
@@ -1509,14 +1573,15 @@ export function claimExpense(x: Omit<Expense, "id" | "createdAt" | "status" | "p
   });
 }
 
-export function decideExpense(id: ID, approve: boolean) {
+export function decideExpense(id: ID, approve: boolean, note?: string) {
   mutate((db) => {
     const x = db.expenses.find((e) => e.id === id);
     if (!x || x.status !== "Waiting") return;
     x.status = approve ? "Approved" : "Declined";
     x.decidedBy = actorName(db);
     x.decidedAt = nowStamp();
-    log(db, approve ? "Approved a reimbursement" : "Declined a reimbursement", `${db.people.find((p) => p.id === x.personId)?.name}, ${x.amount.toFixed(2)}`, "admin");
+    if (!approve && cleanNote(note)) x.declineNote = cleanNote(note);
+    log(db, approve ? "Approved a reimbursement" : "Declined a reimbursement", withNote(`${db.people.find((p) => p.id === x.personId)?.name}, ${x.amount.toFixed(2)}`, approve ? undefined : note), "admin");
   });
 }
 
@@ -1571,6 +1636,23 @@ export function routeMail(id: ID, personId: ID) {
     if (!m || m.routedToId === personId) return;
     m.routedToId = personId;
     log(db, "Passed an email on", `${m.subject}: to ${db.people.find((p) => p.id === personId)?.name}`, "inbox");
+  });
+}
+
+/**
+ * Put an email under a label: it takes the label and leaves the Inbox, as in Gmail (Oisin,
+ * 17 Nov). It keeps whether it has been read. To change a label and leave the email where it is,
+ * use `tagMail`.
+ */
+export function fileMail(id: ID, label: MailIntent) {
+  mutate((db) => {
+    const m = db.mails.find((x) => x.id === id);
+    if (!m || m.folder === "Sent") return;
+    const to = filedFolder(m.folder);
+    if (m.intent === label && m.folder === to) return;
+    m.intent = label;
+    m.folder = to;
+    log(db, "Filed an email under a label", `${m.subject}: ${label}`, "inbox");
   });
 }
 
@@ -1658,14 +1740,15 @@ export function startReply(id: ID) {
 }
 
 /** Send a new email from the shared address. In the demo it is filed under Sent; a real build sends it here. */
-export function composeMail(draft: { to: string; cc?: string; bcc?: string; subject: string; body: string }) {
+export function composeMail(draft: { to: string; cc?: string; bcc?: string; subject: string; body: string; attachments?: MailAttachment[] }) {
   let id = "";
   mutate((db) => {
     const who = actorName(db);
     const domain = db.mails[0]?.mailbox.split("@")[1] ?? "abcconstruction.example";
+    const files = (draft.attachments ?? []).slice(0, MAX_ATTACHMENTS);
     id = newId("mail");
-    db.mails.unshift({ id, mailbox: `info@${domain}`, folder: "Sent", fromName: who, fromAddress: `info@${domain}`, to: draft.to.trim(), ...(draft.cc?.trim() ? { cc: draft.cc.trim() } : {}), ...(draft.bcc?.trim() ? { bcc: draft.bcc.trim() } : {}), subject: draft.subject.trim() || "(no subject)", body: draft.body, receivedAt: nowStamp(), read: true, intent: "General", routedToId: myId(db) ?? "p-md" });
-    log(db, "Sent an email", `${draft.subject.trim() || "(no subject)"}: to ${draft.to.trim()}`, "inbox", who);
+    db.mails.unshift({ id, mailbox: `info@${domain}`, folder: "Sent", fromName: who, fromAddress: `info@${domain}`, to: draft.to.trim(), ...(draft.cc?.trim() ? { cc: draft.cc.trim() } : {}), ...(draft.bcc?.trim() ? { bcc: draft.bcc.trim() } : {}), subject: draft.subject.trim() || "(no subject)", body: draft.body, receivedAt: nowStamp(), read: true, intent: "General", routedToId: myId(db) ?? "p-md", ...(files.length ? { attachments: files, attachment: files[0]!.name } : {}) });
+    log(db, "Sent an email", `${draft.subject.trim() || "(no subject)"}: to ${draft.to.trim()}${files.length ? `, with ${files.length === 1 ? files[0]!.name : `${files.length} files`}` : ""}`, "inbox", who);
   });
   return id;
 }

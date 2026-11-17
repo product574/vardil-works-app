@@ -72,7 +72,7 @@ def steps(page, ctx):
 
     # Admin switched on for the contracts managers: Billing and Roles and access stay the managing director's.
     go(page, "/admin/access")
-    page.get_by_role("switch", name="Contracts manager: Admin").click(); page.wait_for_timeout(300)
+    page.get_by_role("checkbox", name="Contracts manager: Admin").click(); page.wait_for_timeout(300)
     as_role(page, "Contracts manager")
     go(page, "/admin")
     side = page.locator("nav[aria-label$=screens]:visible")

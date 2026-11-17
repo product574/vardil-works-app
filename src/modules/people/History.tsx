@@ -5,6 +5,7 @@ import { co } from "@/data/place";
 import { useData, useDay } from "@/data/store";
 import type { Project } from "@/data/types";
 import { dWeekday, plural, when } from "@/lib/format";
+import { overtimeRate } from "@/lib/overtime";
 import { basicHours } from "@/lib/payroll";
 import { type Period, periodDays, periodLabel, periodOptions, perSite } from "@/lib/roster";
 import { attendanceShort } from "@/lib/week";
@@ -36,12 +37,14 @@ export function AttendanceHistory() {
 
   const rows = useMemo(() => db.attendance.filter((a) => inPeriod.has(a.date) && siteIds.has(a.projectId) && (siteId === "all" || a.projectId === siteId)), [db.attendance, inPeriod, siteId, sites.length]);
   const totals = useMemo(() => {
-    const m = new Map<string, { full: number; half: number; overtime: number; hours: number; sites: Set<string> }>();
+    // `overtime` is every overtime hour; `double` is the part at double time, the rest being time and a half (17 Nov).
+    const m = new Map<string, { full: number; half: number; overtime: number; double: number; hours: number; sites: Set<string> }>();
     for (const a of rows) {
-      const t = m.get(a.personId) ?? { full: 0, half: 0, overtime: 0, hours: 0, sites: new Set<string>() };
+      const t = m.get(a.personId) ?? { full: 0, half: 0, overtime: 0, double: 0, hours: 0, sites: new Set<string>() };
       if (a.status === "full") t.full++;
       else t.half++;
       t.overtime += a.overtimeHours;
+      if (overtimeRate(a) === 2) t.double += a.overtimeHours;
       t.hours += basicHours(a.date, a.status);
       t.sites.add(code(a.projectId));
       m.set(a.personId, t);
@@ -120,7 +123,8 @@ export function AttendanceHistory() {
                     <th className="num">Full days</th>
                     <th className="num">Half days</th>
                     <th className="num">Basic hours</th>
-                    <th className="num">Overtime hours</th>
+                    <th className="num">Overtime x1.5</th>
+                    <th className="num">Overtime x2</th>
                     <th className="num">Total hours</th>
                   </tr>
                 </thead>
@@ -132,7 +136,8 @@ export function AttendanceHistory() {
                       <td className="num">{t.full}</td>
                       <td className="num">{t.half || "-"}</td>
                       <td className="num">{t.hours.toLocaleString("en-IE")}</td>
-                      <td className="num">{t.overtime || "-"}</td>
+                      <td className="num">{t.overtime - t.double || "-"}</td>
+                      <td className="num">{t.double || "-"}</td>
                       <td className="num font-medium">{(t.hours + t.overtime).toLocaleString("en-IE")}</td>
                     </tr>
                   ))}
@@ -145,7 +150,8 @@ export function AttendanceHistory() {
                     <td className="num border-t border-line-strong">{totals.reduce((s, t) => s + t.full, 0)}</td>
                     <td className="num border-t border-line-strong">{totals.reduce((s, t) => s + t.half, 0)}</td>
                     <td className="num border-t border-line-strong">{totals.reduce((s, t) => s + t.hours, 0).toLocaleString("en-IE")}</td>
-                    <td className="num border-t border-line-strong">{totals.reduce((s, t) => s + t.overtime, 0)}</td>
+                    <td className="num border-t border-line-strong">{totals.reduce((s, t) => s + t.overtime - t.double, 0)}</td>
+                    <td className="num border-t border-line-strong">{totals.reduce((s, t) => s + t.double, 0)}</td>
                     <td className="num border-t border-line-strong font-medium">{totals.reduce((s, t) => s + t.hours + t.overtime, 0).toLocaleString("en-IE")}</td>
                   </tr>
                 </tfoot>
@@ -176,7 +182,7 @@ export function AttendanceHistory() {
                       <td className="whitespace-nowrap">{dWeekday(a.date)}</td>
                       <td className="font-medium">{name(a.personId)}</td>
                       <td>{code(a.projectId)}</td>
-                      <td>{attendanceShort(a.status, a.overtimeHours)}</td>
+                      <td>{attendanceShort(a.status, a.overtimeHours, a.overtimeRate)}</td>
                       <td className="text-muted">{a.savedBy}</td>
                       <td className={a.sent ? "text-muted" : "text-warn"}>{a.sent ? "Yes" : "Not yet"}</td>
                     </tr>
@@ -244,11 +250,12 @@ export function AttendanceHistory() {
                       <thead>
                         <tr>
                           <th>Name</th>
-                          <th className="num w-[13%] whitespace-normal">Full days</th>
-                          <th className="num w-[13%] whitespace-normal">Half days</th>
-                          <th className="num w-[13%] whitespace-normal">Basic hours</th>
-                          <th className="num w-[15%] whitespace-normal">Overtime hours</th>
-                          <th className="num w-[13%] whitespace-normal">Total hours</th>
+                          <th className="num w-[11%] whitespace-normal">Full days</th>
+                          <th className="num w-[11%] whitespace-normal">Half days</th>
+                          <th className="num w-[12%] whitespace-normal">Basic hours</th>
+                          <th className="num w-[13%] whitespace-normal">Overtime x1.5</th>
+                          <th className="num w-[13%] whitespace-normal">Overtime x2</th>
+                          <th className="num w-[12%] whitespace-normal">Total hours</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -263,7 +270,8 @@ export function AttendanceHistory() {
                               <td className="num">{n1(p.full)}</td>
                               <td className="num">{n1(p.half)}</td>
                               <td className="num">{n1(p.hours)}</td>
-                              <td className="num">{n1(p.overtime)}</td>
+                              <td className="num">{n1(p.overtime - p.double)}</td>
+                              <td className="num">{n1(p.double)}</td>
                               <td className="num font-medium">{n1(p.hours + p.overtime)}</td>
                             </tr>
                           );
@@ -275,7 +283,8 @@ export function AttendanceHistory() {
                           <td className="num border-t border-line-strong">{n1(s.people.reduce((n, p) => n + p.full, 0))}</td>
                           <td className="num border-t border-line-strong">{n1(s.people.reduce((n, p) => n + p.half, 0))}</td>
                           <td className="num border-t border-line-strong">{n1(s.hours)}</td>
-                          <td className="num border-t border-line-strong">{n1(s.overtime)}</td>
+                          <td className="num border-t border-line-strong">{n1(s.overtime - s.double)}</td>
+                          <td className="num border-t border-line-strong">{n1(s.double)}</td>
                           <td className="num border-t border-line-strong font-medium">{n1(s.hours + s.overtime)}</td>
                         </tr>
                       </tfoot>
@@ -317,7 +326,7 @@ export function AttendanceHistory() {
                           <tr key={a.id}>
                             <td>{dWeekday(a.date)}</td>
                             <td className="font-medium">{name(a.personId)}</td>
-                            <td>{attendanceShort(a.status, a.overtimeHours)}</td>
+                            <td>{attendanceShort(a.status, a.overtimeHours, a.overtimeRate)}</td>
                             <td className="text-muted">{a.savedBy}</td>
                             <td className={a.sent ? "text-muted" : "text-warn"}>{a.sent ? "Yes" : "Not yet"}</td>
                           </tr>
@@ -383,7 +392,7 @@ export function AttendanceHistory() {
 
         {view === "totals" && rows.length > 0 && (
           <p className="mt-3 max-w-[75ch] text-[0.93rem] text-muted">
-            Basic hours follow a 39 hour week: 8 a day Monday to Thursday, 7 on Friday, half that for a half day. Pay, overtime rates and deductions are worked out in Sage Payroll; send a week's hours from{" "}
+            Basic hours follow a 39 hour week: 8 a day Monday to Thursday, 7 on Friday, half that for a half day. Overtime is shown at the rate it was marked at on the timesheet: x1.5 is time and a half, x2 is double time (midnight to 8am, Saturday after 12 noon, Sunday and bank holidays). Total hours are hours worked. Pay and deductions are worked out in Sage Payroll; send a week's hours from{" "}
             <Link to="/people/payroll" className="font-medium text-accent-ink underline-offset-2 hover:underline">
               Payroll export
             </Link>

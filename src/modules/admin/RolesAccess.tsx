@@ -1,4 +1,4 @@
-import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { DEPARTMENTS } from "@/app/departments";
 import { EDITABLE_ROLES, exceptionCount, levelOf, levelValue, resolveAccess, useAccess } from "@/data/access";
 import { clearPersonAccess, setPersonAccess, setPersonLevel, setRoleDepartment, setRoleMoney, setRolePerm } from "@/data/actions";
@@ -7,7 +7,7 @@ import { roleDef, ROLES } from "@/data/roles";
 import { useData, usePrefs } from "@/data/store";
 import type { AccessKey, AccessRow, DepartmentKey, LevelKey, Person, PersonAccess } from "@/data/types";
 import { plural } from "@/lib/format";
-import { Badge, Button, cx, PageBody, PageHead, Panel, Section, Segmented, Switch } from "@/ui";
+import { Badge, Button, cx, PageBody, PageHead, Panel, Section, Segmented, Tick } from "@/ui";
 import { toast } from "@/ui/toast";
 
 const MONEY: { key: "seeValues" | "seeMargins"; label: string; hint: string }[] = [
@@ -35,7 +35,7 @@ export function RolesAccess() {
     <>
       <PageHead
         title="Roles and access"
-        note={view === "role" ? "Set what each level can open, see and do. Everyone at that level gets it, unless you have made an exception for them under By person." : "Start from a person's level, then switch individual things on or off just for them. Changes take effect straight away."}
+        note={view === "role" ? "What each level can open, see and do. Everyone at that level gets it, unless you have made an exception for them under By person." : "Start from a person's level, then tick or untick individual things just for them. Changes take effect straight away."}
         actions={
           <Segmented
             label="Access view"
@@ -53,19 +53,9 @@ export function RolesAccess() {
   );
 }
 
-function RoleHead({ withNames }: { withNames?: boolean }) {
-  const people = useData((s) => s.db.people);
-  return (
-    <>
-      {EDITABLE_ROLES.map((r) => (
-        <th key={r.key} className="w-36">
-          {r.title}
-          {withNames && <span className="block font-normal">{plural(people.filter((p) => p.active && levelOf(p) === r.key).length, "person", "people")}</span>}
-        </th>
-      ))}
-    </>
-  );
-}
+/** The levels across the grid: the three that can be changed, then the managing director, who always has everything. */
+const MD = ROLES.find((r) => r.key === "md")!;
+const LEVELS = [...EDITABLE_ROLES, MD];
 
 function Label({ label, hint }: { label: string; hint?: string }) {
   return (
@@ -76,94 +66,127 @@ function Label({ label, hint }: { label: string; hint?: string }) {
   );
 }
 
+/**
+ * By role, laid out like the Roles page of an earlier app of Oisin's (17 Nov): a card per level
+ * saying how many people are at it and who, then one grid of everything a level can see, do and
+ * open, with a tick where it has it and a dash where it does not. Unlike that page, a tick here
+ * can be changed: each one in a light box is a checkbox. The managing director's column is fixed.
+ */
 function ByRole() {
   const access = useData((s) => s.db.access);
+  const people = useData((s) => s.db.people);
   const row = (role: string) => access.find((a) => a.id === role);
+  const at = (role: string) => people.filter((p) => p.active && p.kind === "Management" && levelOf(p) === role).sort((a, b) => a.name.localeCompare(b.name));
+  const said = (title: string, on: boolean, what: string) => toast(`${title} level ${on ? "now has" : "no longer has"}: ${what}`);
+  /** One row of the grid: the thing, then each level's tick or dash. */
+  const line = (group: "money" | "permission" | "department", key: string, label: string, hint: string | undefined, cell: (r: (typeof EDITABLE_ROLES)[number]) => { on: boolean; change?: () => void }) => (
+    <tr key={key} data-group={group}>
+      <th scope="row" className="text-left font-normal whitespace-normal">
+        <Label label={label} hint={hint} />
+      </th>
+      {EDITABLE_ROLES.map((r) => {
+        const c = cell(r);
+        return (
+          <td key={r.key} className="align-middle">
+            <Tick on={c.on} label={`${r.title}: ${label}`} locked={!c.change} {...(c.change ? { onChange: c.change } : {})} />
+          </td>
+        );
+      })}
+      <td className="align-middle">
+        <Tick on label={`${MD.title}: ${label}`} locked />
+      </td>
+    </tr>
+  );
+  /** A heading row for each part of the grid, with the level names again so they are never far above. */
+  const part = (title: string) => (
+    <tr key={title} className="bg-side">
+      <th scope="colgroup" className="text-left text-[0.93rem] font-semibold text-ink">
+        {title}
+      </th>
+      {LEVELS.map((r) => (
+        <th key={r.key} scope="col" className="w-32 text-[0.87rem] font-medium whitespace-normal text-muted max-sm:w-20">
+          {r.title}
+        </th>
+      ))}
+    </tr>
+  );
   return (
-    <PageBody className="grid max-w-4xl gap-6">
-      <Section title="Money">
-        <Panel className="overflow-x-auto">
-          <table className="tbl">
-            <thead>
-              <tr>
-                <th>What they see</th>
-                <RoleHead withNames />
-              </tr>
-            </thead>
-            <tbody>
-              {MONEY.map((m) => (
-                <tr key={m.key}>
-                  <td>
-                    <Label {...m} />
-                  </td>
-                  {EDITABLE_ROLES.map((r) => (
-                    <td key={r.key}>
-                      <Switch on={row(r.key)?.[m.key] ?? false} label={`${r.title}: ${m.label.toLowerCase()}`} onChange={() => setRoleMoney(r.key, m.key, !row(r.key)?.[m.key])} />
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Panel>
-        <p className="mt-2 text-[0.93rem] text-muted">Margins cannot be shown without values, so switching values off hides margins too.</p>
-      </Section>
+    // One column that can shrink, so on a phone the cards keep to the screen and the grid scrolls inside its own panel.
+    <PageBody className="grid max-w-6xl grid-cols-[minmax(0,1fr)] gap-5">
+      <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Access levels">
+        {LEVELS.map((r) => {
+          const who = at(r.key);
+          return (
+            <li key={r.key} className="rounded-lg border border-line bg-surface px-4 py-3">
+              <h2 className="font-sans text-[0.93rem] font-semibold">{r.title}</h2>
+              <p className="mt-1 font-display text-[1.9rem] leading-none font-semibold tabular-nums">{who.length}</p>
+              <p className="text-[0.87rem] text-muted">{who.length === 1 ? "person" : "people"}</p>
+              <p className="mt-2 text-[0.93rem] text-muted">{r.does}</p>
+              <p className="mt-1.5 text-[0.93rem]">
+                {who.map((p, i) => (
+                  <span key={p.id}>
+                    {i > 0 && ", "}
+                    {r.locked ? (
+                      p.name
+                    ) : (
+                      <Link to={`/admin/access?person=${p.id}`} className="underline-offset-2 hover:text-accent-ink hover:underline" title={`Open ${p.name}'s own access`}>
+                        {p.name}
+                      </Link>
+                    )}
+                  </span>
+                ))}
+              </p>
+            </li>
+          );
+        })}
+      </ul>
 
-      <Section title="What they can do">
+      <div>
+        <p className="mb-2 max-w-[95ch] text-[0.93rem] text-muted">
+          A tick means the level has it, a dash means it does not. Click a tick or a dash in a box to change it; it takes effect straight away for everyone at that level. The managing director always has everything.
+        </p>
         <Panel className="overflow-x-auto">
-          <table className="tbl">
-            <thead>
-              <tr>
-                <th>Permission</th>
-                <RoleHead />
-              </tr>
-            </thead>
+          <table className="tbl" aria-label="What each level can see, do and open">
             <tbody>
-              {PERMISSIONS.map((p) => (
-                <tr key={p.key}>
-                  <td>
-                    <Label label={p.label} hint={p.hint} />
-                  </td>
-                  {EDITABLE_ROLES.map((r) => {
-                    const on = row(r.key)?.perms.includes(p.key) ?? false;
-                    return (
-                      <td key={r.key}>
-                        <Switch on={on} label={`${r.title}: ${p.label}`} onChange={() => setRolePerm(r.key, p.key, !on)} />
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
+              {part("Money they see")}
+              {MONEY.map((m) =>
+                line("money", m.key, m.label, m.hint, (r) => {
+                  const on = row(r.key)?.[m.key] ?? false;
+                  return { on, change: () => { setRoleMoney(r.key, m.key, !on); said(r.title, !on, m.label.toLowerCase()); } };
+                }),
+              )}
+              {part("What they can do")}
+              {PERMISSIONS.map((p) =>
+                line("permission", p.key, p.label, p.hint, (r) => {
+                  const on = row(r.key)?.perms.includes(p.key) ?? false;
+                  return { on, change: () => { setRolePerm(r.key, p.key, !on); said(r.title, !on, p.label); } };
+                }),
+              )}
+              {part("Departments they can open")}
+              {depts.map((d) =>
+                line("department", d.key, d.title ?? d.label, undefined, (r) => {
+                  const on = row(r.key)?.departments.includes(d.key) ?? false;
+                  // A level's home department is always on, so nobody can be locked out.
+                  if (homeDept(r.key) === d.key) return { on: true };
+                  return { on, change: () => { setRoleDepartment(r.key, d.key, !on); said(r.title, !on, d.title ?? d.label); } };
+                }),
+              )}
             </tbody>
           </table>
         </Panel>
-        <p className="mt-2 text-[0.93rem] text-muted">A permission only matters if the person can open the department it belongs to.</p>
-      </Section>
-
-      <Section title="Departments">
-        <Panel className="overflow-x-auto">
-          <table className="tbl">
-            <thead>
-              <tr>
-                <th>Department</th>
-                <RoleHead />
-              </tr>
-            </thead>
-            <tbody>
-              {depts.map((d) => (
-                <tr key={d.key}>
-                  <td className="font-medium">{d.title ?? d.label}</td>
-                  {EDITABLE_ROLES.map((r) => {
-                    const on = row(r.key)?.departments.includes(d.key) ?? false;
-                    return <td key={r.key}>{homeDept(r.key) === d.key ? <span className="text-[0.93rem] text-muted">Always on</span> : <Switch on={on} label={`${r.title}: ${d.label}`} onChange={() => setRoleDepartment(r.key, d.key, !on)} />}</td>;
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Panel>
-        <p className="mt-2 text-[0.93rem] text-muted">The managing director always sees everything. Operatives only ever get the site phone view, and clients only their own portal. A level's home department is always on, so nobody can be locked out.</p>
-      </Section>
+        <ul className="mt-2 grid max-w-[80ch] gap-1 text-[0.93rem] text-muted">
+          <li>Margins cannot be shown without values, so unticking values unticks margins too.</li>
+          <li>A permission only matters if the person can open the department it belongs to.</li>
+          <li>A tick with no box cannot be changed: a level's home department is always on, so nobody can be locked out. Operatives only ever get the site phone, and clients only their own portal.</li>
+          <li>
+            Which sites a site manager opens is on{" "}
+            <Link to="/admin/sites" className="font-medium text-accent-ink underline-offset-2 hover:underline">
+              Site access
+            </Link>
+            .
+          </li>
+        </ul>
+      </div>
     </PageBody>
   );
 }
@@ -209,15 +232,34 @@ function PersonAccessPanel({ person, row, over }: { person: Person; row: AccessR
   const n = exceptionCount(row, over);
   const first = person.name.split(" ")[0];
 
-  /** One setting: a switch showing what this person has now, and whether that differs from their level. */
+  /**
+   * One setting: what the level has (a plain tick or dash), then what this person has (a tick
+   * that can be changed), and whether that differs from their level.
+   */
   const line = (key: string, label: string, hint: string | undefined, on: boolean, same: boolean, change: () => void, fixed = false) => (
     <tr key={key} className={cx(!same && "bg-accent-soft/50")}>
-      <td>
+      <th scope="row" className="text-left font-normal whitespace-normal">
         <Label label={label} hint={hint} />
+      </th>
+      <td className="w-28 align-middle">
+        <Tick on={fixed ? true : same ? on : !on} label={`${levelTitle} level: ${label}`} locked />
       </td>
-      <td className="w-24">{fixed ? <span className="text-[0.93rem] text-muted">Always on</span> : <Switch on={on} label={`${person.name}: ${label}`} onChange={change} />}</td>
-      <td className="w-44 text-[0.93rem]">{fixed ? "" : same ? <span className="text-muted">Same as {levelTitle.toLowerCase()}</span> : <Badge tone="accent">Exception: {on ? "on" : "off"} for {first} only</Badge>}</td>
+      <td className="w-24 align-middle">
+        <Tick on={on} label={`${person.name}: ${label}`} locked={fixed} {...(fixed ? {} : { onChange: change })} />
+      </td>
+      <td className="w-48 align-middle text-[0.93rem]">{fixed ? <span className="text-muted">Always on</span> : same ? <span className="text-muted">Same as {levelTitle.toLowerCase()}</span> : <Badge tone="accent">Exception: {on ? "on" : "off"} for {first} only</Badge>}</td>
     </tr>
+  );
+  /** The heading over each part: the thing, the level, the person. */
+  const head = (what: string) => (
+    <thead>
+      <tr>
+        <th>{what}</th>
+        <th className="whitespace-normal">{levelTitle} level</th>
+        <th>{first}</th>
+        <th />
+      </tr>
+    </thead>
   );
   const perm = (key: AccessKey, label: string, hint?: string) => {
     const on = key === "seeValues" ? now.seeValues : key === "seeMargins" ? now.seeMargins : now.perms.includes(key);
@@ -275,6 +317,7 @@ function PersonAccessPanel({ person, row, over }: { person: Person; row: AccessR
       <Section title="Money">
         <Panel className="overflow-x-auto">
           <table className="tbl">
+            {head("What they see")}
             <tbody>{MONEY.map((m) => perm(m.key, m.label, m.hint))}</tbody>
           </table>
         </Panel>
@@ -282,6 +325,7 @@ function PersonAccessPanel({ person, row, over }: { person: Person; row: AccessR
       <Section title="What they can do">
         <Panel className="overflow-x-auto">
           <table className="tbl">
+            {head("Permission")}
             <tbody>{PERMISSIONS.map((p) => perm(p.key, p.label, p.hint))}</tbody>
           </table>
         </Panel>
@@ -289,6 +333,7 @@ function PersonAccessPanel({ person, row, over }: { person: Person; row: AccessR
       <Section title="Departments">
         <Panel className="overflow-x-auto">
           <table className="tbl">
+            {head("Department")}
             <tbody>
               {depts.map((d) => {
                 const on = now.departments.includes(d.key);

@@ -57,9 +57,9 @@ def steps(page, ctx):
     asides = main.locator("section h2 + div").all_inner_texts()
     check("Per site: a heading per site, with its site manager and county, like the plant overview", tables.count() >= 6 and all(re.match(r"C7\d\d ", h) for h in heads) and all(", Co. " in a for a in asides), (heads[:3], asides[:2]))
     cols = tables.first.locator("thead th").all_inner_texts()
-    check("Per site, totals: the payroll columns, with a total for each site", cols == ["Name", "Full days", "Half days", "Basic hours", "Overtime hours", "Total hours"] and all(t.startswith("Total on C7") for t in main.locator("tfoot tr td:first-child").all_inner_texts()), cols)
+    check("Per site, totals: the payroll columns, with a total for each site", cols == ["Name", "Full days", "Half days", "Basic hours", "Overtime x1.5", "Overtime x2", "Total hours"] and all(t.startswith("Total on C7") for t in main.locator("tfoot tr td:first-child").all_inner_texts()), cols)
     per = [[num(x) for x in t.split("\t")[1:]] for t in main.locator("tfoot tr").all_inner_texts()]
-    sums = [round(sum(r[i] for r in per), 2) for i in range(5)]
+    sums = [round(sum(r[i] for r in per), 2) for i in range(6)]
     check("Per site, totals: the sites add up to the totals for everyone", sums == [round(x, 2) for x in everyone], (sums, everyone))
     check("Per site: nothing scrolls sideways", page.evaluate(SCROLLS) == 0)
     page.screenshot(path=f"{OUT}/600-history-per-site-totals.png", full_page=True)
@@ -165,7 +165,7 @@ def steps(page, ctx):
     def names(cell):
         return sorted(t.strip() for t in cell.locator("button > span:first-child").all_inner_texts() if t.strip() and t.strip() != "Add")
     def month_names(cell):
-        return sorted(re.sub(r"\s*(\+[\d.]+h|half day)$", "", t.strip()) for t in cell.locator("button > span").all_inner_texts() if t.strip())
+        return sorted(re.sub(r"\s*(\+[\d.]+h( x[\d.]+)?|half day)$", "", t.strip()) for t in cell.locator("button > span").all_inner_texts() if t.strip())
     def manager_week(code, who="Eoin Brosnan"):
         go(page, "/site")
         page.get_by_role("tab", name="Site manager").click(); page.wait_for_timeout(250)
@@ -279,15 +279,17 @@ def steps(page, ctx):
     side = page.get_by_role("navigation", name="Admin screens")
     check("Site access: in Admin's sidebar under Access, after Roles and access", side.get_by_role("link", name="Site access").count() == 1 and side.inner_text().index("Roles and access") < side.inner_text().index("Site access") < side.inner_text().index("Billing"), side.inner_text())
     grid = page.get_by_role("table", name="Sites each site manager can open")
+    # 17 Nov, round seven: how many sites each person has is on a card above the grid, and the grid has ticks.
+    sites_of = lambda who: int(page.get_by_role("list", name="Site managers and their sites").locator("> li", has_text=who).locator("p").first.inner_text())
     heads = [h.split("\n")[0] for h in grid.locator("thead th").all_inner_texts()]
-    check("Site access: a column for each site manager, a row for each site that is live or about to start", heads == ["Site", "Cathal Minogue", "Darragh Lenihan", "Eoin Brosnan", "Róisín Garvey", "Shane Culloty"] and grid.locator("tbody tr").count() == 10 and grid.locator("tbody tr").first.inner_text().startswith("C719 St Finian's Church"), heads)
-    check("Site access: whoever runs a site is marked Runs it, with no switch to turn it off", grid.locator("td", has_text="Runs it").count() == 10 and grid.get_by_role("switch").count() == 40 and grid.get_by_role("switch", name="Eoin Brosnan: C719 St Finian's Church").count() == 0)
-    check("Site access: opens with one example, Shane Culloty on Granary Quay", grid.get_by_role("switch", checked=True).count() == 1 and grid.get_by_role("switch", name="Shane Culloty: C725 Granary Quay Warehouses").get_attribute("aria-checked") == "true" and "3 sites" in grid.locator("thead th").nth(5).inner_text() and "1 site has been given" in main.inner_text())
+    check("Site access: a column for each site manager, a row for each site that is live or about to start", heads == ["Site", "Site manager", "Cathal Minogue", "Darragh Lenihan", "Eoin Brosnan", "Róisín Garvey", "Shane Culloty"] and grid.locator("tbody tr").count() == 10 and grid.locator("tbody tr").first.inner_text().startswith("C719 St Finian's Church"), heads)
+    check("Site access: whoever runs a site is marked Runs it, with no switch to turn it off", grid.locator("td", has_text="Runs it").count() == 10 and grid.get_by_role("checkbox").count() == 40 and grid.get_by_role("checkbox", name="Eoin Brosnan: C719 St Finian's Church").count() == 0)
+    check("Site access: opens with one example, Shane Culloty on Granary Quay", grid.get_by_role("checkbox", checked=True).count() == 1 and grid.get_by_role("checkbox", name="Shane Culloty: C725 Granary Quay Warehouses").get_attribute("aria-checked") == "true" and sites_of("Shane Culloty") == 3 and "1 site has been given" in main.inner_text())
     check("Site access: people who see every project are listed apart", "Declan Furey and Pat Scully see every project already" in main.inner_text())
     check("Site access: fits the page", page.evaluate(SCROLLS) == 0)
     page.screenshot(path=f"{OUT}/607-site-access.png", full_page=True)
-    grid.get_by_role("switch", name="Eoin Brosnan: C720 Ardmullen House").click(); page.wait_for_timeout(300)
-    check("Site access: switching a site on gives it to them, and says so", data(page, "db.siteAccess.some(g => g.personId==='p-sm1' && g.projectId==='pr-C720')") and "Eoin Brosnan can now open C720 Ardmullen House" in toast(page) and "3 sites" in grid.locator("thead th").nth(3).inner_text() and data(page, "db.activity[0].what") == "Gave a site manager access to a site", toast(page))
+    grid.get_by_role("checkbox", name="Eoin Brosnan: C720 Ardmullen House").click(); page.wait_for_timeout(300)
+    check("Site access: switching a site on gives it to them, and says so", data(page, "db.siteAccess.some(g => g.personId==='p-sm1' && g.projectId==='pr-C720')") and "Eoin Brosnan can now open C720 Ardmullen House" in toast(page) and sites_of("Eoin Brosnan") == 3 and data(page, "db.activity[0].what") == "Gave a site manager access to a site", toast(page))
     as_role(page, "Site manager")
     go(page, "/projects", "table")
     codes = sorted(set(re.findall(r"C7\d\d", " ".join(main.get_by_role("link", name=re.compile("^C7")).all_inner_texts()))))
@@ -310,8 +312,8 @@ def steps(page, ctx):
     as_role(page, "Managing director")
     go(page, "/admin/sites", "table")
     grid = page.get_by_role("table", name="Sites each site manager can open")
-    grid.get_by_role("switch", name="Eoin Brosnan: C720 Ardmullen House").click(); page.wait_for_timeout(300)
-    check("Site access: switching it off takes the site away again", not data(page, "db.siteAccess.some(g => g.personId==='p-sm1')") and "can no longer open" in toast(page) and "2 sites" in grid.locator("thead th").nth(3).inner_text())
+    grid.get_by_role("checkbox", name="Eoin Brosnan: C720 Ardmullen House").click(); page.wait_for_timeout(300)
+    check("Site access: switching it off takes the site away again", not data(page, "db.siteAccess.some(g => g.personId==='p-sm1')") and "can no longer open" in toast(page) and sites_of("Eoin Brosnan") == 2)
     as_role(page, "Site manager")
     go(page, "/site")
     check("Taken away: his phone is back to the jobs he runs", page.get_by_role("list", name="My jobs").get_by_role("button").count() == 2)
@@ -320,7 +322,7 @@ def steps(page, ctx):
     as_role(page, "Managing director")
     # Admin switched on for the contracts managers still keeps Site access to the managing director
     go(page, "/admin/access", "table")
-    page.get_by_role("switch", name="Contracts manager: Admin").click(); page.wait_for_timeout(300)
+    page.get_by_role("checkbox", name="Contracts manager: Admin").click(); page.wait_for_timeout(300)
     as_role(page, "Contracts manager")
     go(page, "/admin")
     side = page.get_by_role("navigation", name="Admin screens")

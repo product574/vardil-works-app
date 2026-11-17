@@ -732,7 +732,7 @@ function InvoiceCheck({ s, pin }: { s: SupplierInvoice; pin: () => void }) {
 }
 
 /**
- * What goes to the accounts package for a confirmed invoice, with the fields Majella keys into
+ * What goes to the accounts package for a confirmed invoice, with the fields Oldstone's accounts key into
  * Sage by hand today (Oldstone call, 16 Nov), and the director's sign-off when it is over the limit.
  */
 function ForAccounts({ s, canSignOff, pin }: { s: SupplierInvoice; canSignOff: boolean; pin: () => void }) {

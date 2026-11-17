@@ -2,8 +2,8 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { myChannels } from "@/lib/chat";
 import { crewRequests, directorQueue, mayHandleCrewRequest, openRequestCount, requestsFor } from "@/lib/requests";
 import { managerJobs } from "@/lib/roster";
-import { opensSite } from "@/lib/site-access";
-import { actAs, addRequest, closeRequest, decideSiteRequest, setEmployeeActive, setPersonLevel, setSiteAccess } from "./actions";
+import { opensSite, siteAccessPeople, siteCodes, siteManagerChoices, sitesToShare } from "@/lib/site-access";
+import { actAs, addRequest, closeRequest, decideSiteRequest, setEmployeeActive, setPersonLevel, setSiteAccess, setSiteManager } from "./actions";
 import { buildSeed } from "./seed";
 import { useData, usePrefs } from "./store";
 
@@ -114,5 +114,86 @@ describe("a site manager's general request, not for one site", () => {
     ask();
     expect(decideSiteRequest(db().requests[0]!.id, false)).toBe("declined");
     expect(db().requests[0]).toMatchObject({ status: "Done", decision: "Declined" });
+  });
+});
+
+// Saying who runs a site (Oisin, 17 Nov: "make it easier to assign which site manager should be
+// at which site").
+describe("changing who runs a site", () => {
+  const chat = (id: string) => db().chatChannels.find((c) => c.kind === "channel" && c.projectId === id)!;
+
+  it("hands the site over: the new site manager has it everywhere, the one before does not", () => {
+    expect(site("C720").siteManagerId).toBe(CATHAL);
+    setSiteManager("pr-C720", EOIN);
+    expect(site("C720").siteManagerId).toBe(EOIN);
+    expect(managerJobs(db().projects, EOIN, db().siteAccess).map((p) => p.code)).toEqual(["C719", "C720", "C724"]);
+    expect(managerJobs(db().projects, CATHAL, db().siteAccess).map((p) => p.code)).toEqual(["C727"]);
+    expect(opensSite(site("C720"), CATHAL, db().siteAccess)).toBe(false);
+    // The group chat follows: Eoin joins with nothing unread, Cathal leaves.
+    expect(chat("pr-C720").memberIds).toContain(EOIN);
+    expect(chat("pr-C720").memberIds).not.toContain(CATHAL);
+    expect(myChannels(db().chatChannels, EOIN).channels.some((c) => c.projectId === "pr-C720")).toBe(true);
+    // It is written on the project and in the activity log.
+    expect(site("C720").audit.at(-1)).toMatchObject({ what: "Site manager changed to Eoin Brosnan, was Cathal Minogue", who: "Aidan King" });
+    expect(db().activity[0]).toMatchObject({ what: "Changed who runs a site", target: "C720 Ardmullen House: Eoin Brosnan, was Cathal Minogue" });
+  });
+
+  it("sends the crew's requests to the new site manager", () => {
+    actAs("p-103", () => addRequest({ projectId: "pr-C720", kind: "own_plant", description: "A second barrow", quantity: 1, neededFrom: "2026-11-18", neededTo: "2026-11-24", notes: "", heldBy: "site" }));
+    expect(mayHandleCrewRequest(site("C720"), CATHAL, db().siteAccess)).toBe(true);
+    setSiteManager("pr-C720", EOIN);
+    expect(mayHandleCrewRequest(site("C720"), EOIN, db().siteAccess)).toBe(true);
+    expect(mayHandleCrewRequest(site("C720"), CATHAL, db().siteAccess)).toBe(false);
+    expect(crewRequests(db().requests, managerJobs(db().projects, EOIN, db().siteAccess).map((p) => p.id)).some((r) => r.description === "A second barrow")).toBe(true);
+  });
+
+  it("uses up a site that had been given: running it covers that", () => {
+    // Shane Culloty was given C725 in the sample data; now he runs it.
+    expect(db().siteAccess.some((g) => g.personId === "p-sm5" && g.projectId === "pr-C725")).toBe(true);
+    const before = site("C725").siteManagerId;
+    setSiteManager("pr-C725", "p-sm5");
+    expect(site("C725").siteManagerId).toBe("p-sm5");
+    expect(db().siteAccess.some((g) => g.personId === "p-sm5" && g.projectId === "pr-C725")).toBe(false);
+    expect(chat("pr-C725").memberIds).toContain("p-sm5");
+    expect(chat("pr-C725").memberIds).not.toContain(before);
+    // The one before can be ticked back on as someone who opens it.
+    setSiteAccess(before, "pr-C725", true);
+    expect(opensSite(site("C725"), before, db().siteAccess)).toBe(true);
+    expect(chat("pr-C725").memberIds).toContain(before);
+  });
+
+  it("is refused for someone who is not an active site manager, for the same person, and for a finished job", () => {
+    setSiteManager("pr-C720", "p-cm1"); // a contracts manager
+    setSiteManager("pr-C720", "p-103"); // an operative
+    setSiteManager("pr-C720", CATHAL); // already runs it
+    expect(site("C720").siteManagerId).toBe(CATHAL);
+    setEmployeeActive(EOIN, false);
+    setSiteManager("pr-C720", EOIN);
+    expect(site("C720").siteManagerId).toBe(CATHAL);
+    const done = db().projects.find((p) => p.status !== "Live" && p.status !== "Not started")!;
+    const was = done.siteManagerId;
+    setSiteManager(done.id, was === EOIN ? CATHAL : "p-sm3");
+    expect(db().projects.find((p) => p.id === done.id)!.siteManagerId).toBe(was);
+  });
+
+  it("offers everyone at site manager level, by name, and whoever runs it now", () => {
+    const names = siteManagerChoices(db(), site("C720")).map((p) => p.name);
+    expect(names).toContain("Cathal Minogue");
+    expect(names).toContain("Eoin Brosnan");
+    expect(names).toEqual([...names].sort((a, b) => a.localeCompare(b)));
+    expect(names).not.toContain("Tadhg Morrissey");
+    // Someone moved off the level still shows on the site they run, so the box is never blank.
+    setPersonLevel(CATHAL, "contracts");
+    expect(siteManagerChoices(db(), site("C720")).map((p) => p.id)).toContain(CATHAL);
+    expect(siteManagerChoices(db(), site("C719")).map((p) => p.id)).not.toContain(CATHAL);
+  });
+
+  it("sums up each site manager's sites as codes", () => {
+    const sites = sitesToShare(db().projects);
+    expect(siteCodes(sites, EOIN, db().siteAccess)).toEqual({ runs: ["C719", "C724"], given: [] });
+    expect(siteCodes(sites, "p-sm5", db().siteAccess)).toEqual({ runs: ["C723", "C726"], given: ["C725"] });
+    setSiteManager("pr-C720", EOIN);
+    expect(siteCodes(sites.map((s) => site(s.code)), EOIN, db().siteAccess).runs).toEqual(["C719", "C720", "C724"]);
+    expect(siteAccessPeople(db()).choose.map((p) => p.id)).toContain(EOIN);
   });
 });

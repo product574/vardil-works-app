@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildSeed } from "@/data/seed";
 import type { Mail } from "@/data/types";
-import { actionItems, byDay, folderCounts, inFolder, isFocused, newestFirst, plainText, rowWhen, searchMail, summary, withLabel } from "./mail";
+import { actionItems, attachmentsOf, byDay, filedFolder, folderCounts, inFolder, isFocused, labelUnread, newestFirst, plainText, rowWhen, searchMail, sizeLabel, summary, whereKept, withLabel } from "./mail";
 
 const mail = (id: string, extra: Partial<Mail> = {}): Mail => ({ id, mailbox: "info@x", folder: "Inbox", fromName: "Ann Lee", fromAddress: "ann@x", subject: `Subject ${id}`, body: "Hi Tadhg,\n\nThe wall is wet. Can you look?\n\nThanks,\nAnn", receivedAt: "2026-11-16T09:00:00", read: false, intent: "Enquiry", routedToId: "p-cm1", ...extra });
 
@@ -72,5 +72,52 @@ describe("sample data", () => {
   });
   it("every summary reads as words, not an empty quote", () => {
     for (const m of db.mails) expect(summary(m).length, m.id).toBeGreaterThan(m.fromName.length + m.subject.length + 20);
+  });
+});
+
+// Putting an email under a label takes it out of the Inbox, as in Gmail (Oisin, 17 Nov).
+describe("filing under a label", () => {
+  it("takes an inbox email out of the inbox, and leaves an archived or filed one where it is", () => {
+    expect(filedFolder("Inbox")).toBe("Filed");
+    expect(filedFolder("Archive")).toBe("Archive");
+    expect(filedFolder("Filed")).toBe("Filed");
+    expect(filedFolder("Sent")).toBe("Sent");
+  });
+  const ms = [mail("a"), mail("b", { folder: "Filed" }), mail("c", { folder: "Filed", read: true }), mail("d", { folder: "Archive" }), mail("e", { folder: "Sent" }), mail("f", { folder: "Filed", starred: true, intent: "Complaint", replyDraft: { subject: "RE", body: "x" } })];
+  it("is no longer in the Inbox or the Archive, and is found under its label", () => {
+    expect(inFolder(ms, "Inbox").map((m) => m.id)).toEqual(["a"]);
+    expect(inFolder(ms, "Archive").map((m) => m.id)).toEqual(["d"]);
+    expect(withLabel(ms, "Enquiry").map((m) => m.id)).toEqual(["a", "b", "c", "d"]);
+    expect(withLabel(ms, "Complaint").map((m) => m.id)).toEqual(["f"]);
+  });
+  it("still shows under Starred and Drafts", () => {
+    expect(inFolder(ms, "Starred").map((m) => m.id)).toEqual(["f"]);
+    expect(inFolder(ms, "Drafts").map((m) => m.id)).toEqual(["f"]);
+  });
+  it("counts as unread under its label, but not in the Inbox count", () => {
+    expect(labelUnread(ms, "Enquiry")).toBe(2);
+    expect(labelUnread(ms, "Complaint")).toBe(1);
+    expect(folderCounts(ms).Inbox).toBe(1);
+  });
+  it("says where an email is kept", () => {
+    expect(whereKept({ folder: "Filed", intent: "Enquiry" })).toBe("Filed under Enquiry, out of the inbox");
+    expect(whereKept({ folder: "Archive", intent: "Enquiry" })).toBe("Archived");
+    expect(whereKept({ folder: "Inbox", intent: "Enquiry" })).toBe("Inbox");
+  });
+});
+
+describe("attachments", () => {
+  it("are the files attached here, or the one a sample email names", () => {
+    expect(attachmentsOf({})).toEqual([]);
+    expect(attachmentsOf({ attachment: "survey.pdf" })).toEqual([{ name: "survey.pdf" }]);
+    const files = [{ name: "a.jpg", sizeKb: 240, dataUrl: "data:image/jpeg;base64,xx" }, { name: "b.pdf", sizeKb: 1100, dataUrl: "data:application/pdf;base64,xx" }];
+    expect(attachmentsOf({ attachment: "a.jpg", attachments: files })).toBe(files);
+  });
+  it("are searched by name", () => {
+    const found = searchMail([mail("a", { attachments: [{ name: "gable-photo.jpg", sizeKb: 200 }] }), mail("b")], "gable-photo");
+    expect(found.map((m) => m.id)).toEqual(["a"]);
+  });
+  it("show their size", () => {
+    expect([sizeLabel(240), sizeLabel(999.6), sizeLabel(1100), sizeLabel(0.2)]).toEqual(["240 KB", "1.0 MB", "1.1 MB", "1 KB"]);
   });
 });

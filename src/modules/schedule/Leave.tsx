@@ -5,7 +5,7 @@ import { useData, useDay } from "@/data/store";
 import type { Db, Holiday } from "@/data/types";
 import { dFull, dShort, plural } from "@/lib/format";
 import { leaveGroups, overlapping, workingDays } from "@/lib/roster";
-import { Badge, Button, Empty, PageBody, PageHead, Panel, Section } from "@/ui";
+import { Badge, Button, type DeclineAsk, DeclineDialog, DeclineNote, Empty, PageBody, PageHead, Panel, Section } from "@/ui";
 import { toast } from "@/ui/toast";
 import { RecordLeaveDialog } from "../people/Team";
 
@@ -88,8 +88,9 @@ export function HolidayRequests() {
   const db = useData((s) => s.db);
   const day = useDay();
   const canDecide = useAccess().may("approveLeave");
-  const { requested } = leaveGroups(db.holidays, day);
+  const { requested, declined } = leaveGroups(db.holidays, day);
   const code = (id: string) => db.projects.find((p) => p.id === id)?.code ?? "";
+  const [no, setNo] = useState<DeclineAsk | null>(null);
   return (
     <>
       <PageHead
@@ -129,10 +130,19 @@ export function HolidayRequests() {
                     <div className="flex justify-end gap-2 pt-1">
                       <Button
                         variant="ghost"
-                        onClick={() => {
-                          decideHoliday(h.id, false);
-                          toast(`Leave declined for ${p?.name}`);
-                        }}
+                        aria-label={`Decline leave for ${p?.name}`}
+                        onClick={() =>
+                          setNo({
+                            title: `Decline leave for ${p?.name}?`,
+                            about: `${h.from === h.to ? dFull(h.from) : `${dFull(h.from)} to ${dFull(h.to)}`}, ${plural(workingDays(h.from, h.to), "working day")}.`,
+                            hint: `Say why, if it helps. ${p?.name?.split(" ")[0]} sees it with the answer on the site phone.`,
+                            confirm: "Decline leave",
+                            run: (note) => {
+                              decideHoliday(h.id, false, note);
+                              toast(`Leave declined for ${p?.name}${note ? ", with your note" : ""}`);
+                            },
+                          })
+                        }
                       >
                         Decline
                       </Button>
@@ -152,7 +162,28 @@ export function HolidayRequests() {
             );
           })}
         </ul>
+        {declined.length > 0 && (
+          <Section title={`Declined (${declined.length})`}>
+            <Panel>
+              <ul className="divide-y divide-line" aria-label="Declined holiday requests">
+                {declined.map((h) => {
+                  const p = db.people.find((x) => x.id === h.personId);
+                  return (
+                    <li key={h.id} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-3 py-2">
+                      <span className="min-w-0 flex-1">
+                        <span className="font-medium">{p?.name}</span>, {h.from === h.to ? dFull(h.from) : `${dShort(h.from)} to ${dFull(h.to)}`}
+                        <DeclineNote note={h.declineNote} />
+                      </span>
+                      <span className="text-[0.93rem] text-muted">Declined{h.decidedBy ? ` by ${h.decidedBy}` : ""}</span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </Panel>
+          </Section>
+        )}
       </PageBody>
+      <DeclineDialog ask={no} onClose={() => setNo(null)} />
     </>
   );
 }

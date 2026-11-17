@@ -30,7 +30,7 @@ with sync_playwright() as p:
     bar.get_by_role("link", name="Invoicing").click(); side.get_by_role("link", name=re.compile("^Held")).click(); page.wait_for_selector("text=The reason is under each invoice")
     assert main.locator("tbody tr[data-invoice]").count() == 2
     bar.get_by_role("link", name="Admin").click(); side.get_by_role("link", name="Site access").click(); page.wait_for_selector("table[aria-label='Sites each site manager can open']")
-    main.get_by_role("switch", name="Eoin Brosnan: C720 Ardmullen House").click(); page.wait_for_selector("text=Eoin Brosnan can now open C720 Ardmullen House")
+    main.get_by_role("checkbox", name="Eoin Brosnan: C720 Ardmullen House").click(); page.wait_for_selector("text=Eoin Brosnan can now open C720 Ardmullen House")
     bar.get_by_role("link", name="Site phone").click(); page.get_by_role("tab", name="Site manager").click(); page.wait_for_timeout(300)
     page.get_by_label("Site manager to view the phone as").select_option(label="Eoin Brosnan"); page.wait_for_selector("text=Run by Cathal Minogue")
     phone = page.get_by_label("Phone screen")

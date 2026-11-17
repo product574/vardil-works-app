@@ -166,7 +166,7 @@ export function seedPeople(r: Rng, today: string, domain: string) {
     { id: "hol-5", personId: "p-117", from: workdays(today, 8), to: workdays(today, 9), status: "Approved", via: "Email" },
     { id: "hol-6", personId: "p-sm4", from: workdays(today, 15), to: workdays(today, 19), status: "Approved", via: "Form" },
     { id: "hol-7", personId: "p-114", from: workdays(today, -8), to: workdays(today, -4), status: "Approved", via: "Form" },
-    { id: "hol-8", personId: "p-125", from: workdays(today, 2), to: workdays(today, 4), status: "Declined", via: "Phone", note: "Short notice, and Ardmullen needs the full crew that week" },
+    { id: "hol-8", personId: "p-125", from: workdays(today, 2), to: workdays(today, 4), status: "Declined", via: "Phone", note: "A few days at home", decidedBy: "Tadhg Morrissey", declineNote: "Short notice, and Ardmullen needs the full crew that week" },
   ];
 
   return { people, holidays };

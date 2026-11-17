@@ -1,13 +1,14 @@
 import { Link } from "react-router-dom";
 import { useAccess } from "@/data/access";
 import { decideExpense, decideHoliday, decideSiteRequest, decideSpend, signOffSupplierInvoice } from "@/data/actions";
+import { useState } from "react";
 import { useData, useDay, usePrefs } from "@/data/store";
 import type { Db } from "@/data/types";
 import { dFull, dShort, plural, when } from "@/lib/format";
 import { money0, money2 } from "@/lib/money";
 import { SIGN_OFF_OVER } from "@/lib/purchases";
 import { directorQueue, recentlyDecided } from "@/lib/requests";
-import { Badge, Button, Empty, PageBody, PageHead, Panel, Section } from "@/ui";
+import { Badge, Button, type DeclineAsk, DeclineDialog, DeclineNote, Empty, PageBody, PageHead, Panel, Section } from "@/ui";
 import { toast } from "@/ui/toast";
 
 const KIND: Record<string, string> = { personnel: "People", own_plant: "Our plant", hired_plant: "Plant to hire", other: "Something else" };
@@ -29,10 +30,12 @@ export function Requests() {
   const project = (id: string | null) => db.projects.find((p) => p.id === id);
   const planned = (personId: string, from: string, to: string) => db.plan.filter((p) => p.personId === personId && p.date >= from && p.date <= to).length;
   const decided = recentlyDecided(db, day);
-  const yesNo = (allowed: boolean, onNo: () => void, onYes: () => void, what: string) =>
+  // Every no here can carry a note saying why (17 Nov): Decline opens a box for it, which can be left empty.
+  const [no, setNo] = useState<DeclineAsk | null>(null);
+  const yesNo = (allowed: boolean, onNo: (note: string) => void, onYes: () => void, what: string, hint?: string) =>
     allowed ? (
       <td className="text-right whitespace-nowrap">
-        <Button size="sm" variant="ghost" aria-label={`Decline: ${what}`} onClick={onNo}>
+        <Button size="sm" variant="ghost" aria-label={`Decline: ${what}`} onClick={() => setNo({ title: "Decline this request?", about: `${what[0]!.toUpperCase()}${what.slice(1)}.`, ...(hint ? { hint } : {}), run: onNo })}>
           Decline
         </Button>{" "}
         <Button size="sm" aria-label={`Approve: ${what}`} onClick={onYes}>
@@ -84,9 +87,10 @@ export function Requests() {
                         <td>{clash > 0 ? <Badge tone="warn">{plural(clash, "day")} already planned</Badge> : <span className="text-muted">None</span>}</td>
                         {yesNo(
                           canLeave,
-                          () => { decideHoliday(h.id, false); toast(`Leave declined for ${p?.name}`); },
+                          (note) => { decideHoliday(h.id, false, note); toast(`Leave declined for ${p?.name}${note ? ", with your note" : ""}`); },
                           () => { const cleared = decideHoliday(h.id, true); toast(`Leave approved for ${p?.name}${cleared > 0 ? `. ${plural(cleared, "planned day")} taken off the week ahead` : ""}`); },
                           `leave for ${p?.name}`,
+                          `Say why, if it helps. ${p?.name?.split(" ")[0]} sees it with the answer on the site phone.`,
                         )}
                       </tr>
                     );
@@ -145,7 +149,7 @@ export function Requests() {
                         </td>
                         {yesNo(
                           canAnswer,
-                          () => { decideSiteRequest(r.id, false); toast(`Turned down: ${r.description}`); },
+                          (note) => { decideSiteRequest(r.id, false, note); toast(`Turned down: ${r.description}${note ? ", with your note" : ""}`); },
                           () => { const out = decideSiteRequest(r.id, true); toast(out === "planned" ? `Agreed: ${r.description}. They are on the plan for ${p?.code} that day` : `Agreed: ${r.description}. It stays on Requests until the office has arranged it`); },
                           r.description,
                         )}
@@ -188,7 +192,7 @@ export function Requests() {
                         </td>
                         {yesNo(
                           canAnswer,
-                          () => { decideSpend(x.id, false); toast(`Turned down: ${x.what}`); },
+                          (note) => { decideSpend(x.id, false, note); toast(`Turned down: ${x.what}${note ? ", with your note" : ""}`); },
                           () => { decideSpend(x.id, true); toast(`Agreed: ${x.what}`); },
                           x.what,
                         )}
@@ -245,7 +249,7 @@ export function Requests() {
                         </td>
                         {yesNo(
                           canAnswer,
-                          () => { decideExpense(x.id, false); toast(`Reimbursement declined for ${p?.name}`); },
+                          (note) => { decideExpense(x.id, false, note); toast(`Reimbursement declined for ${p?.name}${note ? ", with your note" : ""}`); },
                           () => { decideExpense(x.id, true); toast(`Reimbursement approved for ${p?.name}. Accounts pay it back`); },
                           `reimbursement for ${p?.name}`,
                         )}
@@ -306,6 +310,7 @@ export function Requests() {
         )}
 
         {decided.length > 0 && <Decided db={db} day={day} items={decided} />}
+        <DeclineDialog ask={no} onClose={() => setNo(null)} />
       </PageBody>
     </>
   );
@@ -319,12 +324,20 @@ function Decided({ db, day, items }: { db: Db; day: string; items: ReturnType<ty
         <ul className="divide-y divide-line">
           {items.map((d) => {
             const yes = d.kind === "site" ? d.item.decision === "Approved" : d.item.status === "Approved";
-            const what = d.kind === "site" ? `${d.item.description}, ${db.projects.find((p) => p.id === d.item.projectId)?.code ?? "general"}` : d.item.what;
+            const what =
+              d.kind === "site"
+                ? `${d.item.description}, ${db.projects.find((p) => p.id === d.item.projectId)?.code ?? "general"}`
+                : d.kind === "expense"
+                  ? `Reimbursement for ${db.people.find((p) => p.id === d.item.personId)?.name}: ${d.item.kind.toLowerCase()}`
+                  : d.item.what;
             const by = d.item.decidedBy;
             return (
               <li key={d.item.id} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-3 py-2">
                 <Badge tone={yes ? "ok" : "neutral"}>{yes ? "Approved" : "Declined"}</Badge>
-                <span className="min-w-0 flex-1">{what}</span>
+                <span className="min-w-0 flex-1">
+                  {what}
+                  {!yes && <DeclineNote note={d.item.declineNote} />}
+                </span>
                 <span className="text-[0.93rem] text-muted">
                   {by}, {when(d.at, day)}
                 </span>

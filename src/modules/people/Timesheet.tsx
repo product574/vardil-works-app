@@ -7,12 +7,13 @@ import { useData, useDay } from "@/data/store";
 import type { Attendance, Person } from "@/data/types";
 import { addDays } from "@/lib/dates";
 import { dLong, dShort, plural } from "@/lib/format";
-import { attendanceChoice, attendanceShort, workWeek } from "@/lib/week";
+import { OVERTIME_RULES, rateName, rateShort } from "@/lib/overtime";
+import { type AttendanceChoice as Choice, attendanceChoice, attendanceShort, choiceMark as toMark, workWeek } from "@/lib/week";
 import { Button, cx, Dialog, Empty, Field, NumInput, PageBody, PageHead, Panel } from "@/ui";
 import { toast } from "@/ui/toast";
 
-type Choice = "" | "full" | "half" | "overtime";
-const toMark = (c: Choice, hours: number) => (c === "" ? null : c === "half" ? { status: "half" as const, overtimeHours: 0 } : { status: "full" as const, overtimeHours: c === "overtime" ? Math.max(0.5, hours) : 0 });
+/** Overtime is marked at one of two rates (17 Nov): "overtime" is time and a half, "double" is double time. */
+const isOvertime = (c: Choice) => c === "overtime" || c === "double";
 
 /** The week's attendance for one site. Today's column is filled in and sent; earlier days are corrected with a reason. */
 export function Timesheet() {
@@ -189,6 +190,7 @@ export function Timesheet() {
           </Button>
           <p className="text-[0.93rem] text-muted">Click any earlier day to correct it. Every correction keeps the old value, who changed it and why.</p>
         </div>
+        <OvertimeRules />
       </PageBody>
 
       {fix && <CorrectDialog key={`${fix.person.id}-${fix.date}`} person={fix.person} date={fix.date} a={entry(fix.person.id, fix.date)} onClose={() => setFix(null)} onSave={(mark, reason) => correctAttendance(site.id, fix.person.id, fix.date, mark, reason)} />}
@@ -204,7 +206,7 @@ function Cell({ person, date, day, startDate, a, onLeave, onMark, onFix, canMark
   if (date < startDate) return <span className="text-faint">Not started</span>;
 
   // Today, until the day is sent: marked straight in the grid.
-  const text = a ? attendanceShort(a.status, a.overtimeHours) : "Not in";
+  const text = a ? attendanceShort(a.status, a.overtimeHours, a.overtimeRate) : "Not in";
   if (date === day && !a?.sent && !canMark) return <span className="px-2 text-muted">{a ? text : "Not marked"}</span>;
   if ((date < day || a?.sent) && !canCorrect) return <span className={cx("px-2", a ? (a.status === "half" ? "text-warn" : "") : "text-muted")}>{text}</span>;
   if (date === day && !a?.sent) {
@@ -215,17 +217,18 @@ function Cell({ person, date, day, startDate, a, onLeave, onMark, onFix, canMark
           <option value="">Not marked</option>
           <option value="full">Full day</option>
           <option value="half">Half day</option>
-          <option value="overtime">Full + overtime</option>
+          <option value="overtime">Full + time and a half</option>
+          <option value="double">Full + double time</option>
         </select>
-        {choice === "overtime" && <NumInput label={`Overtime hours for ${person.name}`} className="w-12 shrink-0 px-1.5" value={a?.overtimeHours ?? 1} onChange={(n) => onMark(toMark("overtime", n))} />}
+        {isOvertime(choice) && <NumInput label={`Overtime hours for ${person.name}`} className="w-12 shrink-0 px-1.5" value={a?.overtimeHours ?? 1} onChange={(n) => onMark(toMark(choice, n))} />}
       </span>
     );
   }
 
   // Sent days change only through a correction.
   return (
-    <button type="button" onClick={onFix} title="Correct this day" aria-label={`${person.name}, ${dShort(date)}: ${a ? attendanceShort(a.status, a.overtimeHours) : "not in"}. Correct this day`} className={cx("press h-8 w-full rounded-md px-2 text-left hover:bg-accent-soft", a ? (a.status === "half" ? "text-warn" : "text-ink") : "border border-dashed border-line-strong text-muted")}>
-      {a ? attendanceShort(a.status, a.overtimeHours) : "Not in"}
+    <button type="button" onClick={onFix} title="Correct this day" aria-label={`${person.name}, ${dShort(date)}: ${a ? attendanceShort(a.status, a.overtimeHours, a.overtimeRate) : "not in"}. Correct this day`} className={cx("press h-8 w-full rounded-md px-2 text-left hover:bg-accent-soft", a ? (a.status === "half" ? "text-warn" : "text-ink") : "border border-dashed border-line-strong text-muted")}>
+      {a ? attendanceShort(a.status, a.overtimeHours, a.overtimeRate) : "Not in"}
     </button>
   );
 }
@@ -234,9 +237,9 @@ function CorrectDialog({ person, date, a, onClose, onSave }: { person: Person; d
   const [choice, setChoice] = useState<Choice>(attendanceChoice(a));
   const [hours, setHours] = useState(a?.overtimeHours || 1);
   const [reason, setReason] = useState("");
-  const was = a ? attendanceShort(a.status, a.overtimeHours) : "Not in";
+  const was = a ? attendanceShort(a.status, a.overtimeHours, a.overtimeRate) : "Not in";
   const next = toMark(choice, hours);
-  const now = next ? attendanceShort(next.status, next.overtimeHours) : "Not in";
+  const now = next ? attendanceShort(next.status, next.overtimeHours, next.overtimeRate) : "Not in";
   return (
     <Dialog
       open
@@ -271,16 +274,49 @@ function CorrectDialog({ person, date, a, onClose, onSave }: { person: Person; d
                 <option value="">Not in</option>
                 <option value="full">Full day</option>
                 <option value="half">Half day</option>
-                <option value="overtime">Full + overtime</option>
+                <option value="overtime">Full + time and a half</option>
+                <option value="double">Full + double time</option>
               </select>
             )}
           </Field>
-          {choice === "overtime" && <Field label="Overtime hours">{() => <NumInput label="Overtime hours" className="h-9 w-full" value={hours} onChange={setHours} />}</Field>}
+          {isOvertime(choice) && <Field label="Overtime hours">{() => <NumInput label="Overtime hours" className="h-9 w-full" value={hours} onChange={setHours} />}</Field>}
         </div>
+        {isOvertime(choice) && (
+          <p className="text-[0.93rem] text-muted">
+            {plural(Math.max(0.5, hours), "hour")} of overtime at {rateName(choice === "double" ? 2 : 1.5)}. Double time is for midnight to 8am, Saturday after 12 noon, Sunday and bank holidays.
+          </p>
+        )}
         <Field label="Reason for the correction" hint="Kept with the change in the attendance history.">
           {(id) => <input id={id} className="field" value={reason} placeholder="Left at lunch for a hospital appointment" onChange={(e) => setReason(e.target.value)} />}
         </Field>
       </div>
     </Dialog>
+  );
+}
+
+/**
+ * The firm's overtime rule, beside where overtime is marked (Oisin, 17 Nov): which hours are at
+ * time and a half and which at double time. Whoever marks the day picks the rate from it.
+ */
+export function OvertimeRules({ className }: { className?: string }) {
+  return (
+    <section aria-label="Overtime rates" className={cx("max-w-3xl rounded-lg border border-line bg-surface px-4 py-3", className)}>
+      <h2 className="text-base">Overtime rates</h2>
+      <div className="mt-2 grid gap-x-8 gap-y-3 sm:grid-cols-2">
+        {OVERTIME_RULES.map((r) => (
+          <div key={r.rate}>
+            <p className="font-medium">
+              {r.rate === 2 ? "Double time" : "Time and a half"} <span className="font-normal text-muted">({rateShort(r.rate)})</span>
+            </p>
+            <ul className="mt-0.5 text-[0.93rem] text-muted">
+              {r.when.map((w) => (
+                <li key={w}>{w}</li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+      <p className="mt-3 text-[0.93rem] text-muted">Pick the rate when you mark overtime on a day. The hours at each rate carry through to attendance history, the payroll file and job costs. Pay itself is worked out in the payroll package.</p>
+    </section>
   );
 }

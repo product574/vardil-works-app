@@ -4,7 +4,7 @@
  */
 import clsx from "clsx";
 import { type ButtonHTMLAttributes, type ReactNode, useCallback, useEffect, useId, useRef, useState } from "react";
-import { X } from "@phosphor-icons/react";
+import { Check, Minus, X } from "@phosphor-icons/react";
 
 export const cx = clsx;
 
@@ -216,6 +216,59 @@ export function Dialog({ open, onClose, title, children, footer, wide }: { open:
   );
 }
 
+/** What a no is about: the heading, a line saying what is being declined, and what to do with the note. */
+export type DeclineAsk = { title: string; about?: ReactNode; hint?: string; confirm?: string; run: (note: string) => void };
+
+/**
+ * A no with an optional note saying why (Oisin, 17 Nov: "if an approval needs to decline for
+ * anything add an optional note"). Nothing has to be typed: the button works with the box empty,
+ * and then no note is kept.
+ */
+export function DeclineDialog({ ask, onClose }: { ask: DeclineAsk | null; onClose: () => void }) {
+  const [note, setNote] = useState("");
+  // The words stay while the dialog closes, so it does not empty before it has gone.
+  const last = useRef<DeclineAsk | null>(null);
+  if (ask) last.current = ask;
+  const a = ask ?? last.current;
+  useEffect(() => {
+    if (ask) setNote("");
+  }, [ask]);
+  const confirm = a?.confirm ?? "Decline";
+  return (
+    <Dialog
+      open={!!ask}
+      onClose={onClose}
+      title={a?.title ?? ""}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            onClick={() => {
+              ask?.run(note.trim());
+              onClose();
+            }}
+          >
+            {confirm}
+          </Button>
+        </>
+      }
+    >
+      {a?.about && <p className="mb-3">{a.about}</p>}
+      <Field label="Note (optional)" hint={a?.hint ?? "Say why, if it helps. It is kept with the answer."}>
+        {(id) => <textarea id={id} rows={3} maxLength={300} className="field" value={note} onChange={(e) => setNote(e.target.value)} />}
+      </Field>
+    </Dialog>
+  );
+}
+
+/** The note left with a no, as whoever asked reads it. Shows nothing when there is none. */
+export function DeclineNote({ note, className }: { note?: string; className?: string }) {
+  return note ? <span className={cx("block text-[0.87rem] text-muted", className)}>Note: {note}</span> : null;
+}
+
 // ── Menu ──────────────────────────────────────────────────────────────────────
 
 /** A small popover that opens from its trigger and closes on outside click or Escape. */
@@ -313,6 +366,26 @@ export function Switch({ on, onChange, label }: { on: boolean; onChange: () => v
   return (
     <button type="button" role="switch" aria-checked={on} aria-label={label} onClick={onChange} className={cx("press relative h-6 w-10 shrink-0 rounded-full transition-colors", on ? "bg-accent-strong" : "bg-line-strong")}>
       <span className={cx("absolute top-0.5 left-0.5 size-5 rounded-full bg-white transition-transform duration-150 ease-out", on && "translate-x-4")} />
+    </button>
+  );
+}
+
+/**
+ * A tick or a dash in a grid of who has what (Oisin, 17 Nov, after the Roles page of an earlier
+ * app of his): a tick means yes, a dash means no. Where it can be changed it is a checkbox in a
+ * light box, so a click or the space bar ticks or unticks it. A `locked` one is only the mark.
+ */
+export function Tick({ on, label, onChange, locked }: { on: boolean; label: string; onChange?: () => void; locked?: boolean }) {
+  const mark = on ? <Check size={18} weight="bold" className="text-accent" /> : <Minus size={16} className="text-muted" />;
+  if (locked || !onChange)
+    return (
+      <span role="img" aria-label={`${label}: ${on ? "yes" : "no"}`} className="grid size-10 place-items-center">
+        {mark}
+      </span>
+    );
+  return (
+    <button type="button" role="checkbox" aria-checked={on} aria-label={label} onClick={onChange} className={cx("press grid size-10 place-items-center rounded-md border hover:border-line-strong hover:bg-accent-soft", on ? "border-line bg-accent-soft/60" : "border-line")}>
+      {mark}
     </button>
   );
 }

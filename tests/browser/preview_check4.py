@@ -36,7 +36,7 @@ with sync_playwright() as p:
     page.get_by_role("button", name="Account menu").click(); page.get_by_role("menuitem", name="Settings").click(); page.wait_for_selector("text=What they can do")
     page.get_by_role("tab", name="By person").click(); page.wait_for_selector("text=Sign in as")
     page.get_by_role("list", name="Office and management staff").get_by_role("button", name="Darragh Lenihan").click(); page.wait_for_timeout(200)
-    page.get_by_role("switch", name="Darragh Lenihan: Plan the week ahead").click()
+    page.get_by_role("checkbox", name="Darragh Lenihan: Plan the week ahead").click()
     page.get_by_role("button", name="Sign in as Darragh to check").click(); page.wait_for_selector("text=marked for today")
     assert "Darragh Lenihan" in page.locator("header").first.inner_text()
     size=page.evaluate("localStorage.getItem('cod.data').length")

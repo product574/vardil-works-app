@@ -5,6 +5,7 @@
  * a real backend arrives, each `Db` key becomes a table and the screens do not change.
  * Dates are "YYYY-MM-DD" strings in the firm's local calendar; timestamps are ISO strings.
  */
+import type { OvertimeRate } from "@/lib/overtime";
 import type { Costing, QuoteLine } from "@/lib/quotes";
 import type { ServicePlan } from "@/lib/status";
 
@@ -65,6 +66,9 @@ export type Holiday = {
   status: "Requested" | "Approved" | "Declined";
   via: "Email" | "Form" | "Phone";
   note?: string;
+  /** Why it was declined, if whoever declined it said (17 Nov). */
+  declineNote?: string;
+  decidedBy?: string;
 };
 
 // ── Sales ─────────────────────────────────────────────────────────────────────
@@ -204,6 +208,8 @@ export type SiteRequest = {
   decision?: "Approved" | "Declined";
   decidedBy?: string;
   decidedAt?: Stamp;
+  /** Why it was declined, if whoever declined it said (17 Nov). */
+  declineNote?: string;
   /**
    * Who it is with (Oisin, 17 Nov). A request made on an operative's phone waits with the site
    * manager first ("site"): he forwards it to management as his own, or marks it dealt with.
@@ -267,6 +273,8 @@ export type Expense = {
   status: "Waiting" | "Approved" | "Declined";
   decidedBy?: string;
   decidedAt?: Stamp;
+  /** Why it was declined, if whoever declined it said (17 Nov). */
+  declineNote?: string;
 };
 
 export type SpendRequest = {
@@ -284,6 +292,8 @@ export type SpendRequest = {
   status: "Waiting" | "Approved" | "Declined";
   decidedBy?: string;
   decidedAt?: Stamp;
+  /** Why it was declined, if whoever declined it said (17 Nov). */
+  declineNote?: string;
 };
 
 /** Materials or work ordered for a site from a supplier or subcontractor, until it arrives. */
@@ -324,6 +334,8 @@ export type Attendance = {
   date: Day;
   status: "full" | "half";
   overtimeHours: number;
+  /** Set to 2 when the overtime is at double time. Left out for time and a half (Oisin, 17 Nov). */
+  overtimeRate?: OvertimeRate;
   savedBy: string;
   savedAt: Stamp;
   /** False while a site manager has marked it but not yet sent the day's time stamps. */
@@ -521,10 +533,17 @@ export type MailIntent =
   | "Conservation officer"
   | "General";
 
+/** A file on an email. Ones attached in the demo carry the file itself; sample emails only name theirs. */
+export type MailAttachment = { name: string; sizeKb?: number; dataUrl?: string };
+
 export type Mail = {
   id: ID;
   mailbox: string;
-  folder: "Inbox" | "Sent" | "Drafts" | "Archive";
+  /**
+   * Where it is kept. "Filed" (Oisin, 17 Nov) is an email someone has put under its label: it has
+   * left the Inbox and is found under that label, as in Gmail.
+   */
+  folder: "Inbox" | "Sent" | "Drafts" | "Archive" | "Filed";
   fromName: string;
   fromAddress: string;
   subject: string;
@@ -536,6 +555,8 @@ export type Mail = {
   clientId?: ID;
   replyDraft?: { subject: string; body: string };
   attachment?: string;
+  /** Files attached when the email was written here (17 Nov). */
+  attachments?: MailAttachment[];
   starred?: boolean;
   /** Who a sent email went to, and who was copied. */
   to?: string;
@@ -597,6 +618,8 @@ export type Approval = {
   salesInvoiceId?: ID;
   resolvedBy?: string;
   resolvedAt?: Stamp;
+  /** Why the draft was discarded, if whoever discarded it said (17 Nov). */
+  discardNote?: string;
 };
 
 export type DepartmentKey =

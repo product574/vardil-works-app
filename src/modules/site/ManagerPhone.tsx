@@ -8,11 +8,12 @@ import type { Person, Project } from "@/data/types";
 import { personWeek, planClashes } from "@/lib/availability";
 import { MONTHS, rollingWorkdays } from "@/lib/dates";
 import { dShort, dWeekday, plural, when } from "@/lib/format";
+import { overtimeRate } from "@/lib/overtime";
 import { crewRequests } from "@/lib/requests";
 import { dayInstruction, dayRoster, managerJobs, whereabouts } from "@/lib/roster";
 import { attendanceShort, nextWorkWeek, shiftMonth, workdaysOfMonth, workWeek } from "@/lib/week";
 import { CrewRequestButtons } from "@/modules/projects/CrewRequestButtons";
-import { Badge, Button, cx, Dialog, Field, NumInput, Segmented } from "@/ui";
+import { Badge, Button, cx, DeclineNote, Dialog, Field, NumInput, Segmented } from "@/ui";
 import { toast } from "@/ui/toast";
 import { AskSheet, BIG, DrivingSheet, ExpenseSheet, ExtraSheet, longDate, PhotoSheet, ProfileButton, ProfileSheet } from "./sheets";
 
@@ -217,7 +218,7 @@ function TimeSheet({ site, me, day, onClose }: { site: Project; me: Person; day:
               </p>
               {a?.sent || !canMark ? (
                 <p className="text-muted">
-                  {a ? attendanceShort(a.status, a.overtimeHours) : "Not in"}
+                  {a ? attendanceShort(a.status, a.overtimeHours, a.overtimeRate) : "Not in"}
                   {a?.sent ? ", sent" : ""}
                 </p>
               ) : (
@@ -225,13 +226,22 @@ function TimeSheet({ site, me, day, onClose }: { site: Project; me: Person; day:
                   <Segmented
                     label={`${p.name} today`}
                     value={value}
-                    onChange={(v) => actAs(me.id, () => markAttendance(site.id, p.id, day, v === "out" ? null : { status: v, overtimeHours: v === "full" ? (a?.overtimeHours ?? 0) : 0 }))}
+                    onChange={(v) => actAs(me.id, () => markAttendance(site.id, p.id, day, v === "out" ? null : { status: v, overtimeHours: v === "full" ? (a?.overtimeHours ?? 0) : 0, overtimeRate: a?.overtimeRate }))}
                     options={[{ value: "full", label: "Full" }, { value: "half", label: "Half" }, { value: "out", label: "Not in" }]}
                   />
                   {a?.status === "full" && (
                     <label className="flex items-center gap-1.5 text-[0.93rem]">
-                      <NumInput label={`${p.name} overtime hours`} className="h-9 w-14" value={a.overtimeHours} onChange={(h) => actAs(me.id, () => markAttendance(site.id, p.id, day, { status: "full", overtimeHours: Math.max(0, h) }))} /> hours over
+                      <NumInput label={`${p.name} overtime hours`} className="h-9 w-14" value={a.overtimeHours} onChange={(h) => actAs(me.id, () => markAttendance(site.id, p.id, day, { status: "full", overtimeHours: Math.max(0, h), overtimeRate: a.overtimeRate }))} /> hours over
                     </label>
+                  )}
+                  {/* Overtime is at time and a half or double time (17 Nov): he says which. */}
+                  {a?.status === "full" && a.overtimeHours > 0 && (
+                    <Segmented
+                      label={`${p.name} overtime rate`}
+                      value={overtimeRate(a) === 2 ? "double" : "half"}
+                      onChange={(v) => actAs(me.id, () => markAttendance(site.id, p.id, day, { status: "full", overtimeHours: a.overtimeHours, overtimeRate: v === "double" ? 2 : 1.5 }))}
+                      options={[{ value: "half", label: "Time and a half" }, { value: "double", label: "Double time" }]}
+                    />
                   )}
                 </div>
               )}
@@ -239,6 +249,7 @@ function TimeSheet({ site, me, day, onClose }: { site: Project; me: Person; day:
           );
         })}
       </ul>
+      {canMark && <p className="mt-3 text-[0.93rem] text-muted">Overtime is at time and a half. Mark it double time for midnight to 8am, Saturday after 12 noon, Sunday and bank holidays.</p>}
     </Dialog>
   );
 }
@@ -297,7 +308,7 @@ function DayCrew({ site, date, me, day }: { site: Project; date: string; me: Per
       )}
       {asked.map((r) => (
         <p key={r.id} className={cx("rounded-md px-3 py-2 text-[0.93rem]", r.decision === "Declined" ? "bg-canvas text-muted" : "bg-accent-soft text-accent-ink")}>
-          Asked for: {person(r.personId!)?.name}. {r.decision === "Declined" ? `Turned down by ${r.decidedBy}` : r.decision === "Approved" ? "Agreed, the office is arranging it" : "Waiting for the office"}
+          Asked for: {person(r.personId!)?.name}. {r.decision === "Declined" ? `Turned down by ${r.decidedBy}${r.declineNote ? `. Note: ${r.declineNote}` : ""}` : r.decision === "Approved" ? "Agreed, the office is arranging it" : "Waiting for the office"}
         </p>
       ))}
       {canAsk && !asking && (
@@ -561,6 +572,7 @@ function CrewRequestsSheet({ site, me, day, onClose }: { site: Project; me: Pers
                   <span className="min-w-0 flex-1">
                     {r.description}
                     <span className="block text-[0.87rem] text-muted">{r.raisedBy ?? r.requestedBy}</span>
+                    {r.decision === "Declined" && <DeclineNote note={r.declineNote} />}
                   </span>
                   <Badge tone={r.raisedBy ? (r.decision === "Approved" ? "ok" : r.decision === "Declined" ? "neutral" : "accent") : "ok"}>{r.raisedBy ? (r.decision ? `Management: ${r.decision.toLowerCase()}` : "With management") : "Dealt with on site"}</Badge>
                 </li>

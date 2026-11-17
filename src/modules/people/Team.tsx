@@ -9,7 +9,7 @@ import { addDays } from "@/lib/dates";
 import { dFull, dShort, plural } from "@/lib/format";
 import { money2 } from "@/lib/money";
 import { dueLabel, dueState } from "@/lib/status";
-import { Badge, Button, Dialog, Empty, Fact, Field, Mail, NumInput, PageBody, PageHead, Panel, Segmented, Switch, Tel, type Tone } from "@/ui";
+import { Badge, Button, type DeclineAsk, DeclineDialog, DeclineNote, Dialog, Empty, Fact, Field, Mail, NumInput, PageBody, PageHead, Panel, Segmented, Switch, Tel, type Tone } from "@/ui";
 import { ProofField, ProofLink, useProofPick } from "@/ui/files";
 import { toast } from "@/ui/toast";
 
@@ -193,6 +193,7 @@ function PersonDialog({ person, onClose }: { person: Person; onClose: () => void
                   <li key={h.id} className="flex items-center gap-2 px-2.5 py-1.5">
                     <span className="flex-1">
                       {dShort(h.from)} to {dShort(h.to)}
+                      {h.status === "Declined" && <DeclineNote note={h.declineNote} />}
                     </span>
                     <Badge tone={h.status === "Approved" ? "ok" : h.status === "Declined" ? "bad" : "accent"}>{h.status}</Badge>
                   </li>
@@ -547,6 +548,7 @@ export function Holidays() {
   const canDecide = useAccess().may("approveLeave");
   const [show, setShow] = useState<"Requested" | "Approved" | "Declined">("Requested");
   const [adding, setAdding] = useState(false);
+  const [no, setNo] = useState<DeclineAsk | null>(null);
   const count = (s: typeof show) => db.holidays.filter((h) => h.status === s).length;
   const rows = db.holidays.filter((h) => h.status === show).sort((a, b) => a.from.localeCompare(b.from));
   const person = (id: string) => db.people.find((p) => p.id === id);
@@ -570,6 +572,7 @@ export function Holidays() {
                   <th>Came in by</th>
                   <th>Note</th>
                   {show === "Requested" && <th>Clashes with plan</th>}
+                  {show === "Declined" && <th>Why it was declined</th>}
                   {show === "Requested" && canDecide && <th />}
                 </tr>
               </thead>
@@ -588,9 +591,31 @@ export function Holidays() {
                       <td>{h.via}</td>
                       <td className="text-muted">{h.note ?? "-"}</td>
                       {show === "Requested" && <td>{clash > 0 ? <Badge tone="warn">{plural(clash, "day")} already planned</Badge> : <span className="text-muted">None</span>}</td>}
+                      {show === "Declined" && (
+                        <td>
+                          {h.declineNote ?? <span className="text-muted">No note left</span>}
+                          {h.decidedBy && <span className="block text-[0.87rem] text-muted">{h.decidedBy}</span>}
+                        </td>
+                      )}
                       {show === "Requested" && canDecide && (
                         <td className="text-right whitespace-nowrap">
-                          <Button size="sm" variant="ghost" onClick={() => { decideHoliday(h.id, false); toast(`Leave declined for ${p?.name}`); }}>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            aria-label={`Decline leave for ${p?.name}`}
+                            onClick={() =>
+                              setNo({
+                                title: `Decline leave for ${p?.name}?`,
+                                about: `${h.from === h.to ? dFull(h.from) : `${dFull(h.from)} to ${dFull(h.to)}`}.`,
+                                hint: `Say why, if it helps. ${p?.name?.split(" ")[0]} sees it with the answer on the site phone.`,
+                                confirm: "Decline leave",
+                                run: (note) => {
+                                  decideHoliday(h.id, false, note);
+                                  toast(`Leave declined for ${p?.name}${note ? ", with your note" : ""}`);
+                                },
+                              })
+                            }
+                          >
                             Decline
                           </Button>{" "}
                           <Button
@@ -613,6 +638,7 @@ export function Holidays() {
         </Panel>
       </PageBody>
       {adding && <RecordLeaveDialog onClose={() => setAdding(false)} told={told} />}
+      <DeclineDialog ask={no} onClose={() => setNo(null)} />
     </>
   );
 }

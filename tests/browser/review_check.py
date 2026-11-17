@@ -44,7 +44,8 @@ def steps(page, ctx):
     check("Approvals: a finished project's variation releases its held final account", "The final account is held until this is agreed. Approving adds it to the final account and releases it to invoicing." in main.inner_text())
 
     # ── Discarding the last extra releases the hold
-    main.get_by_role("button", name="Discard").click(); page.wait_for_timeout(400)
+    main.get_by_role("button", name="Discard").click(); page.wait_for_timeout(200)
+    page.locator("dialog[open]").get_by_role("button", name="Discard").click(); page.wait_for_timeout(400)
     day = data(page, "day")
     st = data(page, "(() => { const p = db.projects.find(p=>p.code==='C715'); const f = db.salesInvoices.find(i=>i.projectId===p.id && i.description==='Final account'); return { extras: p.extrasFlag, hold: p.invoiceHold, status: f.status, net: f.net, value: p.value } })()")
     check("Discarding the only extra on C715 releases its final account to invoicing at the contract value", not st["extras"] and not st["hold"] and st["status"] == "To invoice" and st["net"] == st["value"], st)

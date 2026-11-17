@@ -48,14 +48,16 @@ def steps(page, ctx):
     t = main.inner_text()
     check("Holidays: who is off today, coming up and back recently", "Off today" in t and "Coming up" in t and page.locator("tbody tr").count() >= 2, t[:300])
     go(page, "/schedule/holiday-requests")
-    reqs = page.get_by_role("list", name="Holiday requests").locator("> li")
+    reqs = page.get_by_role("list", name="Holiday requests", exact=True).locator("> li")
     n0 = reqs.count()
     check("Holiday requests: every request waiting, with days, clashes and who else is off", n0 == 3 and "working day" in main.inner_text() and "already planned on" in main.inner_text() and "Also off then" in main.inner_text(), main.inner_text()[:400])
     page.screenshot(path=f"{OUT}/300-holiday-requests.png", full_page=True)
     first = reqs.first.locator("h2").inner_text()
     reqs.first.get_by_role("button", name="Approve").click(); page.wait_for_timeout(300)
     check("Holiday requests: approving takes it off the list and approves the leave", reqs.count() == n0 - 1 and data(page, f"db.holidays.find(h => db.people.find(p => p.id===h.personId).name==={first!r}).status") == "Approved")
-    reqs.first.get_by_role("button", name="Decline").click(); page.wait_for_timeout(300)
+    # 17 Nov: Decline asks for an optional note first (s7_check.py covers the note itself).
+    reqs.first.get_by_role("button", name="Decline").click(); page.wait_for_timeout(200)
+    page.locator("dialog[open]").get_by_role("button", name="Decline leave").click(); page.wait_for_timeout(300)
     check("Holiday requests: declining too", reqs.count() == n0 - 2)
 
     # ── Attendance history: period and Per site

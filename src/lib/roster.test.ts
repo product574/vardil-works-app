@@ -68,8 +68,13 @@ describe("perSite", () => {
   it("groups by site then person, a half day counting a half, busiest first", () => {
     const out = perSite([a("s1", "p1", "full"), a("s1", "p1", "half"), a("s2", "p2", "full", 2), a("s2", "p2", "full"), a("s2", "p3", "full"), a("s1", "p4", "full")], (id) => id);
     expect(out.map((s) => [s.projectId, s.days])).toEqual([["s2", 3], ["s1", 2.5]]);
-    expect(out[0]!.people).toEqual([{ personId: "p2", full: 2, half: 0, overtime: 2, hours: 16, days: 2 }, { personId: "p3", full: 1, half: 0, overtime: 0, hours: 8, days: 1 }]);
+    expect(out[0]!.people).toEqual([{ personId: "p2", full: 2, half: 0, overtime: 2, double: 0, hours: 16, days: 2 }, { personId: "p3", full: 1, half: 0, overtime: 0, double: 0, hours: 8, days: 1 }]);
     expect(out[1]!.people.map((p) => [p.personId, p.days])).toEqual([["p1", 1.5], ["p4", 1]]);
+  });
+  it("keeps the double time hours apart from the rest of the overtime", () => {
+    const out = perSite([{ ...a("s1", "p1", "full", 3), overtimeRate: 2 as const }, a("s1", "p1", "full", 2), a("s1", "p2", "full", 1)], (id) => id);
+    expect(out[0]).toMatchObject({ overtime: 6, double: 3 });
+    expect(out[0]!.people.map((p) => [p.personId, p.overtime, p.double])).toEqual([["p1", 5, 3], ["p2", 1, 0]]);
   });
   it("adds up each site's basic and overtime hours, a Friday counting 7", () => {
     const out = perSite([a("s1", "p1", "full", 1.5), a("s1", "p2", "half"), { projectId: "s1", personId: "p1", date: "2026-11-20", status: "full", overtimeHours: 0 }], (id) => id);
@@ -143,7 +148,9 @@ describe("who to show for a site on a day", () => {
   const plan = [{ projectId: "a", personId: "p3", date: "2026-11-16" }, { projectId: "a", personId: "p3", date: "2026-11-17" }, { projectId: "b", personId: "p4", date: "2026-11-17" }, { projectId: "a", personId: "p5", date: "2026-11-18", part: "half" as const }];
   it("a day gone comes from the timesheet, whatever was planned", () => expect(dayRoster(att, plan, "a", "2026-11-16", "2026-11-17")).toEqual({ from: "timesheet", rows: [{ personId: "p1", note: "half day" }] }));
   it("today comes from the timesheet once the site has marked anyone, else from the plan", () => {
-    expect(dayRoster(att, plan, "a", "2026-11-17", "2026-11-17")).toEqual({ from: "timesheet", rows: [{ personId: "p2", note: "+2h" }] });
+    expect(dayRoster(att, plan, "a", "2026-11-17", "2026-11-17")).toEqual({ from: "timesheet", rows: [{ personId: "p2", note: "+2h x1.5" }] });
+    // Double time shows as such on a day that was worked.
+    expect(dayRoster([{ projectId: "a", personId: "p9", date: "2026-11-16", status: "full" as const, overtimeHours: 3, overtimeRate: 2 as const }], [], "a", "2026-11-16", "2026-11-17").rows).toEqual([{ personId: "p9", note: "+3h x2" }]);
     expect(dayRoster(att, plan, "b", "2026-11-17", "2026-11-17")).toEqual({ from: "plan", rows: [{ personId: "p4", note: "" }] });
   });
   it("a day to come is the plan", () => expect(dayRoster(att, plan, "a", "2026-11-18", "2026-11-17")).toEqual({ from: "plan", rows: [{ personId: "p5", note: "half day" }] }));

@@ -18,7 +18,12 @@ describe("working weeks", () => {
   });
   it("labels attendance for a grid cell", () => {
     expect(attendanceShort("full", 0)).toBe("Full");
-    expect(attendanceShort("full", 2)).toBe("Full +2h");
+    // Overtime carries its rate: time and a half unless it was marked double time (17 Nov).
+    expect(attendanceShort("full", 2)).toBe("Full +2h x1.5");
+    expect(attendanceShort("full", 2, 1.5)).toBe("Full +2h x1.5");
+    expect(attendanceShort("full", 2.5, 2)).toBe("Full +2.5h x2");
+    expect(attendanceShort("full", 0, 2)).toBe("Full");
+    expect(attendanceShort("half", 0, 2)).toBe("Half");
     expect(attendanceShort("half", 0)).toBe("Half");
     expect(attendanceChoice({ status: "full", overtimeHours: 1 })).toBe("overtime");
     expect(attendanceChoice(undefined)).toBe("");

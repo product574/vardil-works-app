@@ -9,7 +9,7 @@ import { dShort, plural, when, whenInline } from "@/lib/format";
 import { money0 } from "@/lib/money";
 import { scopePercent } from "@/lib/project-costs";
 import { crewRequests, mayHandleCrewRequest, requestsFor, withOffice } from "@/lib/requests";
-import { Badge, Button, Empty, PageBody, PageHead, Panel, Section, Segmented } from "@/ui";
+import { Badge, Button, DeclineNote, Empty, PageBody, PageHead, Panel, Section, Segmented } from "@/ui";
 import { HoldBadge, Progress, ProjectBadge } from "@/ui/status";
 import { toast } from "@/ui/toast";
 import { CrewRequestButtons } from "./CrewRequestButtons";
@@ -427,6 +427,7 @@ export function SiteRequests() {
                           <>
                             <Badge tone={r.decision === "Approved" ? "ok" : "neutral"}>{r.decision}</Badge>
                             <span className="block text-[0.87rem] text-muted">{r.decidedBy}</span>
+                            {r.decision === "Declined" && <DeclineNote note={r.declineNote} />}
                           </>
                         ) : r.heldBy === "site" ? (
                           <span className="text-muted">Dealt with on site{r.dealtBy ? ` by ${r.dealtBy}` : ""}</span>

@@ -79,9 +79,11 @@ def steps(page, ctx):
     page.goto(BASE + "/people/history"); page.wait_for_selector("table")
     page.screenshot(path=f"{OUT}/61-history-totals.png")
     # 17 Nov (Oldstone call): basic hours on a 39 hour week (8 Monday to Thursday, 7 Friday), overtime apart, no pay worked out.
-    tot = data(page, "(() => { const m = day.slice(0,7); const rows = db.attendance.filter(a => a.date.startsWith(m) && a.date <= day && a.personId==='p-101'); return [rows.reduce((s,a) => { const h = new Date(a.date+'T12:00:00Z').getUTCDay()===5 ? 7 : 8; return s + (a.status==='full'?h:h/2) }, 0), rows.reduce((s,a) => s + a.overtimeHours, 0)] })()")
+    tot = data(page, "(() => { const m = day.slice(0,7); const rows = db.attendance.filter(a => a.date.startsWith(m) && a.date <= day && a.personId==='p-101'); return [rows.reduce((s,a) => { const h = new Date(a.date+'T12:00:00Z').getUTCDay()===5 ? 7 : 8; return s + (a.status==='full'?h:h/2) }, 0), rows.filter(a => a.overtimeRate !== 2).reduce((s,a) => s + a.overtimeHours, 0), rows.filter(a => a.overtimeRate === 2).reduce((s,a) => s + a.overtimeHours, 0)] })()")
     row = page.locator("tbody tr", has_text="Fergal Noone").inner_text().split("\t")
-    check("History: basic, overtime and total hours for Fergal Noone match his entries", row[-3] == f"{tot[0]:g}" and row[-2] == f"{tot[1]:g}" and row[-1] == f"{tot[0] + tot[1]:g}", (tot, row))
+    hrs = lambda n: "-" if n == 0 else f"{n:g}"
+    # 17 Nov: overtime in two columns, time and a half and double time.
+    check("History: basic hours, overtime at each rate and total hours for Fergal Noone match his entries", row[-4] == f"{tot[0]:g}" and row[-3] == hrs(tot[1]) and row[-2] == hrs(tot[2]) and row[-1] == f"{tot[0] + tot[1] + tot[2]:g}" and page.locator("thead th").all_inner_texts()[-3:] == ["Overtime x1.5", "Overtime x2", "Total hours"], (tot, row))
     page.get_by_role("tab", name="Corrections").click(); page.wait_for_timeout(200)
     check("History: the correction is listed with its reason", "Left at lunch, van breakdown" in main.inner_text())
     page.get_by_role("tab", name="Day by day").click(); page.wait_for_timeout(200)

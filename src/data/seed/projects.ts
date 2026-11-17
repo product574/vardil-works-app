@@ -337,6 +337,12 @@ const PROJECTS: PSeed[] = [
   },
 ];
 
+/**
+ * Sites whose overtime is at double time (17 Nov). Derrybawn Bridge is worked under traffic
+ * lights, so its overtime is early starts before the road gets busy: before 8am is double time.
+ */
+const DOUBLE_TIME_SITES = new Set(["C724"]);
+
 /** Paid hours expected on a planned day: 4% absent, 6% half days, and some overtime at time and a half. */
 const EXPECTED_HOURS = 0.9 * (8 + 0.12 * 2 * 1.5) + 0.06 * 4;
 /** Labour's share of the cost of a job, as in the quotes' cost build-up. */
@@ -508,8 +514,14 @@ export function seedProjects(r: Rng, today: string, quotes: Quote[], holidays: H
         const roll = r.next();
         if (roll < 0.04) continue;
         const status: Attendance["status"] = roll < 0.1 ? "half" : "full";
-        const overtimeHours = status === "full" && r.chance(0.12) ? r.int(1, 3) : 0;
-        attendance.push({ id: `att-${++attN}`, projectId: pid(code), personId, date: d, status, overtimeHours, savedBy: names.get(p.sm)!, savedAt: at(d, isToday ? "08:20" : "12:40"), sent: !isToday || sentToday.has(code) });
+        const rolled = status === "full" && r.chance(0.12) ? r.int(1, 3) : 0;
+        // On a double time site the crew also start at 6am every Tuesday and Thursday, to set out
+        // the traffic lights before the road gets busy: two hours before 8am. Worked out from the
+        // day, not from the random run, so nothing else in the sample data moves.
+        const early = DOUBLE_TIME_SITES.has(code) && status === "full" && rolled === 0 && [2, 4].includes(new Date(`${d}T12:00:00Z`).getUTCDay()) ? 2 : 0;
+        const overtimeHours = rolled + early;
+        // Overtime is at time and a half, except where the job's overtime is early starts before 8am (double time).
+        attendance.push({ id: `att-${++attN}`, projectId: pid(code), personId, date: d, status, overtimeHours, ...(overtimeHours > 0 && DOUBLE_TIME_SITES.has(code) ? { overtimeRate: 2 as const } : {}), savedBy: names.get(p.sm)!, savedAt: at(d, isToday ? "08:20" : "12:40"), sent: !isToday || sentToday.has(code) });
       }
     }
   }

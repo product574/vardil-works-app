@@ -87,7 +87,8 @@ def steps(page, ctx):
 
     # Discard, then bring back: only a discarded draft can go back to waiting.
     appr.get_by_role("button", name=re.compile("^Variation.*cracked quoins")).click(); page.wait_for_timeout(300)
-    appr.get_by_role("button", name="Discard").click(); page.wait_for_timeout(300)
+    appr.get_by_role("button", name="Discard").click(); page.wait_for_timeout(200)
+    page.locator("dialog[open]").get_by_role("button", name="Discard").click(); page.wait_for_timeout(300)
     appr.get_by_role("tab", name=re.compile("^Done")).click(); page.wait_for_timeout(300)
     appr.get_by_role("button", name=re.compile("^Variation.*cracked quoins")).click(); page.wait_for_timeout(300)
     check("Done: a discarded draft can be moved back to waiting", appr.get_by_role("button", name="Move back to waiting").count() == 1)
@@ -118,7 +119,8 @@ def steps(page, ctx):
     sp = data(page, "(() => { const x = db.spendRequests.find(s => s.id==='sp-1'); return [x.status, x.decidedBy] })()")
     check("Admin: approving spending records who said yes", sp == ["Approved", "Aidan King"], sp)
     check("Admin: the answer shows under Answered in the last two weeks", "A third 150 litre drum mixer" in main.locator("section", has_text="Answered in the last two weeks").inner_text())
-    main.get_by_role("button", name=re.compile("^Decline: 20 m articulated boom lift")).click(); page.wait_for_timeout(300)
+    main.get_by_role("button", name=re.compile("^Decline: 20 m articulated boom lift")).click(); page.wait_for_timeout(200)
+    page.locator("dialog[open]").get_by_role("button", name="Decline").click(); page.wait_for_timeout(300)
     rq = data(page, "(() => { const r = db.requests.find(r => r.description.startsWith('20 m articulated boom lift')); return [r.status, r.decision] })()")
     check("Admin: declining a site request closes it as declined", rq == ["Done", "Declined"], rq)
     main.get_by_role("button", name="Approve: General operatives to help adapt the scaffold at belfry level").click(); page.wait_for_timeout(300)

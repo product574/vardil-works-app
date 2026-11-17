@@ -48,3 +48,15 @@ export async function readProof(file: File): Promise<{ name: string; dataUrl: st
 }
 
 export const isPdf = (dataUrl: string) => dataUrl.startsWith("data:application/pdf");
+
+/** A file to attach to an email: a picture (shrunk) or a PDF within the size limit, as everywhere in the demo. */
+export async function readAttachment(file: File): Promise<{ name: string; dataUrl: string; sizeKb: number }> {
+  if (file.type.startsWith("image/")) {
+    const { dataUrl, sizeKb } = await shrinkImage(file, 1400, 0.75);
+    return { name: file.name, dataUrl, sizeKb: Math.max(1, sizeKb) };
+  }
+  if (file.type !== "application/pdf") throw new Error(`${file.name} was not attached. The demo keeps files in the browser, so it takes pictures and PDFs only.`);
+  if (file.size / 1024 > PROOF_LIMIT_KB) throw new Error(`${file.name} is over ${PROOF_LIMIT_KB / 1000} MB, which is too big for the demo to keep in the browser.`);
+  const dataUrl = await readAsDataUrl(file);
+  return { name: file.name, dataUrl, sizeKb: Math.max(1, kb(dataUrl)) };
+}

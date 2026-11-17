@@ -19,6 +19,7 @@ import { invoiceNo } from "@/lib/billing";
 import { addDays, fmtLong } from "@/lib/dates";
 import { hireEstimate, READ_STATUS } from "@/lib/job-costs";
 import { REGION, r2 } from "@/lib/money";
+import { overtimeRate, overtimeSplit } from "@/lib/overtime";
 import { currentPlan, invoicePaid, nextInvoice } from "@/lib/subscription";
 import { costBreakdown, marginPct, quoteTotal } from "@/lib/quotes";
 import { daysBetween, dueState, nextServiceDate } from "@/lib/status";
@@ -139,7 +140,7 @@ export function buildSnapshot(db: Db, today: string, brand: Brand): string {
         const c = projectCosts(db, p);
         return [p.code, p.name, client.get(p.clientId)?.name ?? "", `${p.location}, ${p.county}`, p.status, name(p.siteManagerId), name(p.contractsManagerId), p.startDate, `${p.endDate} (${rel(p.endDate, today)})`, p.value == null ? "not priced" : n0(p.value), `${c.pct}%`, n0(c.earned), n0(c.labour), n0(c.plant), n0(c.material), n0(c.other), n0(c.cost), c.margin == null ? "-" : `${c.margin.toFixed(1)}%`, n0(c.invoiced), [flags(p), c.waiting ? `${c.waiting} supplier invoice(s) not checked yet, so not counted` : ""].filter(Boolean).join("; ")];
       }),
-      "Margin so far = (value earned - cost to date) / value earned. Value earned = contract value x share of scope done. Labour is from timesheets at each person's rate, overtime at time and a half; other costs only from checked supplier invoices.",
+      "Margin so far = (value earned - cost to date) / value earned. Value earned = contract value x share of scope done. Labour is from timesheets at each person's rate, overtime at time and a half, or at double time where the timesheet says so; other costs only from checked supplier invoices.",
     ),
   );
   out.push(
@@ -164,7 +165,7 @@ export function buildSnapshot(db: Db, today: string, brand: Brand): string {
     for (const a of db.assignments.filter((x) => x.projectId === p.id)) {
       const pe = person.get(a.personId);
       const t = today_.find((x) => x.personId === a.personId);
-      crew.push(`- ${pe?.name ?? ""}, ${pe?.trade ?? ""}: ${t ? `${t.status} day${t.overtimeHours ? ` +${t.overtimeHours}h overtime` : ""}` : "not marked today"}`);
+      crew.push(`- ${pe?.name ?? ""}, ${pe?.trade ?? ""}: ${t ? `${t.status} day${t.overtimeHours ? ` +${t.overtimeHours}h overtime${overtimeRate(t) === 2 ? " at double time" : ""}` : ""}` : "not marked today"}`);
     }
   }
   out.push(crew.join("\n"));
@@ -182,18 +183,19 @@ export function buildSnapshot(db: Db, today: string, brand: Brand): string {
   // Attendance
   const month = today.slice(0, 7);
   const lastMonthDate = addDays(`${month}-01`, -1).slice(0, 7);
-  const att: string[] = ["## Attendance (time stamps)", `This week (${thisWeek[0]} to ${thisWeek[4]}) day by day, then days and overtime hours this month (${month}) and last month (${lastMonthDate}).`];
+  const att: string[] = ["## Attendance (time stamps)", `This week (${thisWeek[0]} to ${thisWeek[4]}) day by day, then days and overtime hours this month (${month}) and last month (${lastMonthDate}). Overtime is at time and a half unless it says double time. The firm's rule: double time from midnight to 8am, on Saturday after 12 noon, on Sunday and on bank holidays; time and a half on weekday evenings up to midnight and on Saturday from 8am to 12 noon.`];
   for (const p of db.people.filter((x) => db.attendance.some((a) => a.personId === x.id))) {
     const mine = db.attendance.filter((a) => a.personId === p.id);
     const week = weekLine(thisWeek, (d) => {
       const a = mine.find((x) => x.date === d);
-      return a ? `${code(a.projectId)} ${a.status}${a.overtimeHours ? ` +${a.overtimeHours}h` : ""}` : null;
+      return a ? `${code(a.projectId)} ${a.status}${a.overtimeHours ? ` +${a.overtimeHours}h${overtimeRate(a) === 2 ? " double time" : ""}` : ""}` : null;
     });
     const sum = (ym: string) => {
       const rows = mine.filter((a) => a.date.startsWith(ym));
       const days = rows.reduce((s, a) => s + (a.status === "full" ? 1 : 0.5), 0);
       const ot = rows.reduce((s, a) => s + a.overtimeHours, 0);
-      return `${days} days${ot ? `, ${ot}h overtime` : ""}`;
+      const dbl = overtimeSplit(rows).double;
+      return `${days} days${ot ? `, ${ot}h overtime${dbl ? ` (${dbl}h of it at double time)` : ""}` : ""}`;
     };
     att.push(`${p.name}: this week ${week}; ${month} ${sum(month)}; ${lastMonthDate} ${sum(lastMonthDate)}`);
   }
@@ -223,7 +225,7 @@ export function buildSnapshot(db: Db, today: string, brand: Brand): string {
   plan.splice(2, 0, `Operatives with free days next week: ${freeNext.length}${freeNext.length ? `: ${freeNext.join("; ")}` : ""}.`);
   out.push(plan.join("\n"));
 
-  out.push(table("Holidays", ["person", "from", "to", "status", "asked by", "note"], db.holidays.map((h) => [name(h.personId), h.from, h.to, h.status, h.via, h.note ?? ""])));
+  out.push(table("Holidays", ["person", "from", "to", "status", "asked by", "note", "why declined"], db.holidays.map((h) => [name(h.personId), h.from, h.to, h.status, h.via, h.note ?? "", h.status === "Declined" ? `${h.declineNote ?? "no note left"}${h.decidedBy ? `, by ${h.decidedBy}` : ""}` : ""])));
 
   // Sales
   out.push(table("Clients", ["id", "name", "type", "contact", "phone", "email", "payment terms", "account ref", "portal"], db.clients.map((c) => [c.id, c.name, c.type, c.contactName, c.contactPhone, c.contactEmail, `${c.termsDays} days`, c.accountRef, c.portalEnabled ? "on" : "off"])));
@@ -274,7 +276,7 @@ export function buildSnapshot(db: Db, today: string, brand: Brand): string {
       db.variations.map((v) => [code(v.projectId), name(v.raisedById), v.raisedAt.slice(0, 10), v.description, v.measured, n2(v.estimatedValue), v.status, v.originalLanguage ?? "en"]),
     ),
   );
-  out.push(table("Site requests (the managing director answers each yes or no in Admin, Requests)", ["project", "kind", "what", "how many", "needed from", "needed to", "asked by", "status", "yes or no"], db.requests.map((r) => [r.projectId ? code(r.projectId) : "general, not for one site", r.kind === "other" ? "something else" : r.kind.replace("_", " "), r.description, r.quantity, r.neededFrom, r.neededTo, r.requestedBy, r.status, r.decision ? `${r.decision.toLowerCase()} by ${r.decidedBy}` : r.status !== "Open" ? "" : r.heldBy === "site" ? "with the site manager, not yet asked of the office" : "waiting"])));
+  out.push(table("Site requests (the managing director answers each yes or no in Admin, Requests)", ["project", "kind", "what", "how many", "needed from", "needed to", "asked by", "status", "yes or no"], db.requests.map((r) => [r.projectId ? code(r.projectId) : "general, not for one site", r.kind === "other" ? "something else" : r.kind.replace("_", " "), r.description, r.quantity, r.neededFrom, r.neededTo, r.requestedBy, r.status, r.decision ? `${r.decision.toLowerCase()} by ${r.decidedBy}${r.declineNote ? ` (note: ${r.declineNote})` : ""}` : r.status !== "Open" ? "" : r.heldBy === "site" ? "with the site manager, not yet asked of the office" : "waiting"])));
   out.push(table("Spending requests (Admin, Requests)", ["what", "supplier", "for", "amount ex VAT", "asked by", "asked", "why", "status"], db.spendRequests.map((x) => [x.what, x.supplier, x.projectId ? code(x.projectId) : "the firm", n2(x.amount), name(x.requestedById), x.createdAt.slice(0, 16).replace("T", " "), x.reason, x.status === "Waiting" ? "waiting" : `${x.status.toLowerCase()} by ${x.decidedBy}`])));
   out.push(table("Supplies on order for sites", ["from", "supplier or subcontractor", "project", "what", "ordered", "due", "status"], db.supplies.map((x) => [x.from, x.party, code(x.projectId), x.description, x.orderedOn, `${x.dueOn} (${rel(x.dueOn, today)})`, x.progress ? `${x.status}, ${x.progress}` : x.status])));
   out.push(table("Updates from subcontractors and suppliers in the portal", ["when", "from", "supplier or subcontractor", "project", "update"], db.portalNotes.map((x) => [x.at.slice(0, 16).replace("T", " "), x.from, x.party, x.projectId ? code(x.projectId) : "", x.text])));
@@ -311,7 +313,7 @@ export function buildSnapshot(db: Db, today: string, brand: Brand): string {
   // Inbox
   out.push(
     table(
-      "Email (shared mailboxes)",
+      "Email (shared mailboxes). Folder Filed means someone has put it under its tag, out of the Inbox",
       ["id", "folder", "mailbox", "from", "address", "received", "read", "tag", "passed to", "client", "subject", "drafted reply waiting", "text"],
       db.mails.map((m) => [m.id, m.folder, m.mailbox, m.fromName, m.fromAddress, m.receivedAt.slice(0, 16).replace("T", " "), m.read ? "read" : "unread", m.intent, name(m.routedToId), m.clientId ? (client.get(m.clientId)?.name ?? "") : "", m.subject, m.replyDraft ? `yes: ${m.replyDraft.subject}` : "no", m.body.length > 600 ? `${m.body.slice(0, 600)}...` : m.body]),
     ),

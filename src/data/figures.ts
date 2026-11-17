@@ -24,7 +24,7 @@ export type ProjectCosts = {
 
 export function projectCosts(db: Db, p: Project): ProjectCosts {
   const rate = new Map(db.people.map((x) => [x.id, x.hourlyRate]));
-  const labour = labourCost(db.attendance.filter((a) => a.projectId === p.id).map((a) => ({ status: a.status, overtimeHours: a.overtimeHours, hourlyRate: rate.get(a.personId) ?? 0 })));
+  const labour = labourCost(db.attendance.filter((a) => a.projectId === p.id).map((a) => ({ status: a.status, overtimeHours: a.overtimeHours, overtimeRate: a.overtimeRate, hourlyRate: rate.get(a.personId) ?? 0 })));
   const supplier = supplierCostByCategory(
     db.supplierInvoices.filter((s) => s.readStatus === "confirmed").flatMap((s) => s.allocations.filter((a) => a.projectId === p.id).map((a) => ({ category: a.category, amount: a.amount, credit: s.docType === "credit_note" }))),
   );

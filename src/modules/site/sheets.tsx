@@ -10,7 +10,7 @@ import { dShort, plural } from "@/lib/format";
 import { shrinkImage } from "@/lib/image";
 import { workingDays } from "@/lib/roster";
 import { dueLabel, dueState } from "@/lib/status";
-import { Avatar, Badge, Button, cx, Dialog, Field, NumInput } from "@/ui";
+import { Avatar, Badge, Button, cx, DeclineNote, Dialog, Field, NumInput } from "@/ui";
 import { PickFile } from "@/ui/files";
 import { toast } from "@/ui/toast";
 import { EXTRAS, MORE, WORDS } from "./words";
@@ -177,7 +177,7 @@ export function AskSheet({ site, me, lang, day, toManager, onClose }: { site: Pr
   // A site manager can ask for anything; the crew's form keeps to people and plant, in their own language.
   const kinds: [RequestKind, string][] = [["own_plant", t.ownPlant], ["hired_plant", t.hirePlant], ["personnel", t.people], ...(toManager ? [] : ([["other", "Something else"]] as [RequestKind, string][]))];
   const mine = site ? [] : requests.filter((r) => r.projectId === null && r.requestedById === me.id).slice(0, 4);
-  const state = (r: (typeof mine)[number]) => (r.decision === "Declined" ? `Turned down by ${r.decidedBy}` : r.status === "Done" ? "Dealt with" : r.decision === "Approved" ? `Agreed by ${r.decidedBy}, the office is arranging it` : "Waiting for the office");
+  const state = (r: (typeof mine)[number]) => (r.decision === "Declined" ? `Turned down by ${r.decidedBy}${r.declineNote ? `. Note: ${r.declineNote}` : ""}` : r.status === "Done" ? "Dealt with" : r.decision === "Approved" ? `Agreed by ${r.decidedBy}, the office is arranging it` : "Waiting for the office");
   return (
     <Dialog
       open
@@ -394,6 +394,7 @@ export function ProfileSheet({ me, lang, day, onClose }: { me: Person; lang: Lan
                   <span className="flex-1">
                     {dShort(h.from)}
                     {h.to !== h.from && ` to ${dShort(h.to)}`}
+                    {h.status === "Declined" && <DeclineNote note={h.declineNote} />}
                   </span>
                   <Badge tone={h.status === "Approved" ? "ok" : h.status === "Declined" ? "bad" : "accent"}>{h.status === "Requested" ? "Waiting" : h.status}</Badge>
                 </li>
@@ -545,6 +546,7 @@ export function MyClaims({ me }: { me: Person }) {
           <li key={x.id} className="flex items-center gap-2 px-2.5 py-1.5">
             <span className="min-w-0 flex-1">
               {x.kind}, {dShort(x.date)}
+              {x.status === "Declined" && <DeclineNote note={x.declineNote} />}
             </span>
             <span className="tabular-nums">{region === "UK" ? "£" : "€"}{x.amount.toFixed(2)}</span>
             <Badge tone={x.status === "Approved" ? "ok" : x.status === "Declined" ? "bad" : "accent"}>{x.status}</Badge>

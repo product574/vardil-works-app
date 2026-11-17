@@ -1,17 +1,21 @@
 // Cost to date on a project: labour from attendance, everything else from confirmed supplier invoices.
 import { r2 } from "./money";
+import { type OvertimeRate, overtimeRate } from "./overtime";
 
 export const DAY_HOURS = 8;
 export const OVERTIME_RATE = 1.5;
 
-/** Hours paid for one attendance entry: a full or half day, plus overtime at time and a half. */
-export function paidHours(status: "full" | "half", overtimeHours: number) {
-  return (status === "full" ? DAY_HOURS : DAY_HOURS / 2) + overtimeHours * OVERTIME_RATE;
+/**
+ * Hours paid for one attendance entry: a full or half day, plus its overtime at the rate it was
+ * marked at, time and a half unless double time (17 Nov).
+ */
+export function paidHours(status: "full" | "half", overtimeHours: number, rate?: OvertimeRate) {
+  return (status === "full" ? DAY_HOURS : DAY_HOURS / 2) + overtimeHours * overtimeRate({ overtimeRate: rate });
 }
 
-export type LabourRow = { status: "full" | "half"; overtimeHours: number; hourlyRate: number };
+export type LabourRow = { status: "full" | "half"; overtimeHours: number; overtimeRate?: OvertimeRate; hourlyRate: number };
 export function labourCost(rows: LabourRow[]) {
-  return r2(rows.reduce((s, r) => s + paidHours(r.status, r.overtimeHours) * r.hourlyRate, 0));
+  return r2(rows.reduce((s, r) => s + paidHours(r.status, r.overtimeHours, r.overtimeRate) * r.hourlyRate, 0));
 }
 
 export type SupplierCost = { category: string; amount: number; credit: boolean };

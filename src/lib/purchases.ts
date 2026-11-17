@@ -1,5 +1,5 @@
 /**
- * Supplier invoices for the accounts package (Oldstone call, 16 Nov). Majella keys each one into
+ * Supplier invoices for the accounts package (Oldstone call, 16 Nov). Their accounts key each one into
  * Sage 50 by hand today: the supplier's invoice number, the file number of the paper copy, a
  * nominal code for the kind of cost, the project as the department (686 for C686), and a tax
  * code. These rules fill all of that in from what the invoice reader and the office confirmed,
@@ -117,7 +117,7 @@ export function buildPurchaseExport(pkg: AccountsPackage, lines: PurchaseLine[])
   return { fileName: `purchase-invoices-${name}-${stamp}.csv`, text };
 }
 
-/** The profitability report Majella builds by hand in Excel: value of work done, wages, other costs, profit and margin. */
+/** The profitability report Oldstone's accounts build by hand in Excel: value of work done, wages, other costs, profit and margin. */
 export function profitabilityCsv(rows: { code: string; name: string; contract: number; done: number; labour: number; material: number; plant: number; other: number }[]) {
   const head = ["Project", "Name", "Contract value", "Valuation (work done)", "Wages", "Materials", "Plant and hire", "Subcontract and other", "Total cost", "Profit", "Margin %"];
   return csv([

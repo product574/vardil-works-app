@@ -33,7 +33,9 @@ export function recentlyDecided(db: Db, today: string) {
   const since = new Date(Date.parse(`${today}T00:00:00Z`) - 14 * 86_400_000).toISOString().slice(0, 10);
   const site = db.requests.filter((r) => r.decision && (r.decidedAt ?? "") >= since).map((r) => ({ kind: "site" as const, at: r.decidedAt!, item: r }));
   const spend = db.spendRequests.filter((s) => s.status !== "Waiting" && (s.decidedAt ?? "") >= since).map((s) => ({ kind: "spend" as const, at: s.decidedAt!, item: s }));
-  return [...site, ...spend].sort((a, b) => b.at.localeCompare(a.at));
+  // Reimbursements too (17 Nov), so a no and the note left with it can be read back.
+  const expense = db.expenses.filter((x) => x.status !== "Waiting" && (x.decidedAt ?? "") >= since).map((x) => ({ kind: "expense" as const, at: x.decidedAt!, item: x }));
+  return [...site, ...spend, ...expense].sort((a, b) => b.at.localeCompare(a.at));
 }
 
 // ── Requests from the crew (Oisin, 17 Nov) ───────────────────────────────────
