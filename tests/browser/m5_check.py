@@ -144,7 +144,7 @@ def steps(page, ctx):
     go(page, "/site")
     phone = page.get_by_label("Phone screen")
     # 16 Nov: the phone opens in English, with the operative's own language one tap away.
-    check("Site phone: opens in English first, own language one tap away", phone.get_by_role("button", name="Send a photo").count() == 1 and page.get_by_role("tab", name="English").get_attribute("aria-selected") == "true" and page.get_by_role("tab").nth(0).inner_text().strip() == "English", page.get_by_role("tab").all_inner_texts())
+    check("Site phone: opens in English first, own language one tap away", phone.get_by_role("button", name="Send a photo").count() == 1 and page.get_by_role("tab", name="English").get_attribute("aria-selected") == "true" and page.get_by_role("tablist", name="Language shown").get_by_role("tab").nth(0).inner_text().strip() == "English", page.get_by_role("tab").all_inner_texts())
     main.get_by_label("Operative to view the phone as").select_option(label="Marek Wiśniewski, Polski"); page.wait_for_timeout(300)
     if phone.get_by_role("button", name="Wyślij zdjęcie").count() == 0:
         page.get_by_role("tab", name="Polski").click(); page.wait_for_timeout(250)

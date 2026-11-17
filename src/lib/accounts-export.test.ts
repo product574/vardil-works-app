@@ -11,7 +11,7 @@ describe("accounts export", () => {
     const { text, fileName } = buildExport("sage50", rows);
     const lines = text.trim().split("\r\n");
     expect(lines).toHaveLength(2);
-    expect(lines[0]).toBe('SI,ARDM001,4000,C720,07/11/2026,SI-10407,"C720 Stage payment 1: render removal, first coats",41250.00,T1,5568.75');
+    expect(lines[0]).toBe('SI,ARDM001,4000,720,07/11/2026,SI-10407,"C720 Stage payment 1: render removal, first coats",41250.00,T1,5568.75');
     expect(lines[1]).toContain(",T0,0.00");
     expect(fileName).toBe("sales-invoices-sage50-2026-11-10.csv");
   });

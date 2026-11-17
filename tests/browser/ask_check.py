@@ -183,7 +183,7 @@ try:
         check("A reload keeps the conversation and the panel open", page.locator("#ask-panel [data-turn]").count() == n)
         page.locator("#ask-panel textarea").press("Escape")
         check("Escape closes the panel", page.locator("#ask-panel").count() == 0)
-        check("and puts the focus back on the button", page.evaluate("document.activeElement && document.activeElement.textContent") == "Ask AI")
+        check("and puts the focus back on the button", page.evaluate("document.activeElement && document.activeElement.textContent.trim()") == "Ask AI")
         page.get_by_role("button", name="Ask AI", exact=True).click(); page.locator("#ask-panel").get_by_role("button", name="New conversation").click()
         check("New conversation clears it", page.locator("#ask-panel [data-turn]").count() == 0 and page.locator("#ask-panel").get_by_text("Across the firm").count() == 1)
         page.locator("#ask-panel").get_by_role("button", name="Close Ask AI").click()

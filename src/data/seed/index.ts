@@ -18,7 +18,7 @@ import type { Db } from "../types";
 import { seedAssets } from "./assets";
 import { seedChat } from "./chat";
 import { quotedMargin, seedCommercial } from "./commercial";
-import { fillManagementDates, seedActivity, seedFiles, seedMail, seedManagement, seedMoney } from "./office";
+import { fillManagementDates, fillPurchases, seedExpenses, seedActivity, seedFiles, seedMail, seedManagement, seedMoney, seedPayrollExports } from "./office";
 import { seedPeople } from "./people";
 import { quoteTargets, seedProjects } from "./projects";
 import { seedSubscription } from "./subscription";
@@ -86,6 +86,9 @@ function buildIrishSeed(realToday: string, opts: { emailDomain?: string; vatPct?
     supplies: seedSupplies(day),
     portalNotes: seedPortalNotes(day),
     subscriptionInvoices: seedSubscription(day, people),
+    payrollExports: [],
+    vehicleChecks: [],
+    expenses: seedExpenses(day),
     attendanceChanges: [],
     ...assets,
     files,
@@ -104,6 +107,8 @@ function buildIrishSeed(realToday: string, opts: { emailDomain?: string; vatPct?
   };
   // Written last, from the finished records.
   fillManagementDates(db, day, opts.region ?? "IE");
+  fillPurchases(db, day);
+  db.payrollExports = seedPayrollExports(db, day);
   db.activity = seedActivity(db, day);
   return { day, db };
 }

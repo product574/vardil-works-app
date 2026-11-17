@@ -1,4 +1,4 @@
-import os, sys
+import os, re, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 FIX = os.path.join(HERE, "fixtures") + os.sep
 REPO = os.path.dirname(os.path.dirname(HERE))
@@ -17,6 +17,15 @@ def as_role(page, role):
     page.get_by_role("button", name="Account menu").click()
     page.get_by_role("menuitem", name=role).click()
     page.wait_for_timeout(350)
+
+def drag(page, src, dst, done):
+    """Drag, and once more if nothing happened: in the test browser the first drag after a dialog closes does not start."""
+    src.drag_to(dst); page.wait_for_timeout(300)
+    if not done():
+        src.drag_to(dst); page.wait_for_timeout(300)
+
+def day_of(page):
+    return page.evaluate("JSON.parse(localStorage.getItem('cod.data')).state.day")
 
 def steps(page, ctx):
     page.goto(BASE + "/"); page.wait_for_url("**/sign-in")
@@ -69,9 +78,10 @@ def steps(page, ctx):
     # ── History
     page.goto(BASE + "/people/history"); page.wait_for_selector("table")
     page.screenshot(path=f"{OUT}/61-history-totals.png")
-    tot = data(page, "(() => { const m = day.slice(0,7); const rows = db.attendance.filter(a => a.date.startsWith(m) && a.personId==='p-101'); return rows.reduce((s,a) => s + (a.status==='full'?8:4) + a.overtimeHours*1.5, 0) })()")
-    row = page.locator("tbody tr", has_text="Fergal Noone").inner_text()
-    check("History: paid hours for Fergal Noone match his entries", f"{tot:g}" in row.replace(",", ""), (tot, row))
+    # 17 Nov (Oldstone call): basic hours on a 39 hour week (8 Monday to Thursday, 7 Friday), overtime apart, no pay worked out.
+    tot = data(page, "(() => { const m = day.slice(0,7); const rows = db.attendance.filter(a => a.date.startsWith(m) && a.date <= day && a.personId==='p-101'); return [rows.reduce((s,a) => { const h = new Date(a.date+'T12:00:00Z').getUTCDay()===5 ? 7 : 8; return s + (a.status==='full'?h:h/2) }, 0), rows.reduce((s,a) => s + a.overtimeHours, 0)] })()")
+    row = page.locator("tbody tr", has_text="Fergal Noone").inner_text().split("\t")
+    check("History: basic, overtime and total hours for Fergal Noone match his entries", row[-3] == f"{tot[0]:g}" and row[-2] == f"{tot[1]:g}" and row[-1] == f"{tot[0] + tot[1]:g}", (tot, row))
     page.get_by_role("tab", name="Corrections").click(); page.wait_for_timeout(200)
     check("History: the correction is listed with its reason", "Left at lunch, van breakdown" in main.inner_text())
     page.get_by_role("tab", name="Day by day").click(); page.wait_for_timeout(200)
@@ -120,39 +130,49 @@ def steps(page, ctx):
     planned_after = data(page, "(() => { const h = db.holidays.find(h => h.id==='hol-1'); return [h.status, db.plan.filter(p => p.personId===h.personId && p.date>=h.from && p.date<=h.to).length] })()")
     check("Holidays: approving takes those days off the plan", planned_after == ["Approved", 0], planned_after)
 
-    # ── Week ahead, by site
+    # ── Week ahead: one grid, a row per site and a column per day (17 Nov, Oisin)
     page.goto(BASE + "/schedule"); page.wait_for_selector("table")
     page.screenshot(path=f"{OUT}/65-week-ahead.png")
-    check("Week ahead: one block per running site", page.locator("section table").count() >= 7, page.locator("section table").count())
+    grid = page.get_by_role("table", name="Week ahead by site and day")
+    days = data(page, "(() => { const out=[]; let d=new Date(day+'T12:00:00Z'); do { d.setUTCDate(d.getUTCDate()+1) } while (d.getUTCDay()!==1); for (let i=0;i<5;i++){ out.push(d.toISOString().slice(0,10)); d.setUTCDate(d.getUTCDate()+1) } return out })()")
+    cell = lambda code, i: grid.locator(f"td[data-cell='{code} {days[i]}']")
+    chip = lambda code, i, name: cell(code, i).get_by_role("button", name=f"{name}: contact details and options")
+    heads = [t.replace("\n", " ") for t in grid.locator("thead th").all_inner_texts()]
+    check("Week ahead: sites down the side, the five days with their dates across the top", heads[0] == "Site" and len(heads) == 6 and heads[1].startswith("Mon ") and grid.locator("tbody tr").count() >= 7, heads)
+    first_row = grid.locator("tbody tr").first.locator("th").inner_text()
+    check("Week ahead: each row starts with the site code and name", re.match(r"C7\d\d\n", first_row) is not None, first_row)
     check("Week ahead: the double booking is called out and blocks sending", "1 double booking" in main.inner_text() and "Ionuț Marin is on" in main.inner_text() and page.get_by_role("button", name="Send week to operatives").is_disabled())
-    check("Week ahead: approved leave shows as Leave on the grid and cannot be planned over", page.locator("tr", has_text="Cormac Hession").locator("text=Leave").count() == 5 and page.locator("tr", has_text="Cormac Hession").locator("button[aria-pressed]").count() == 0, page.locator("tr", has_text="Cormac Hession").first.inner_text())
-    clash_btn = page.locator("button", has_text="Clash: ").first
-    fits = clash_btn.evaluate("b => b.scrollWidth <= b.clientWidth + 1 && b.getBoundingClientRect().height <= 34")
-    check("Week ahead: the clash cell fits on one line inside its button", fits and clash_btn.inner_text().startswith("Clash: C7"), clash_btn.inner_text())
-    clash_btn.click(); page.wait_for_timeout(250)
-    check("Week ahead: clicking a planned day opens the day planner with the site fixed", "Ionuț Marin" in page.locator("dialog[open]").last.inner_text() and page.locator("dialog[open]").last.locator("select").count() == 0)
-    page.locator("dialog[open]").last.get_by_role("button", name="Take off this day").click(); page.wait_for_timeout(250)
+    side = page.get_by_role("complementary", name="Not placed this week")
+    check("Week ahead: someone on approved leave all week is in no cell and not in Not placed", grid.get_by_role("button", name="Cormac Hession: contact details and options").count() == 0 and "Cormac Hession" not in side.inner_text())
+    clash = grid.locator("button.bg-bad-soft", has_text="Ionuț Marin")
+    check("Week ahead: the clash shows in red on both sites, naming the other site", clash.count() == 2 and "+C72" in clash.first.inner_text(), clash.all_inner_texts())
+    big = cell("C719", 0).bounding_box()
+    check("Week ahead: cells are big, a line per person", big["height"] > 150 and big["width"] > 120, big)
+    clash.first.click(); page.wait_for_timeout(250)
+    dlg = page.locator("dialog[open]").last
+    check("Week ahead: clicking a name opens their box with their week", "Ionuț Marin" in dlg.inner_text() and dlg.locator("li button").count() == 5)
+    dlg.get_by_role("button", name=re.compile("^Take off C7")).click(); page.wait_for_timeout(250)
     check("Week ahead: taking him off one site clears the clash and allows sending", "double booking" not in main.inner_text() and page.get_by_role("button", name="Send week to operatives").is_enabled())
-    block = page.locator("section", has=page.get_by_role("link", name="C725 Granary Quay Warehouses"))
-    before = data(page, "db.plan.filter(p => p.projectId==='pr-C725').length")
-    block.get_by_label("Trade to add to C725").select_option("General operative"); page.wait_for_timeout(150)
+    # A busy person dropped on another site: asked first, then moved
     sean = data(page, "db.people.find(p=>p.name==='Seán Dunphy').id")
-    opt = block.get_by_label("Person to add to C725").locator(f"option[value='{sean}']").inner_text()
-    check("Week ahead: the person picker says where he already is", opt.startswith("Seán Dunphy: on C") and "all week" in opt, opt)
-    block.get_by_label("Person to add to C725").select_option(sean); page.wait_for_timeout(150)
-    check("Week ahead: picking someone with no free day warns about double booking", "double books" in block.inner_text() and block.get_by_role("button", name="Plan for the week").count() == 0, block.inner_text()[-200:])
-    block.get_by_role("button", name="Plan anyway").click(); page.wait_for_timeout(250)
-    after = data(page, "db.plan.filter(p => p.projectId==='pr-C725').length")
-    check("Week ahead: planning someone for the week adds five days", after - before == 5, (before, after))
-    check("Week ahead: that creates a new clash with his other site", "double booking" in main.inner_text())
-    for b in block.locator("tr", has_text="Seán Dunphy").locator("button[aria-pressed]").all():
-        b.click(); page.wait_for_timeout(120)
-        page.locator("dialog[open]").last.get_by_role("button", name="Take off this day").click(); page.wait_for_timeout(120)
-    check("Week ahead: unticking his days clears it again", "double booking" not in main.inner_text())
+    home = data(page, f"db.projects.find(p => p.id === db.plan.find(x => x.personId==='{sean}' && x.date==='{days[0]}').projectId).code")
+    target = "C725" if home != "C725" else "C719"
+    drag(page, chip(home, 0, "Seán Dunphy"), cell(target, 1), lambda: page.locator("dialog[open]").count() > 0)
+    dlg = page.locator("dialog[open]").last
+    check("Week ahead: dropping someone who is busy that day asks first", f"Seán Dunphy is on {home} that day" in dlg.inner_text() and dlg.get_by_role("button", name=f"Move to {target}").count() == 1 and dlg.get_by_role("button", name="Put on both").count() == 1, dlg.inner_text()[:200])
+    dlg.get_by_role("button", name=f"Move to {target}").click(); page.wait_for_timeout(250)
+    where = data(page, f"db.plan.filter(p => p.personId==='{sean}' && p.date==='{days[1]}').map(p => db.projects.find(x => x.id===p.projectId).code)")
+    check("Week ahead: Move puts him on the new site that day only, with no double booking", where == [target] and chip(target, 1, "Seán Dunphy").count() == 1 and chip(home, 1, "Seán Dunphy").count() == 0 and chip(home, 2, "Seán Dunphy").count() == 1 and "double booking" not in main.inner_text(), where)
+    drag(page, chip(home, 2, "Seán Dunphy"), cell(target, 3), lambda: page.locator("dialog[open]").count() > 0)
+    page.locator("dialog[open]").last.get_by_role("button", name="Put on both").click(); page.wait_for_timeout(250)
+    check("Week ahead: Put on both double books and blocks sending", "Seán Dunphy is on" in main.inner_text() and page.get_by_role("button", name="Send week to operatives").is_disabled())
+    chip(target, 3, "Seán Dunphy").click(); page.wait_for_timeout(250)
+    page.locator("dialog[open]").last.get_by_role("button", name=f"Take off {target}").click(); page.wait_for_timeout(250)
+    check("Week ahead: taking him off that site clears it again", "double booking" not in main.inner_text() and chip(target, 1, "Seán Dunphy").count() == 0)
     page.get_by_role("button", name="Send week to operatives").click(); page.wait_for_timeout(250)
     check("Week ahead: sending is confirmed and logged", "sent to" in page.locator("[aria-live=polite]").last.inner_text() and data(page, "db.activity[0].what") == "Sent the week ahead to operatives")
     page.get_by_role("button", name="Earlier week").click(); page.wait_for_timeout(250)
-    check("Week ahead: the current week shows actual attendance for days gone", "Full" in main.inner_text())
+    check("Week ahead: the current week shows who attended on days gone, with no Add on them", grid.locator("button[aria-label$='contact details and options']").count() > 20 and grid.locator(f"td[data-cell$=' {day_of(page)}']").get_by_role("button", name=re.compile("^Add someone")).count() == 0)
     page.screenshot(path=f"{OUT}/66-week-ahead-current.png")
 
     # ── Month ahead and who is where
@@ -168,7 +188,8 @@ def steps(page, ctx):
     opts = [o.inner_text() for o in page.get_by_label("Site", exact=True).locator("option").all()]
     check("Site manager: timesheet offers only his own live sites", all(o.startswith(("C719", "C724")) for o in opts) and len(opts) == 2, opts)
     page.goto(BASE + "/schedule"); page.wait_for_selector("table")
-    check("Site manager: week ahead is read only, with no send button", page.get_by_role("button", name="Send week to operatives").count() == 0 and page.locator("button[aria-pressed]:not([disabled])").count() == 0)
+    rows = [t.split("\n")[0] for t in page.get_by_role("table", name="Week ahead by site and day").locator("tbody th").all_inner_texts()]
+    check("Site manager: plans the week for his own sites only (17 Nov)", rows == ["C719", "C724"] and page.get_by_role("button", name="Send week to operatives").count() == 1, rows)
     page.goto(BASE + "/people"); page.wait_for_selector("table")
     check("Site manager: hourly rates are hidden on the register", "Hourly rate" not in page.locator("thead").inner_text())
 
@@ -191,7 +212,7 @@ errs = []
 try:
     errs = run(steps)
 except Exception as ex:
-    print("STOPPED EARLY:", str(ex).split("\n")[0][:300])
+    import traceback; traceback.print_exc(); print("STOPPED EARLY:", str(ex).split("\n")[0][:300])
 for name, ok, detail in results:
     print(("PASS " if ok else "FAIL ") + name + ("" if ok else f"  [{detail[:260]}]"))
 print("console problems:", errs)

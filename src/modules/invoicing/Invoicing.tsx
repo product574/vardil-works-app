@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useAccess } from "@/data/access";
-import { clearHold, confirmSupplierInvoice, issueInvoice, markExported, markInvoicePaid, readSupplierInvoice, reopenSupplierInvoice } from "@/data/actions";
+import { clearHold, confirmSupplierInvoice, issueInvoice, markExported, markInvoicePaid, markPurchasesExported, readSupplierInvoice, reopenSupplierInvoice, signOffSupplierInvoice } from "@/data/actions";
 import { useData, useDay, usePrefs } from "@/data/store";
 import type { CostCategoryKey, Db, SalesInvoice, SupplierInvoice } from "@/data/types";
 import { buildExport, type ExportRow, PACKAGE_NAME } from "@/lib/accounts-export";
@@ -10,6 +10,7 @@ import { dFull, dShort, plural } from "@/lib/format";
 import { allocationBalance, jobRefMatches, suggestCategory } from "@/lib/job-costs";
 import { gross, money0, money2, pct1, r2 } from "@/lib/money";
 import { projectCosts } from "@/data/figures";
+import { buildPurchaseExport, needsSignOff, NOMINAL, type PurchaseLine, profitabilityCsv, purchaseLines, readyToExport, SIGN_OFF_OVER } from "@/lib/purchases";
 import { daysBetween } from "@/lib/status";
 import { Badge, Button, cx, Empty, NumInput, PageBody, PageHead, Panel, Section, Segmented, type Tone } from "@/ui";
 import { toast } from "@/ui/toast";
@@ -22,6 +23,17 @@ function useInv() {
   const project = (id: string) => db.projects.find((p) => p.id === id);
   const client = (id: string) => db.clients.find((c) => c.id === id);
   return { db, day, region, access, canEdit: access.may("manageInvoices"), project, client };
+}
+/** Hand a file to the browser to save. */
+function saveFile(fileName: string, text: string) {
+  const url = URL.createObjectURL(new Blob([text], { type: "text/csv" }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = fileName;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 const vatOf = (i: SalesInvoice) => r2((i.net * i.vatPct) / 100);
 
@@ -272,7 +284,7 @@ export function AccountsExport() {
     <>
       <PageHead
         title="Accounts export"
-        note={`Issued invoices go to ${PACKAGE_NAME[pkg]} as a file it can import, so nobody types them in twice. ${plural(waiting.length, "invoice")} waiting, ${issued.length - waiting.length} already sent.`}
+        note={`Sales invoices you issue and supplier invoices you confirm go to ${PACKAGE_NAME[pkg]} as files it can import, so nobody types them in twice. ${plural(waiting.length, "sales invoice")} waiting. VAT returns, bank reconciliation and payroll stay in ${PACKAGE_NAME[pkg]}.`}
         actions={
           canEdit && (
             <Button variant="primary" disabled={waiting.length === 0} onClick={download}>
@@ -287,6 +299,7 @@ export function AccountsExport() {
         </div>
       </PageHead>
       <PageBody className="grid max-w-6xl gap-5">
+        <h2 className="text-[1.15rem]">Sales invoices</h2>
         <Section title={`Waiting to go (${waiting.length})`}>
           <Panel className="overflow-x-auto">{waiting.length === 0 ? <Empty title="Everything issued has been exported">Issue an invoice under To invoice and it will appear here.</Empty> : <SalesTable rows={waiting} extra={{ head: "Issued", cell: (i) => dFull(i.issuedOn) }} />}</Panel>
         </Section>
@@ -295,10 +308,10 @@ export function AccountsExport() {
             <Panel className="overflow-x-auto">
               <pre className="px-3 py-2.5 font-mono text-[0.87rem] leading-relaxed whitespace-pre">{file.text.trim()}</pre>
             </Panel>
-            <p className="mt-2 text-[0.93rem] text-muted">{pkg === "sage50" ? "Sage 50 layout: one SI line per invoice, no heading row, nominal code 4000, tax code T1." : pkg === "xero" ? "Xero layout: its own starred column names, one line per invoice, the site code as a tracking option." : "A plain sheet with headings, for any other package or for the accountant."}</p>
+            <p className="mt-2 text-[0.93rem] text-muted">{pkg === "sage50" ? "Sage 50 layout: one SI line per invoice, no heading row, nominal code 4000, the project number as the department, tax code T1." : pkg === "xero" ? "Xero layout: its own starred column names, one line per invoice, the site code as a tracking option." : "A plain sheet with headings, for any other package or for the accountant."}</p>
           </Section>
         )}
-        <Section title="Already exported" aside="Newest first">
+        <Section title="Sales invoices already exported" aside="Newest first">
           <Panel className="overflow-x-auto">
             <table className="tbl">
               <thead>
@@ -322,7 +335,91 @@ export function AccountsExport() {
             </table>
           </Panel>
         </Section>
+        <Purchases />
       </PageBody>
+    </>
+  );
+}
+
+/** Confirmed supplier invoices as purchase invoices, with nominal codes and the project as the department (Oldstone call, 16 Nov). */
+function Purchases() {
+  const { db, region, canEdit, access, project } = useInv();
+  const pkg = usePrefs((s) => s.brand.accountsPackage);
+  const confirmed = db.supplierInvoices.filter((s) => s.readStatus === "confirmed" && !s.exportedAt).sort((a, b) => a.invoiceDate.localeCompare(b.invoiceDate));
+  const ready = confirmed.filter(readyToExport);
+  const waiting = confirmed.filter((s) => !readyToExport(s));
+  const lines: PurchaseLine[] = ready.flatMap((s) => purchaseLines(s, (id) => project(id)?.code ?? ""));
+  const file = buildPurchaseExport(pkg, lines);
+  const canSignOff = access.may("answerRequests");
+  return (
+    <>
+      <div className="mt-4 flex flex-wrap items-center gap-3">
+        <h2 className="text-[1.15rem]">Supplier invoices</h2>
+        {canEdit && (
+          <Button
+            variant="primary"
+            className="ml-auto"
+            disabled={ready.length === 0}
+            onClick={() => {
+              saveFile(file.fileName, file.text);
+              markPurchasesExported(ready.map((s) => s.id), PACKAGE_NAME[pkg]);
+              toast(`${plural(ready.length, "supplier invoice")} exported for ${PACKAGE_NAME[pkg]}`);
+            }}
+          >
+            Download purchase file for {PACKAGE_NAME[pkg]}
+          </Button>
+        )}
+      </div>
+      {waiting.length > 0 && (
+        <Section title={`Waiting for sign-off (${waiting.length})`} aside={`Over ${money0(SIGN_OFF_OVER, region)}: the director signs these off first`}>
+          <Panel className="overflow-x-auto">
+            <table className="tbl">
+              <thead>
+                <tr>
+                  <th>Supplier</th>
+                  <th>Invoice</th>
+                  <th>Project</th>
+                  <th className="num">Gross</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {waiting.map((s) => (
+                  <tr key={s.id}>
+                    <td className="font-medium">{s.supplier}</td>
+                    <td>
+                      <Link to={`/invoicing/supplier?inv=${s.id}`} className="text-accent-ink underline-offset-2 hover:underline">
+                        {s.invoiceNo}
+                      </Link>
+                    </td>
+                    <td>{[...new Set(s.allocations.map((a) => project(a.projectId)?.code))].join(", ")}</td>
+                    <td className="num">{money2(s.total, region)}</td>
+                    <td className="text-right">
+                      {canSignOff ? (
+                        <Button size="sm" onClick={() => { signOffSupplierInvoice(s.id); toast(`${s.supplier} ${s.invoiceNo} signed off`); }}>
+                          Sign off
+                        </Button>
+                      ) : (
+                        <span className="text-[0.93rem] text-muted">With Admin, Requests</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Panel>
+        </Section>
+      )}
+      <Section title={`Ready to go (${ready.length})`}>
+        <Panel className="overflow-x-auto">
+          {ready.length === 0 ? (
+            <Empty title="Nothing waiting">Confirm a supplier invoice to job costs and it will appear here.</Empty>
+          ) : (
+            <pre className="px-3 py-2.5 font-mono text-[0.87rem] leading-relaxed whitespace-pre" aria-label="Purchase file">{file.text.trim()}</pre>
+          )}
+        </Panel>
+        {ready.length > 0 && <p className="mt-2 text-[0.93rem] text-muted">{pkg === "sage50" ? "Sage 50 layout: a PI line (PC for a credit) per job and cost heading, the supplier account, nominal code (5000 materials, 5100 carriage, 5200 plant hire, 5201 tools, 5300 subcontractors, 5900 other), the project number as the department, the supplier's invoice number, tax code T1 at 23%, and the office file number as the extra reference." : pkg === "xero" ? "Xero bills layout: one line per job and cost heading, the nominal code as the account and the site code as a tracking option." : "A plain sheet with headings, for any other package or for the accountant."}</p>}
+      </Section>
     </>
   );
 }
@@ -373,9 +470,15 @@ export function SupplierInvoices() {
                   </span>
                   <span className="mt-0.5 flex items-center gap-2 text-[0.87rem] text-muted">
                     {s.invoiceNo}
-                    <Badge tone={READ[s.readStatus].tone} className="ml-auto">
-                      {READ[s.readStatus].label}
-                    </Badge>
+                    {s.readStatus === "confirmed" && !readyToExport(s) ? (
+                      <Badge tone="warn" className="ml-auto">
+                        Sign-off
+                      </Badge>
+                    ) : (
+                      <Badge tone={READ[s.readStatus].tone} className="ml-auto">
+                        {READ[s.readStatus].label}
+                      </Badge>
+                    )}
                   </span>
                 </button>
               </li>
@@ -390,7 +493,7 @@ export function SupplierInvoices() {
 
 /** `pin` keeps this invoice on screen after an action moves it down the queue, so the result can be seen. */
 function InvoiceCheck({ s, pin }: { s: SupplierInvoice; pin: () => void }) {
-  const { db, region, canEdit } = useInv();
+  const { db, region, canEdit, access } = useInv();
   const legalName = usePrefs((x) => x.brand.legalName);
   const [lines, setLines] = useState<Line[]>(() => suggestLines(s, db));
   const credit = s.docType === "credit_note";
@@ -553,6 +656,7 @@ function InvoiceCheck({ s, pin }: { s: SupplierInvoice; pin: () => void }) {
                 </table>
               </Panel>
             </Section>
+            {s.readStatus === "confirmed" && <ForAccounts s={s} canSignOff={access.may("answerRequests")} pin={pin} />}
             <div className="flex flex-wrap items-center justify-end gap-2">
               {s.readStatus === "confirmed" ? (
                 <>
@@ -597,9 +701,80 @@ function InvoiceCheck({ s, pin }: { s: SupplierInvoice; pin: () => void }) {
   );
 }
 
+/**
+ * What goes to the accounts package for a confirmed invoice, with the fields Majella keys into
+ * Sage by hand today (Oldstone call, 16 Nov), and the director's sign-off when it is over the limit.
+ */
+function ForAccounts({ s, canSignOff, pin }: { s: SupplierInvoice; canSignOff: boolean; pin: () => void }) {
+  const { db, region } = useInv();
+  const pkg = usePrefs((x) => x.brand.accountsPackage);
+  const lines = purchaseLines(s, (id) => db.projects.find((p) => p.id === id)?.code ?? "");
+  const over = needsSignOff(s);
+  return (
+    <Section title={`For ${PACKAGE_NAME[pkg]}`} aside={`File no. ${s.fileNo ?? "-"}`}>
+      <Panel className="overflow-x-auto">
+        <table className="tbl" aria-label="Purchase lines for the accounts package">
+          <thead>
+            <tr>
+              <th>Supplier account</th>
+              <th>Nominal</th>
+              <th>Department</th>
+              <th className="num">Net</th>
+              <th>Tax code</th>
+              <th className="num">VAT</th>
+            </tr>
+          </thead>
+          <tbody>
+            {lines.map((l, i) => (
+              <tr key={i}>
+                <td>{l.accountRef}</td>
+                <td>
+                  {l.nominal}
+                  <span className="block text-[0.87rem] text-muted">{Object.values(NOMINAL).find((n) => n.code === l.nominal)?.name}</span>
+                </td>
+                <td>
+                  {l.dept}
+                  <span className="block text-[0.87rem] text-muted">{l.siteCode}</span>
+                </td>
+                <td className="num">{money2(l.type === "PC" ? -l.net : l.net, region)}</td>
+                <td>{l.taxCode}</td>
+                <td className="num">{money2(l.type === "PC" ? -l.tax : l.tax, region)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Panel>
+      <div className="mt-2 flex flex-wrap items-center gap-2 text-[0.93rem]">
+        {s.exportedAt ? (
+          <Badge tone="ok">Sent to {PACKAGE_NAME[pkg]} {dFull(s.exportedAt.slice(0, 10))}</Badge>
+        ) : over && !s.signOff ? (
+          <Badge tone="warn">Over {money0(SIGN_OFF_OVER, region)}: waiting for the director to sign off</Badge>
+        ) : (
+          <Badge tone="accent">Ready for the next accounts export</Badge>
+        )}
+        {s.signOff && <span className="text-muted">Signed off by {s.signOff.by} on {dFull(s.signOff.at.slice(0, 10))}.</span>}
+        {over && !s.signOff && canSignOff && (
+          <Button
+            size="sm"
+            variant="primary"
+            className="ml-auto"
+            onClick={() => {
+              pin();
+              signOffSupplierInvoice(s.id);
+              toast(`${s.supplier} ${s.invoiceNo} signed off. It goes with the next accounts export`);
+            }}
+          >
+            Sign off
+          </Button>
+        )}
+      </div>
+    </Section>
+  );
+}
+
 /** Cost against value for every job that is running or just finished. */
 export function JobCosts() {
-  const { db, region, access } = useInv();
+  const { db, day, region, access } = useInv();
   if (!access.seeMargins)
     return (
       <>
@@ -619,7 +794,23 @@ export function JobCosts() {
   const total = (k: "labour" | "plant" | "material" | "other" | "cost") => rows.reduce((s, r) => s + r[k], 0);
   return (
     <>
-      <PageHead title="Job costs" note="Labour comes from the timesheets at each person's rate, everything else from supplier invoices once they are confirmed. Margin so far compares cost with the value of the work done." />
+      <PageHead
+        title="Job costs"
+        note="Labour comes from the timesheets at each person's rate, everything else from supplier invoices once they are confirmed. Margin so far compares cost with the value of the work done."
+        actions={
+          <Button
+            onClick={() => {
+              saveFile(
+                `profitability-report-${day}.csv`,
+                profitabilityCsv(rows.map(({ p, labour, plant, material, other, earned }) => ({ code: p.code, name: p.name, contract: p.value ?? 0, done: r2(earned), labour, material, plant, other }))),
+              );
+              toast("Profitability report downloaded");
+            }}
+          >
+            Download profitability report
+          </Button>
+        }
+      />
       <PageBody>
         <Panel className="max-w-[88rem] overflow-x-auto">
           <table className="tbl">

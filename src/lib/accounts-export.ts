@@ -17,8 +17,8 @@ const csv = (rows: (string | number)[][]) => rows.map((r) => r.map(cell).join(",
 const dmy = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)}`;
 const tax = (r: ExportRow) => r2((r.net * r.vatPct) / 100);
 
-/** Sage 50 audit trail import: one SI line per invoice, no header row, dates as dd/mm/yyyy, sales nominal 4000. */
-const sage50 = (rows: ExportRow[]) => csv(rows.map((r) => ["SI", r.accountRef, "4000", r.siteCode, dmy(r.issuedOn), r.invoiceNo, r.details, r.net.toFixed(2), r.vatPct > 0 ? "T1" : "T0", tax(r).toFixed(2)]));
+/** Sage 50 audit trail import: one SI line per invoice, no header row, dates as dd/mm/yyyy, sales nominal 4000, the project number as the department (686 for C686, as Oldstone keep it). */
+const sage50 = (rows: ExportRow[]) => csv(rows.map((r) => ["SI", r.accountRef, "4000", r.siteCode.replace(/\D/g, ""), dmy(r.issuedOn), r.invoiceNo, r.details, r.net.toFixed(2), r.vatPct > 0 ? "T1" : "T0", tax(r).toFixed(2)]));
 
 /** Xero sales invoice import: its own column names, one line per invoice, dates as dd/mm/yyyy. */
 const xero = (rows: ExportRow[]) =>

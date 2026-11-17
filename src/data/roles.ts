@@ -44,7 +44,7 @@ export const ROLES: RoleDef[] = [
     departments: ["dashboard", "inbox", "chat", "sales", "projects", "schedule", "people", "plant", "files", "portal", "site"],
     money: [true, true],
     // Everything except answering requests, which waits for the managing director (16 Nov).
-    perms: ALL_PERMS.filter((k) => k !== "answerRequests"),
+    perms: ALL_PERMS.filter((k) => k !== "answerRequests" && k !== "exportPayroll"),
   },
   {
     key: "site",
@@ -54,7 +54,8 @@ export const ROLES: RoleDef[] = [
     home: "/people/timesheet",
     departments: ["chat", "projects", "schedule", "people", "plant", "files", "site"],
     money: [true, false],
-    perms: ["markTime", "correctTime"],
+    // Planning added 17 Nov (Oisin): a site manager plans the sites they run, from the phone too.
+    perms: ["markTime", "correctTime", "planWeek"],
   },
   {
     key: "accounts",
@@ -64,7 +65,7 @@ export const ROLES: RoleDef[] = [
     home: "/invoicing",
     departments: ["dashboard", "inbox", "chat", "invoicing", "sales", "people", "plant", "files"],
     money: [true, true],
-    perms: ["allProjects", "approveDrafts", "correctTime", "seeRates", "manageInvoices"],
+    perms: ["allProjects", "approveDrafts", "correctTime", "seeRates", "manageInvoices", "exportPayroll"],
   },
   {
     key: "operative",

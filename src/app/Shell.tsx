@@ -1,4 +1,4 @@
-import { ArrowCounterClockwise, GearSix, MagnifyingGlass, Moon, SignOut, Sparkle, Sun, UserSwitch } from "@phosphor-icons/react";
+import { ArrowCounterClockwise, GearSix, MagnifyingGlass, Moon, SignOut, Sun, UserSwitch } from "@phosphor-icons/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, NavLink, Outlet, useLocation, useNavigate, useRouteError } from "react-router-dom";
 import { useAccess } from "@/data/access";
@@ -7,6 +7,7 @@ import { useData, useDay, useDb, usePrefs } from "@/data/store";
 import { dWeekday } from "@/lib/format";
 import { Avatar, Button, Count, cx, Dialog, Menu, MenuItem } from "@/ui";
 import { Toaster } from "@/ui/toast";
+import { AiSparkle } from "@/ui/AiSparkle";
 import { AskButton, AskPanel, askFromSearch } from "@/ai/AskPanel";
 import { useAsk } from "@/ai/state";
 import { useGate } from "./AuthPages";
@@ -303,7 +304,7 @@ function Search({ autoFocus = false, onDone }: { autoFocus?: boolean; onDone?: (
           {offerAsk && (
             <li role="option" aria-selected={cursor === hits.length} className="mt-1 border-t border-line pt-1">
               <button type="button" onMouseEnter={() => setCursor(hits.length)} onClick={askIt} className={cx("flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-accent-ink", cursor === hits.length && "bg-accent-soft")}>
-                <Sparkle size={18} className="shrink-0" />
+                <AiSparkle size={18} className="shrink-0" />
                 <span className="min-w-0">
                   <span className="block font-medium">Ask AI</span>
                   <span className="block truncate text-[0.87rem] text-muted">"{typed}"</span>

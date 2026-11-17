@@ -16,6 +16,7 @@ const sales = () => import("@/modules/sales");
 const projects = () => import("@/modules/projects");
 const people = () => import("@/modules/people");
 const schedule = () => import("@/modules/schedule/Schedule");
+const leave = () => import("@/modules/schedule/Leave");
 const plant = () => import("@/modules/plant");
 const files = () => import("@/modules/files/Files");
 const invoicing = () => import("@/modules/invoicing/Invoicing");
@@ -77,12 +78,15 @@ export const router = create([
           screen("projects/:code", projects, (m) => m.ProjectPage),
           screen("people/timesheet", people, (m) => m.Timesheet),
           screen("people/history", people, (m) => m.AttendanceHistory),
+          screen("people/payroll", people, (m) => m.PayrollExport),
           screen("people", people, (m) => m.EmployeeRegister),
           screen("people/certs", people, (m) => m.TrainingTickets),
           screen("people/holidays", people, (m) => m.Holidays),
           screen("schedule", schedule, (m) => m.WeekAhead),
           screen("schedule/month", schedule, (m) => m.MonthAhead),
           screen("schedule/today", schedule, (m) => m.WhoIsWhere),
+          screen("schedule/holidays", leave, (m) => m.ScheduleHolidays),
+          screen("schedule/holiday-requests", leave, (m) => m.HolidayRequests),
           screen("plant", plant, (m) => m.PlantOverview),
           screen("plant/calendar", plant, (m) => m.PlantCalendar),
           screen("plant/register", plant, (m) => m.PlantRegister),

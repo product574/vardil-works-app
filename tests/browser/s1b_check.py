@@ -41,7 +41,7 @@ def steps(page, ctx):
 
     # ── 1. The Files section is kept, with To be sorted
     bar = [t.strip() for t in page.locator("nav[aria-label=Departments] a").all_inner_texts()]
-    check("Files: back in the bar, between Plant and Invoicing", bar.index("Files") == bar.index("Plant") + 1 and bar.index("Invoicing") == bar.index("Files") + 1, bar)
+    check("Files: out of the bar since 17 Nov (Oisin), Plant then Invoicing", "Files" not in bar and bar.index("Invoicing") == bar.index("Plant") + 1, bar)
     go(page, "/files/unsorted", "table")
     check("Files: To be sorted holds the six loose files again", page.locator("tbody tr").count() == 6 and "6" in page.locator("nav[aria-label$=screens]:visible").get_by_role("link", name="To be sorted").inner_text())
     go(page, "/files?project=C721&folder=Invoices", "table")

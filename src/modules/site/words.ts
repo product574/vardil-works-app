@@ -78,3 +78,12 @@ export const INSTRUCTIONS: Record<string, Partial<Record<Language, string>>> = {
     ro: "O singură bandă cu semafoare, numai între 08:00 și 17:30. Niciun material nu trebuie să ajungă în râu: plasa de sub arc rămâne montată până la aprobarea inspectorului piscicol.",
   },
 };
+
+/** Added 17 Nov (Oisin): the driving check and the profile on the operative's phone. Not yet read by native speakers. */
+export const MORE: Record<Language, { driving: string; profile: string; signOut: string; requestLeave: string; expense: string }> = {
+  en: { expense: "Claim a reimbursement", driving: "Driving check", profile: "My profile", signOut: "Sign out", requestLeave: "Request holidays" },
+  pl: { expense: "Zwrot kosztów", driving: "Kontrola pojazdu", profile: "Mój profil", signOut: "Wyloguj", requestLeave: "Wniosek o urlop" },
+  ro: { expense: "Cere o rambursare", driving: "Verificarea vehiculului", profile: "Profilul meu", signOut: "Deconectare", requestLeave: "Cere concediu" },
+  pt: { expense: "Pedir reembolso", driving: "Verificação do veículo", profile: "O meu perfil", signOut: "Terminar sessão", requestLeave: "Pedir férias" },
+  lt: { expense: "Prašyti kompensacijos", driving: "Transporto patikra", profile: "Mano profilis", signOut: "Atsijungti", requestLeave: "Prašyti atostogų" },
+};

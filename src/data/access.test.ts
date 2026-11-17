@@ -32,15 +32,15 @@ describe("exceptions for one person", () => {
   const def = roleDef("site")!;
   const row: AccessRow = { id: "site", departments: [...def.departments], seeValues: true, seeMargins: false, perms: [...def.perms] };
 
-  it("site managers cannot plan the week by default, and see only their own projects", () => {
+  it("site managers plan the week (17 Nov) but do not manage staff by default, and see only their own projects", () => {
     const a = resolveAccess(def, row);
-    expect(a.perms).toEqual(expect.arrayContaining(["markTime", "correctTime"]));
-    expect(a.perms).not.toContain("planWeek");
+    expect(a.perms).toEqual(expect.arrayContaining(["markTime", "correctTime", "planWeek"]));
+    expect(a.perms).not.toContain("manageStaff");
     expect(a.perms).not.toContain("allProjects");
   });
   it("one person can be given more than their level", () => {
-    const a = resolveAccess(def, row, { id: "p-sm4", departments: { sales: true }, perms: { planWeek: true, seeMargins: true } });
-    expect(a.perms).toContain("planWeek");
+    const a = resolveAccess(def, row, { id: "p-sm4", departments: { sales: true }, perms: { manageStaff: true, seeMargins: true } });
+    expect(a.perms).toContain("manageStaff");
     expect(a.departments).toContain("sales");
     expect(a.seeMargins).toBe(true);
   });
@@ -66,7 +66,7 @@ describe("exceptions for one person", () => {
     expect(a.departments).toContain("sales");
   });
   it("counts only settings that really differ from the level", () => {
-    expect(exceptionCount(row, { id: "p-sm4", departments: { sales: true, plant: true }, perms: { planWeek: true, markTime: true } })).toBe(2);
+    expect(exceptionCount(row, { id: "p-sm4", departments: { sales: true, plant: true }, perms: { manageStaff: true, markTime: true } })).toBe(2);
     expect(exceptionCount(row, undefined)).toBe(0);
   });
 });

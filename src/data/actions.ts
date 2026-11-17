@@ -9,6 +9,8 @@ import { ASK_ACTIVITY } from "@/ai/tools";
 import { finalAccountNet, holdReason, invoiceNo, invoicedLine, paidLine, salesInvoiceFile } from "@/lib/billing";
 import { addDays, isWeekend } from "@/lib/dates";
 import { normaliseReg } from "@/lib/fleet";
+import { basicHours } from "@/lib/payroll";
+import { needsSignOff } from "@/lib/purchases";
 import { quoteTotal } from "@/lib/quotes";
 import { attendanceShort } from "@/lib/week";
 import { levelOf, levelValue, signedInPersonId } from "./access";
@@ -17,7 +19,7 @@ import { ROLES } from "./roles";
 import { costingFor, linesFor, type WorkKind } from "./seed/commercial";
 import { rng } from "./seed/util";
 import { getDay, useData, usePrefs } from "./store";
-import type { AccessKey, AccessRow, Allocation, Cert, Client, Db, DepartmentKey, Enquiry, ID, LevelKey, PermKey, Person, PhotoStage, Language, Mail, MailIntent, Proof, RequestKind, RoleKey, FileCategory, FileKind, FleetDocCategory, Project, Variation, Vehicle } from "./types";
+import type { AccessKey, AccessRow, Allocation, Cert, Client, Db, Expense, DepartmentKey, Enquiry, ID, LevelKey, PermKey, Person, PhotoStage, Language, Mail, MailIntent, Proof, RequestKind, RoleKey, FileCategory, FileKind, FleetDocCategory, Project, Variation, Vehicle } from "./types";
 
 const mutate = (fn: (db: Db) => void) => useData.getState().mutate(fn);
 
@@ -896,7 +898,7 @@ export function removeFromRoster(projectId: ID, personId: ID) {
 
 // ── Labour: people ────────────────────────────────────────────────────────────
 
-export function addEmployee(e: Pick<Person, "name" | "phone" | "kind" | "trade" | "category" | "hourlyRate" | "language" | "level">) {
+export function addEmployee(e: Pick<Person, "name" | "phone" | "kind" | "trade" | "category" | "hourlyRate" | "language" | "level" | "sageNo">) {
   mutate((db) => {
     const domain = db.people[0]?.email.split("@")[1] ?? "example";
     const parts = e.name.trim().normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().split(/\s+/);
@@ -1255,6 +1257,8 @@ export function confirmSupplierInvoice(id: ID, allocations: Omit<Allocation, "id
     s.readStatus = "confirmed";
     s.confirmedBy = actorName(db);
     s.confirmedAt = nowStamp();
+    // Over the limit: it waits for the director before it can go to the accounts package.
+    if (needsSignOff(s) && !s.signOff) s.signOffAsked = s.confirmedAt;
     // The paper is filed with each project it was charged to.
     for (const projectId of new Set(s.allocations.map((a) => a.projectId))) fileInvoice(db, projectId, s.fileName, s.receivedAt.slice(0, 10), s.supplier, "Email");
     log(db, "Confirmed a supplier invoice to job costs", `${s.supplier} ${s.invoiceNo}`, "invoicing");
@@ -1269,6 +1273,8 @@ export function reopenSupplierInvoice(id: ID) {
     s.readStatus = "needs_review";
     delete s.confirmedBy;
     delete s.confirmedAt;
+    delete s.signOffAsked;
+    delete s.signOff;
     log(db, "Reopened a supplier invoice", `${s.supplier} ${s.invoiceNo}`, "invoicing");
   });
 }
@@ -1311,6 +1317,89 @@ export function markExported(ids: ID[], packageName: string) {
   mutate((db) => {
     for (const i of db.salesInvoices) if (ids.includes(i.id)) i.exportedAt = nowStamp();
     log(db, "Exported sales invoices to accounts", `${ids.length} to ${packageName}`, "invoicing");
+  });
+}
+
+/** The director's yes on a supplier invoice over the sign-off limit (src/lib/purchases.ts). */
+export function signOffSupplierInvoice(id: ID) {
+  mutate((db) => {
+    const s = db.supplierInvoices.find((x) => x.id === id);
+    if (!s || s.signOff) return;
+    s.signOff = { by: actorName(db), at: nowStamp() };
+    delete s.signOffAsked;
+    log(db, "Signed off a supplier invoice", `${s.supplier} ${s.invoiceNo}`, "invoicing");
+  });
+}
+
+/** Confirmed supplier invoices sent to the accounts package as purchase invoices. */
+export function markPurchasesExported(ids: ID[], packageName: string) {
+  mutate((db) => {
+    for (const s of db.supplierInvoices) if (ids.includes(s.id)) s.exportedAt = nowStamp();
+    log(db, "Exported supplier invoices to accounts", `${ids.length} to ${packageName}`, "invoicing");
+  });
+}
+
+// ── Site phone: driving check and leave ──────────────────────────────────────
+
+/** A driver's walkaround check. Defects are logged for the yard; the office sees it in the activity log. */
+export function submitVehicleCheck(vehicleId: ID, defects: { item: string; note: string }[]) {
+  mutate((db) => {
+    const v = db.vehicles.find((x) => x.id === vehicleId);
+    const by = myId(db) ?? "";
+    db.vehicleChecks.unshift({ id: newId("vc"), vehicleId, personId: by, at: nowStamp(), defects });
+    log(db, defects.length ? "Reported vehicle defects" : "Completed a vehicle check", `${v?.reg}${defects.length ? `: ${defects.map((d) => `${d.item} (${d.note})`).join("; ")}` : ", all OK"}`, "plant");
+  });
+}
+
+/** Leave asked for from the site phone: it waits under Schedule, Holiday requests and Admin, Requests. */
+export function requestLeave(personId: ID, from: string, to: string, note: string) {
+  mutate((db) => {
+    db.holidays.unshift({ id: newId("hol"), personId, from, to, status: "Requested", via: "Form", note: note.trim() || "Asked from the site phone" });
+    log(db, "Asked for leave", `${db.people.find((p) => p.id === personId)?.name}, ${from} to ${to}`, "people");
+  });
+}
+
+/** A reimbursement claimed from the site phone. It waits for the director in Admin, Requests. */
+export function claimExpense(x: Omit<Expense, "id" | "createdAt" | "status" | "personId"> & { personId: ID }) {
+  mutate((db) => {
+    db.expenses.unshift({ ...x, id: newId("ex"), createdAt: nowStamp(), status: "Waiting" });
+    log(db, "Claimed a reimbursement", `${db.people.find((p) => p.id === x.personId)?.name}, ${x.kind}, ${x.amount.toFixed(2)}`, "people");
+  });
+}
+
+export function decideExpense(id: ID, approve: boolean) {
+  mutate((db) => {
+    const x = db.expenses.find((e) => e.id === id);
+    if (!x || x.status !== "Waiting") return;
+    x.status = approve ? "Approved" : "Declined";
+    x.decidedBy = actorName(db);
+    x.decidedAt = nowStamp();
+    log(db, approve ? "Approved a reimbursement" : "Declined a reimbursement", `${db.people.find((p) => p.id === x.personId)?.name}, ${x.amount.toFixed(2)}`, "admin");
+  });
+}
+
+// ── Payroll ───────────────────────────────────────────────────────────────────
+
+/** Record the employee number Sage Payroll gave someone, so their hours match up. Blank clears it. */
+export function setSageNo(personId: ID, sageNo: string) {
+  mutate((db) => {
+    const p = db.people.find((x) => x.id === personId);
+    if (!p) return;
+    const v = sageNo.trim();
+    if (v) p.sageNo = v;
+    else delete p.sageNo;
+    log(db, "Set a Sage employee number", `${p.name}, ${v || "cleared"}`, "people");
+  });
+}
+
+/** A week of hours sent to Sage Payroll. Hours only: rates, tax and deductions are Sage's. */
+export function recordPayrollExport(weekStart: string, personIds: ID[]) {
+  mutate((db) => {
+    const end = addDays(weekStart, 4);
+    const rows = db.attendance.filter((a) => personIds.includes(a.personId) && a.date >= weekStart && a.date <= end);
+    const hours = rows.reduce((n, a) => n + basicHours(a.date, a.status) + a.overtimeHours, 0);
+    db.payrollExports.unshift({ id: newId("pay"), weekStart, at: nowStamp(), by: actorName(db), people: personIds.length, hours });
+    log(db, "Exported hours to Sage Payroll", `Week ending ${end}, ${personIds.length} people, ${hours} hours`, "people");
   });
 }
 

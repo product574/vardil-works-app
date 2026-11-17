@@ -176,6 +176,14 @@ export function Dialog({ open, onClose, title, children, footer, wide }: { open:
     if (open && !el.open) el.showModal();
     if (!open && el.open) el.close();
   }, [open]);
+  // A dialog taken off the page while still open as a modal can leave Chrome refusing to start a
+  // drag anywhere (found 17 Nov on the week ahead), so close it on the way out.
+  useEffect(() => {
+    const el = ref.current;
+    return () => {
+      if (el?.open) el.close();
+    };
+  }, []);
   return (
     <dialog
       ref={ref}

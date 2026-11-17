@@ -53,6 +53,8 @@ export type Person = {
   active: boolean;
   archivedAt?: Day;
   certs: Cert[];
+  /** The employee number Sage Payroll gave them (0001), so hours exported match the right person (Oldstone call, 16 Nov). */
+  sageNo?: string;
 };
 
 export type Holiday = {
@@ -222,6 +224,25 @@ export type SubscriptionInvoice = {
 };
 
 /** Money someone wants to spend that needs the managing director's yes or no (Admin > Requests). */
+/** Money someone paid out of their own pocket for the firm, claimed back from the site phone (Oisin, 17 Nov). */
+export type ExpenseKind = "Fuel" | "Materials" | "Parking and tolls" | "Tools and PPE" | "Other";
+export type Expense = {
+  id: ID;
+  personId: ID;
+  createdAt: Stamp;
+  /** The day it was paid. */
+  date: Day;
+  kind: ExpenseKind;
+  what: string;
+  /** Including VAT, as on the receipt. */
+  amount: number;
+  projectId: ID | null;
+  receipt?: { dataUrl: string; sizeKb: number };
+  status: "Waiting" | "Approved" | "Declined";
+  decidedBy?: string;
+  decidedAt?: Stamp;
+};
+
 export type SpendRequest = {
   id: ID;
   requestedById: ID;
@@ -354,6 +375,9 @@ export type Vehicle = {
   service: ServicePlan;
 };
 
+/** A driver's daily walkaround check from the site phone (src/lib/driving.ts). */
+export type VehicleCheck = { id: ID; vehicleId: ID; personId: ID; at: Stamp; defects: { item: string; note: string }[] };
+
 export type FleetDocCategory = "repairs" | "tax" | "test" | "insurance";
 export type FleetDoc = {
   id: ID;
@@ -427,7 +451,17 @@ export type SupplierInvoice = {
   allocations: Allocation[];
   confirmedBy?: string;
   confirmedAt?: Stamp;
+  /** Number on the paper copy in the office files, Sage's extra reference (Oldstone call, 16 Nov). */
+  fileNo?: number;
+  /** Over the sign-off limit: asked of the director, and his yes. See src/lib/purchases.ts. */
+  signOffAsked?: Stamp;
+  signOff?: { by: string; at: Stamp };
+  /** Sent to the accounts package as a purchase invoice. */
+  exportedAt?: Stamp;
 };
+
+/** A week of timesheet hours sent to Sage Payroll: hours only, pay is worked out in Sage. */
+export type PayrollExport = { id: ID; weekStart: Day; at: Stamp; by: string; people: number; hours: number };
 
 export type SalesInvoiceStatus = "To invoice" | "Held" | "Invoiced" | "Paid";
 export type SalesInvoice = {
@@ -582,7 +616,7 @@ export type AccessRow = {
 };
 
 /** Things a person may do. The list with its wording is in src/data/permissions.ts. */
-export type PermKey = "allProjects" | "manageProjects" | "priceQuotes" | "approveDrafts" | "answerRequests" | "planWeek" | "markTime" | "correctTime" | "manageStaff" | "approveLeave" | "seeRates" | "managePlant" | "manageInvoices";
+export type PermKey = "allProjects" | "manageProjects" | "priceQuotes" | "approveDrafts" | "answerRequests" | "planWeek" | "markTime" | "correctTime" | "manageStaff" | "approveLeave" | "seeRates" | "managePlant" | "manageInvoices" | "exportPayroll";
 export type AccessKey = PermKey | "seeValues" | "seeMargins";
 
 /**
@@ -613,6 +647,12 @@ export type Db = {
   portalNotes: PortalNote[];
   /** Newest first. */
   subscriptionInvoices: SubscriptionInvoice[];
+  /** Weeks of hours sent to Sage Payroll, newest first. */
+  payrollExports: PayrollExport[];
+  /** Drivers' walkaround checks, newest first. */
+  vehicleChecks: VehicleCheck[];
+  /** Reimbursements claimed from the site phone, newest first. */
+  expenses: Expense[];
   assignments: Assignment[];
   attendance: Attendance[];
   attendanceChanges: AttendanceChange[];

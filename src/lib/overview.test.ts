@@ -126,10 +126,10 @@ describe("the portal panel", () => {
 describe("requests waiting for the managing director's yes or no", () => {
   const { db } = seed();
 
-  it("gathers leave, site requests and spending", () => {
+  it("gathers leave, site requests, spending and supplier invoices over the sign-off limit", () => {
     const q = directorQueue(db);
-    expect([q.leave.length, q.site.length, q.spend.length]).toEqual([3, 4, 3]);
-    expect(waitingOnDirector(db)).toHaveLength(10);
+    expect([q.leave.length, q.site.length, q.spend.length, q.invoices.length, q.expenses.length]).toEqual([3, 4, 3, 2, 2]);
+    expect(waitingOnDirector(db)).toHaveLength(14);
     // The two site requests already dealt with were agreed first.
     expect(db.requests.filter((r) => r.status === "Done").every((r) => r.decision === "Approved")).toBe(true);
   });

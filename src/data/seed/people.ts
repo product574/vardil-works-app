@@ -114,6 +114,10 @@ export function seedPeople(r: Rng, today: string, domain: string) {
   add(MANAGEMENT, "Management", false);
   add(SITE_MANAGERS, "Management", true);
   add(OPERATIVES, "Operative", false);
+  // Sage Payroll numbers in the order people were set up there. Aoife Kinsella started this
+  // month and is not in Sage yet, so the payroll export has something to flag.
+  let sage = 0;
+  for (const p of people) if (p.id !== "p-129") p.sageNo = String(++sage).padStart(4, "0");
 
   // A deliberate spread of expired and nearly expired tickets, so the certs screen has work in it.
   const nudge = (personId: string, certName: string, days: number) => {

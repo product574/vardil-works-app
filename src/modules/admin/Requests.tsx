@@ -1,10 +1,11 @@
 import { Link } from "react-router-dom";
 import { useAccess } from "@/data/access";
-import { decideHoliday, decideSiteRequest, decideSpend } from "@/data/actions";
+import { decideExpense, decideHoliday, decideSiteRequest, decideSpend, signOffSupplierInvoice } from "@/data/actions";
 import { useData, useDay, usePrefs } from "@/data/store";
 import type { Db } from "@/data/types";
 import { dFull, dShort, plural, when } from "@/lib/format";
-import { money2 } from "@/lib/money";
+import { money0, money2 } from "@/lib/money";
+import { SIGN_OFF_OVER } from "@/lib/purchases";
 import { directorQueue, recentlyDecided } from "@/lib/requests";
 import { Badge, Button, Empty, PageBody, PageHead, Panel, Section } from "@/ui";
 import { toast } from "@/ui/toast";
@@ -23,7 +24,7 @@ export function Requests() {
   const canLeave = access.may("approveLeave");
   const canAnswer = access.may("answerRequests");
   const q = directorQueue(db);
-  const total = q.leave.length + q.site.length + q.spend.length;
+  const total = q.leave.length + q.site.length + q.spend.length + q.invoices.length + q.expenses.length;
   const person = (id: string) => db.people.find((p) => p.id === id);
   const project = (id: string | null) => db.projects.find((p) => p.id === id);
   const planned = (personId: string, from: string, to: string) => db.plan.filter((p) => p.personId === personId && p.date >= from && p.date <= to).length;
@@ -46,7 +47,7 @@ export function Requests() {
     <>
       <PageHead
         title="Requests"
-        note={total === 0 ? "Nothing is waiting for a yes or no." : `${plural(total, "request")} waiting for a yes or no: leave, people and plant the sites have asked for, and money people want to spend.`}
+        note={total === 0 ? "Nothing is waiting for a yes or no." : `${plural(total, "request")} waiting for a yes or no: leave, people and plant the sites have asked for, money people want to spend, reimbursements, and supplier invoices over ${money0(SIGN_OFF_OVER, region)}.`}
       />
       <PageBody className="grid max-w-6xl gap-6">
         {total === 0 && (
@@ -181,6 +182,110 @@ export function Requests() {
                       </tr>
                     );
                   })}
+                </tbody>
+              </table>
+            </Panel>
+          </Section>
+        )}
+
+        {q.expenses.length > 0 && (
+          <Section title={`Reimbursements (${q.expenses.length})`} aside="Claimed from the site phone">
+            <Panel className="overflow-x-auto">
+              <table className="tbl">
+                <thead>
+                  <tr>
+                    <th>Who</th>
+                    <th>What for</th>
+                    <th>Paid</th>
+                    <th className="num">Amount</th>
+                    <th>Receipt</th>
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {q.expenses.map((x) => {
+                    const p = person(x.personId);
+                    const site = project(x.projectId);
+                    return (
+                      <tr key={x.id}>
+                        <td>
+                          <span className="font-medium">{p?.name}</span>
+                          <span className="block text-[0.87rem] text-muted">{p?.trade}</span>
+                        </td>
+                        <td>
+                          {x.kind}
+                          <span className="block text-[0.87rem] text-muted">
+                            {x.what}
+                            {site ? `. ${site.code}` : ""}
+                          </span>
+                        </td>
+                        <td className="whitespace-nowrap">{dShort(x.date)}</td>
+                        <td className="num">{money2(x.amount, region)}</td>
+                        <td>
+                          {x.receipt ? (
+                            <a href={x.receipt.dataUrl} download={`Receipt ${p?.name} ${x.date}.jpg`} className="font-medium text-accent-ink underline-offset-2 hover:underline">
+                              Open
+                            </a>
+                          ) : (
+                            <span className="text-muted">On paper</span>
+                          )}
+                        </td>
+                        {yesNo(
+                          canAnswer,
+                          () => { decideExpense(x.id, false); toast(`Reimbursement declined for ${p?.name}`); },
+                          () => { decideExpense(x.id, true); toast(`Reimbursement approved for ${p?.name}. Accounts pay it back`); },
+                          `reimbursement for ${p?.name}`,
+                        )}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </Panel>
+          </Section>
+        )}
+
+        {q.invoices.length > 0 && (
+          <Section title={`Supplier invoices over ${money0(SIGN_OFF_OVER, region)} (${q.invoices.length})`} aside={<Link to="/invoicing/export" className="font-medium text-accent-ink underline-offset-2 hover:underline">Accounts export</Link>}>
+            <Panel className="overflow-x-auto">
+              <table className="tbl">
+                <thead>
+                  <tr>
+                    <th>Supplier</th>
+                    <th>For</th>
+                    <th className="num">Gross</th>
+                    <th>Confirmed by</th>
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {q.invoices.map((s) => (
+                    <tr key={s.id}>
+                      <td>
+                        <Link to={`/invoicing/supplier?inv=${s.id}`} className="font-medium text-accent-ink underline-offset-2 hover:underline">
+                          {s.supplier}
+                        </Link>
+                        <span className="block text-[0.87rem] text-muted">
+                          {s.invoiceNo}, file no. {s.fileNo}
+                        </span>
+                      </td>
+                      <td>{[...new Set(s.allocations.map((a) => project(a.projectId)?.code))].join(", ")}</td>
+                      <td className="num">{money2(s.total, region)}</td>
+                      <td className="text-muted">
+                        {s.confirmedBy}
+                        <span className="block text-[0.87rem]">{when(s.confirmedAt ?? "", day)}</span>
+                      </td>
+                      <td className="text-right">
+                        {canAnswer ? (
+                          <Button size="sm" aria-label={`Sign off: ${s.supplier} ${s.invoiceNo}`} onClick={() => { signOffSupplierInvoice(s.id); toast(`${s.supplier} ${s.invoiceNo} signed off. It goes with the next accounts export`); }}>
+                            Sign off
+                          </Button>
+                        ) : (
+                          <span className="text-[0.93rem] text-muted">Waiting</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </Panel>

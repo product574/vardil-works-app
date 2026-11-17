@@ -6,6 +6,7 @@
  * managing director sees either (Shell.tsx decides).
  */
 import { X } from "@phosphor-icons/react";
+import { AiSparkle } from "@/ui/AiSparkle";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { DEPARTMENTS } from "@/app/departments";
@@ -26,9 +27,9 @@ export function AskButton() {
       onClick={() => setOpen(!open)}
       aria-expanded={open}
       aria-controls="ask-panel"
-      className={cx("press inline-flex h-9 shrink-0 items-center rounded-md border px-3.5 text-[0.93rem] font-medium whitespace-nowrap", open ? "border-accent bg-accent-soft text-accent-ink" : "border-line-strong bg-surface text-ink hover:border-accent hover:text-accent-ink")}
+      className={cx("press inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md border px-3 text-[0.93rem] font-medium whitespace-nowrap", open ? "border-accent bg-accent-soft text-accent-ink" : "border-line-strong bg-surface text-ink hover:border-accent hover:text-accent-ink")}
     >
-      Ask AI
+      <AiSparkle size={18} /> Ask AI
     </button>
   );
 }
@@ -262,7 +263,9 @@ export function AskPanel() {
       className="ask-open fixed inset-0 z-50 flex flex-col bg-surface md:static md:z-auto md:w-[27rem] md:shrink-0 md:border-l md:border-line"
     >
       <div className="flex min-h-13 items-center gap-1 border-b border-line py-2 pr-2.5 pl-4">
-        <h2 className="flex-1 text-[1.15rem]">Ask AI</h2>
+        <h2 className="flex flex-1 items-center gap-1.5 text-[1.15rem]">
+          <AiSparkle size={20} /> Ask AI
+        </h2>
         {turns.length > 0 && (
           <Button variant="ghost" size="sm" disabled={busy} onClick={clear}>
             New conversation
@@ -315,7 +318,7 @@ export function AskPanel() {
             maxLength={2000}
             disabled={!!unavailable}
             aria-label="Your question"
-            placeholder="Ask about projects, money, people or plant"
+            placeholder="AI Assistant"
             className="field max-h-40 min-h-9 flex-1 resize-none"
             onChange={(e) => {
               setDraft(e.target.value);

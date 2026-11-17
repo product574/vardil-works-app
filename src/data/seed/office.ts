@@ -3,7 +3,10 @@ import { addDays } from "@/lib/dates";
 import { money0, r2 } from "@/lib/money";
 import { labourCost, scopePercent } from "@/lib/project-costs";
 import { dashboardNumbers } from "../kpis";
-import type { Activity, Approval, Attendance, Automation, Client, Db, FileItem, HiredPlant, Mail, Person, Project, SalesInvoice, ScopeTask, SupplierInvoice } from "../types";
+import { basicHours } from "@/lib/payroll";
+import { needsSignOff } from "@/lib/purchases";
+import { workWeek } from "@/lib/week";
+import type { Activity, Approval, Attendance, Automation, Client, Db, Expense, FileItem, HiredPlant, Mail, PayrollExport, Person, Project, SalesInvoice, ScopeTask, SupplierInvoice } from "../types";
 import type { Craft, ProjectMeta } from "./projects";
 import { type Rng, at, lastWeekday, weekday, workdays } from "./util";
 
@@ -660,4 +663,58 @@ export function seedActivity(db: Db, today: string): Activity[] {
   if (confirmed?.confirmedAt) list.push(a(26, confirmed.confirmedAt, "Maeve Quirke", "Confirmed supplier invoice costs", `${confirmed.supplier} ${confirmed.invoiceNo}`, "invoicing"));
   if (lastExport) list.push(a(27, lastExport, "Maeve Quirke", "Exported invoices to accounts", `${exported} invoice${exported === 1 ? "" : "s"}`, "invoicing"));
   return list.filter((x) => x.at <= at(today, "23:59")).sort((x, y) => y.at.localeCompare(x.at));
+}
+
+/**
+ * Supplier invoices as accounts keep them (Oldstone call, 16 Nov): a file number for the paper
+ * copy in date order, the director's sign-off on anything over the limit, and the monthly run to
+ * the accounts package on the first Tuesday of the next month. The newest two over the limit are
+ * still waiting for him, so Admin, Requests has them.
+ */
+export function fillPurchases(db: Db, today: string) {
+  [...db.supplierInvoices].sort((a, b) => a.receivedAt.localeCompare(b.receivedAt) || a.id.localeCompare(b.id)).forEach((s, i) => (s.fileNo = 11400 + i));
+  const exportDay = (d: string) => {
+    const [y, m] = d.split("-").map(Number) as [number, number];
+    let e = `${m === 12 ? y + 1 : y}-${String(m === 12 ? 1 : m + 1).padStart(2, "0")}-01`;
+    while (new Date(`${e}T12:00:00Z`).getUTCDay() !== 2) e = addDays(e, 1);
+    return e < today ? e : undefined;
+  };
+  const confirmed = db.supplierInvoices.filter((s) => s.readStatus === "confirmed" && s.confirmedAt).sort((a, b) => b.confirmedAt!.localeCompare(a.confirmedAt!));
+  let waiting = 0;
+  for (const s of confirmed) {
+    const done = s.confirmedAt!.slice(0, 10);
+    const exported = exportDay(done);
+    if (needsSignOff(s)) {
+      if (!exported && waiting < 2) {
+        waiting++;
+        s.signOffAsked = s.confirmedAt;
+        continue;
+      }
+      s.signOff = { by: "Aidan King", at: at(workdays(done, 1) < today ? workdays(done, 1) : done, "08:40") };
+    }
+    if (exported) s.exportedAt = at(exported, "14:30");
+  }
+}
+
+/** Every finished week of hours went to Sage Payroll on the Tuesday after; last week is waiting when today is Monday or Tuesday morning's work. */
+export function seedPayrollExports(db: Db, today: string): PayrollExport[] {
+  const out: PayrollExport[] = [];
+  let mon = addDays(workWeek(today)[0]!, -7);
+  for (let i = 0; i < 8; i++, mon = addDays(mon, -7)) {
+    const sent = addDays(mon, 8);
+    if (sent >= today) continue;
+    const days = workWeek(mon);
+    const rows = db.attendance.filter((a) => days.includes(a.date));
+    out.push({ id: `pay-${mon}`, weekStart: mon, at: at(sent, "11:15"), by: "Maeve Quirke", people: new Set(rows.map((a) => a.personId)).size, hours: rows.reduce((n, a) => n + basicHours(a.date, a.status) + a.overtimeHours, 0) });
+  }
+  return out;
+}
+
+/** Two claims waiting for the director and one already paid back. Sample receipts have no picture behind them. */
+export function seedExpenses(today: string): Expense[] {
+  return [
+    { id: "ex-3", personId: "p-104", createdAt: at(workdays(today, -1), "17:40"), date: workdays(today, -1), kind: "Materials", what: "Bag of hydrated lime and a hawk from the builders' providers, ran short on site", amount: 46.8, projectId: "pr-C724", status: "Waiting" },
+    { id: "ex-2", personId: "p-sm2", createdAt: at(today, "07:55"), date: today, kind: "Fuel", what: "Diesel for the crew van, the fuel card was declined", amount: 92.15, projectId: "pr-C720", status: "Waiting" },
+    { id: "ex-1", personId: "p-110", createdAt: at(workdays(today, -6), "16:10"), date: workdays(today, -6), kind: "Parking and tolls", what: "M50 toll and parking at the builders' providers", amount: 9.6, projectId: null, status: "Approved", decidedBy: "Aidan King", decidedAt: at(workdays(today, -5), "09:05") },
+  ];
 }

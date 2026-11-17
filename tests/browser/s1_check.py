@@ -32,7 +32,7 @@ def steps(page, ctx):
     # ── The bar: Email beside Dashboard, Files kept, Admin at the end
     labels = [t.strip().split("\n")[-1] for t in bar.locator("a").all_inner_texts()]  # an unread count may sit above the name
     check("Bar: Email sits right after Dashboard", labels[:2] == ["Dashboard", "Email"], labels)
-    check("Bar: Admin and Files are there for the managing director, Inbox is not", "Admin" in labels and "Files" in labels and "Inbox" not in labels, labels)
+    check("Bar: Admin is there for the managing director; Inbox and Files are not (Files out of the bar 17 Nov)", "Admin" in labels and "Files" not in labels and "Inbox" not in labels, labels)
 
     # ── The AI overview (option B, worked out from the records)
     ai = main.locator("section", has=page.get_by_role("heading", name="AI overview"))
@@ -112,7 +112,7 @@ def steps(page, ctx):
     t = main.inner_text()
     check("Admin: Requests gathers leave, site requests and spending", "Leave (3)" in t and "From the sites (4)" in t and "Spending (3)" in t, t[:200])
     side = page.locator("nav[aria-label='Admin screens']:visible")
-    check("Admin: the sidebar holds Requests, Roles and access, Connections, Automations and the Activity log", all(side.get_by_role("link", name=n).count() == 1 for n in ["Requests 10", "Roles and access", "Connections", "Automations", "Activity log"]), side.inner_text())
+    check("Admin: the sidebar holds Requests, Roles and access, Connections, Automations and the Activity log", all(side.get_by_role("link", name=n).count() == 1 for n in ["Requests 14", "Roles and access", "Connections", "Automations", "Activity log"]), side.inner_text())
     page.screenshot(path=f"{OUT}/171-admin-requests.png", full_page=True)
     main.get_by_role("button", name="Approve: A third 150 litre drum mixer").click(); page.wait_for_timeout(300)
     sp = data(page, "(() => { const x = db.spendRequests.find(s => s.id==='sp-1'); return [x.status, x.decidedBy] })()")
@@ -128,7 +128,7 @@ def steps(page, ctx):
     go(page, "/admin")
     main.get_by_role("button", name="Approve: leave for Paudie Lyne").click(); page.wait_for_timeout(300)
     check("Admin: approving leave works as on Holidays", data(page, "db.holidays.find(h => h.personId==='p-121' || h.note==='Hospital appointment').status") == "Approved")
-    check("Admin: the count in the sidebar goes down", side.get_by_role("link", name="Requests 6").count() == 1, side.inner_text())
+    check("Admin: the count in the sidebar goes down", side.get_by_role("link", name="Requests 10").count() == 1, side.inner_text())
     go(page, "/admin/activity")
     check("Activity log: in Admin, recording the answers", "Agreed to spend" in main.inner_text() and "Turned down a site request" in main.inner_text())
     go(page, "/admin/connections")

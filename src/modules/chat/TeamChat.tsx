@@ -1,4 +1,4 @@
-import { ArrowLeft, ChatsCircle, EnvelopeSimple, MagnifyingGlass, Paperclip, PaperPlaneRight, PencilSimpleLine, UsersThree, X } from "@phosphor-icons/react";
+import { ArrowLeft, ChatsCircle, EnvelopeSimple, MagnifyingGlass, Paperclip, PaperPlaneRight, PlusCircle, UsersThree, X } from "@phosphor-icons/react";
 import { Fragment, type ReactNode, useEffect, useRef, useState } from "react";
 import { Link, NavLink, useNavigate, useParams } from "react-router-dom";
 import { useAccess } from "@/data/access";
@@ -37,8 +37,10 @@ export function TeamChat() {
             <span className="block font-display text-[1.1rem] font-semibold">Team chat</span>
             <span className="block text-[0.87rem] text-muted">{CHAT_APP_NAME[app]}</span>
           </span>
-          <button type="button" aria-label="New message or email" title="New message or email" onClick={() => setStarting(true)} className="press grid size-11 shrink-0 place-items-center rounded-md text-muted hover:bg-surface hover:text-accent-ink">
-            <PencilSimpleLine size={20} />
+        </div>
+        <div className="px-4 pb-2">
+          <button type="button" onClick={() => setStarting(true)} className="press flex h-11 w-full items-center justify-center gap-2 rounded-md border border-line-strong bg-surface font-medium text-ink hover:border-accent hover:text-accent-ink">
+            <PlusCircle size={20} /> New message
           </button>
         </div>
         <nav aria-label="Channels and direct messages" className="min-h-0 flex-1 overflow-y-auto px-2.5 pb-28">

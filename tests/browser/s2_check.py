@@ -89,7 +89,7 @@ def steps(page, ctx):
     check("A direct message opens with the person's name and no member count", main.get_by_role("heading", name="Niamh Lavelle").count() == 1 and main.get_by_role("button", name="members").count() == 0 and "leave request" in main.inner_text())
 
     # ── New message or email
-    main.get_by_role("button", name="New message or email").click(); page.wait_for_timeout(300)
+    main.get_by_role("button", name="New message").click(); page.wait_for_timeout(300)
     d = page.locator("dialog[open]")
     d.get_by_placeholder("Find someone by name or job").fill("pat"); page.wait_for_timeout(150)
     check("New: find someone by name or job", d.get_by_role("list", name="People").locator("li").count() == 1 and "Pat Scully" in d.inner_text())
@@ -99,10 +99,10 @@ def steps(page, ctx):
     new_dm = data(page, "db.chatChannels.find(c => c.kind === 'dm' && c.memberIds.includes('p-md') && c.memberIds.includes('p-acc'))")
     check("Message starts a direct message and opens it", new_dm is not None and f"/chat/{new_dm['id']}" in page.url and main.get_by_role("heading", name="Maeve Quirke").count() == 1 and "No messages yet" in main.inner_text(), page.url)
     check("and it joins the Direct messages list", side.get_by_role("link", name="Maeve Quirke").count() == 1)
-    main.get_by_role("button", name="New message or email").click(); page.wait_for_timeout(300)
+    main.get_by_role("button", name="New message").click(); page.wait_for_timeout(300)
     page.locator("dialog[open]").get_by_role("button", name="Message Maeve Quirke").click(); page.wait_for_timeout(400)
     check("Messaging the same person again opens the same one", data(page, "db.chatChannels.filter(c => c.kind === 'dm' && c.memberIds.includes('p-md') && c.memberIds.includes('p-acc')).length") == 1)
-    main.get_by_role("button", name="New message or email").click(); page.wait_for_timeout(300)
+    main.get_by_role("button", name="New message").click(); page.wait_for_timeout(300)
     page.locator("dialog[open]").get_by_role("button", name="Email Pat Scully").click(); page.wait_for_timeout(600)
     cd = page.locator("dialog[open]")
     check("Email opens a new email in Email, addressed to them", "/inbox" in page.url and cd.get_by_label("To").input_value() == data(page, "db.people.find(p => p.id === 'p-yard').email"), page.url)

@@ -84,6 +84,10 @@ export const DEPARTMENTS: Department[] = [
         { to: "/schedule/month", label: "Month ahead" },
         { to: "/schedule/today", label: "Who is where" },
       ] },
+      { label: "Leave", items: [
+        { to: "/schedule/holidays", label: "Holidays" },
+        { to: "/schedule/holiday-requests", label: "Holiday requests", count: (db) => db.holidays.filter((h) => h.status === "Requested").length },
+      ] },
     ],
   },
   {
@@ -92,6 +96,7 @@ export const DEPARTMENTS: Department[] = [
       { label: "Labour", items: [
         { to: "/people/timesheet", label: "Timesheet" },
         { to: "/people/history", label: "Attendance history" },
+        { to: "/people/payroll", label: "Payroll export" },
       ] },
       { label: "Team", items: [
         { to: "/people", label: "Employee register", end: true },
@@ -119,7 +124,7 @@ export const DEPARTMENTS: Department[] = [
   {
     // Kept on 16 Nov after all ("we still need this files section"), for the loose files
     // waiting in To be sorted. Each project's own folders are also on its Files tab.
-    key: "files", label: "Files", icon: FolderOpen, home: "/files", inBar: true,
+    key: "files", label: "Files", icon: FolderOpen, home: "/files", inBar: false,
     groups: [
       { label: "Files", items: [
         { to: "/files", label: "Project files", end: true },
