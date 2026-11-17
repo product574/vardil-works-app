@@ -1,15 +1,16 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAccess } from "@/data/access";
-import { planDays, type PlanMark, removeFromRoster, sendWeekAhead, setPlanDay } from "@/data/actions";
+import { planDays, type PlanMark, planRestDay, removeFromRoster, sendWeekAhead, setPlanDay } from "@/data/actions";
 import { co } from "@/data/place";
 import { useData, useDay } from "@/data/store";
 import { type Db, LANGUAGE_NAME, type Person, type Project } from "@/data/types";
 import { type DayState, daysLabel, openDays, partLoad, personWeek, planClashes, planShort } from "@/lib/availability";
 import { dayRoster, dropOutcome, firstOnSite, planSteps, stepsToPlan } from "@/lib/roster";
+import { bankHolidayOn, isBankHoliday } from "@/lib/bank-holidays";
 import { addDays } from "@/lib/dates";
 import { dShort, dWeekday, plural } from "@/lib/format";
-import { nextWorkWeek, workWeek } from "@/lib/week";
+import { fullWeek, nextWorkWeek, workWeek } from "@/lib/week";
 import { Badge, Button, cx, Dialog, Empty, Fact, Field, Mail, NumInput, PageBody, PageHead, Panel, Section, Segmented, Tel, type Tone } from "@/ui";
 import { toast } from "@/ui/toast";
 
@@ -187,6 +188,7 @@ export function WeekAhead() {
               onAdd={(siteId, date) => setAdding({ siteId, date })}
             />
           )}
+          <WeekendPlan db={db} week={week} day={day} sites={sites} canEdit={canEdit} />
           {canEdit && ahead.length > 0 && <p className="text-[0.93rem] text-muted">Drag a name from Not placed onto a site and day to put them there, or drag a name already in the grid to another site on the same day to move them. Each day also has an Add button, for phones and keyboards. The first time someone goes on a site in the week you are asked whether they are there for the rest of it. Click a name for their details and their week.</p>}
         </div>
         {ahead.length > 0 && <NotPlaced db={db} week={week} ahead={ahead} weekOf={weekOf} canEdit={canEdit} onDragStart={setDragging} onDragEnd={() => setDragging(null)} onPerson={(person) => setOpenPerson({ person })} />}
@@ -200,6 +202,214 @@ export function WeekAhead() {
 }
 
 type WeekOf = (personId: string) => DayState[];
+
+/**
+ * Weekend work under the week's grid (Oisin, 17 Nov). The grid stays Monday to Friday; a Saturday
+ * or Sunday is planned here one person at a time, since it is the exception and is paid as
+ * overtime. A day gone shows who was stamped in on the Timesheet; a day to come shows the plan,
+ * the same rule as the grid above, the month ahead and both phones.
+ */
+function WeekendPlan({ db, week, day, sites, canEdit }: { db: Db; week: string[]; day: string; sites: Project[]; canEdit: boolean }) {
+  const [adding, setAdding] = useState(false);
+  const weekend = fullWeek(week[0]!).slice(5);
+  const person = (id: string) => db.people.find((p) => p.id === id);
+  const lines = weekend.flatMap((d) =>
+    sites
+      .map((site) => ({ d, site, roster: dayRoster(db.attendance, db.plan, site.id, d, day) }))
+      .filter((x) => x.roster.rows.length > 0),
+  );
+  const open = weekend.filter((d) => d >= day);
+  return (
+    <Section
+      title="Weekend"
+      aside={
+        canEdit && open.length > 0 ? (
+          <Button size="sm" onClick={() => setAdding(true)}>
+            Plan weekend work
+          </Button>
+        ) : undefined
+      }
+    >
+      <Panel className="overflow-x-auto">
+        {lines.length === 0 ? (
+          <p className="px-3 py-3 text-muted">
+            Nobody is down for {dWeekday(weekend[0])} or {dWeekday(weekend[1])}.{canEdit && open.length > 0 ? " Weekend work is planned one person at a time, with Plan weekend work." : ""}
+          </p>
+        ) : (
+          <table className="tbl" aria-label="Weekend work by day and site">
+            <thead>
+              <tr>
+                <th>Day</th>
+                <th>Site</th>
+                <th>Who</th>
+              </tr>
+            </thead>
+            <tbody>
+              {lines.map(({ d, site, roster }) => (
+                <tr key={`${d}|${site.id}`}>
+                  <td className="whitespace-nowrap">
+                    {dWeekday(d)}
+                    <span className="block text-[0.87rem] text-muted">{roster.from === "timesheet" ? "Worked" : "Planned"}</span>
+                  </td>
+                  <td>
+                    <span className="font-medium">{site.code}</span> {site.name}
+                  </td>
+                  <td>
+                    <ul className="flex flex-wrap gap-x-4 gap-y-1">
+                      {roster.rows.map((r) => (
+                        <li key={r.personId} className="flex items-center gap-1.5">
+                          <span>
+                            {person(r.personId)?.name}
+                            {r.note && <span className="text-muted">, {r.note}</span>}
+                          </span>
+                          {canEdit && roster.from === "plan" && (
+                            <button
+                              type="button"
+                              aria-label={`Take ${person(r.personId)?.name} off ${site.code} on ${dWeekday(d)}`}
+                              title="Take off"
+                              className="press grid size-7 place-items-center rounded text-muted hover:bg-bad-soft hover:text-bad"
+                              onClick={() => {
+                                setPlanDay(site.id, r.personId, d, null);
+                                toast(`${person(r.personId)?.name} taken off ${site.code} for ${dWeekday(d)}`);
+                              }}
+                            >
+                              <span aria-hidden>×</span>
+                            </button>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </Panel>
+      <p className="mt-2 text-[0.93rem] text-muted">Saturday is at time and a half from 8am to 12 noon and double time after. Sunday is all double time. The hours go in afterwards with Weekend time stamp on the Timesheet.</p>
+      {adding && <PlanWeekendDialog db={db} days={open} sites={sites} onClose={() => setAdding(false)} />}
+    </Section>
+  );
+}
+
+/** Plan weekend work: the day, the site, and who. Anyone in the firm can be put down, that site's crew first. */
+function PlanWeekendDialog({ db, days, sites, onClose }: { db: Db; days: string[]; sites: Project[]; onClose: () => void }) {
+  const [date, setDate] = useState(days[0] ?? "");
+  const [siteId, setSiteId] = useState(sites[0]?.id ?? "");
+  const [picked, setPicked] = useState<string[]>([]);
+  const [extra, setExtra] = useState<Person[]>([]);
+  const [errors, setErrors] = useState<string[]>([]);
+  const site = sites.find((s) => s.id === siteId);
+  const crew = db.assignments
+    .filter((a) => a.projectId === siteId)
+    .map((a) => db.people.find((p) => p.id === a.personId))
+    .filter((p): p is Person => !!p && p.active)
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const others = db.people.filter((p) => p.active && p.kind === "Operative" && !crew.some((c) => c.id === p.id) && !extra.some((x) => x.id === p.id)).sort((a, b) => a.name.localeCompare(b.name));
+  const down = (id: string) => db.plan.some((p) => p.projectId === siteId && p.personId === id && p.date === date);
+  const away = (id: string) => onLeave(db, id, date);
+  const save = () => {
+    if (!site || !date) return setErrors(["Pick the day and the site"]);
+    if (picked.length === 0) return setErrors(["Tick who is to come in"]);
+    const refused: string[] = [];
+    let n = 0;
+    for (const id of picked) {
+      const no = planRestDay(site.id, id, date);
+      if (no) refused.push(`${db.people.find((p) => p.id === id)?.name}: ${no}`);
+      else n++;
+    }
+    if (n > 0) toast(`${plural(n, "person", "people")} down for ${site.code} on ${dWeekday(date)}`);
+    if (refused.length === 0) onClose();
+    else {
+      setErrors(refused);
+      setPicked([]);
+    }
+  };
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      title="Plan weekend work"
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button variant="primary" onClick={save}>
+            Add to the plan
+          </Button>
+        </>
+      }
+    >
+      <div className="grid gap-3">
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Day">
+            {(id) => (
+              <select id={id} className="field" value={date} onChange={(e) => { setDate(e.target.value); setErrors([]); }}>
+                {days.map((d) => (
+                  <option key={d} value={d}>
+                    {dWeekday(d)}
+                  </option>
+                ))}
+              </select>
+            )}
+          </Field>
+          <Field label="Site">
+            {(id) => (
+              <select id={id} className="field" value={siteId} onChange={(e) => { setSiteId(e.target.value); setPicked([]); setExtra([]); setErrors([]); }}>
+                {sites.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.code} {p.name}
+                  </option>
+                ))}
+              </select>
+            )}
+          </Field>
+        </div>
+        <fieldset>
+          <legend className="mb-1 text-[0.93rem] font-medium">Who is to come in</legend>
+          <ul className="grid max-h-56 gap-px overflow-y-auto rounded-md border border-line" aria-label="People to plan">
+            {[...crew, ...extra].map((p) => (
+              <li key={p.id}>
+                <label className={cx("flex min-h-9 items-center gap-2 px-2.5 py-1", down(p.id) || away(p.id) ? "text-muted" : "cursor-pointer hover:bg-accent-soft/60")}>
+                  <input type="checkbox" disabled={down(p.id) || away(p.id)} checked={picked.includes(p.id)} onChange={() => setPicked((x) => (x.includes(p.id) ? x.filter((y) => y !== p.id) : [...x, p.id]))} />
+                  <span className="font-medium">{p.name}</span>
+                  <span className="text-[0.87rem] text-muted">{p.trade}</span>
+                  <span className="ml-auto text-[0.87rem] text-muted">{down(p.id) ? "Already down" : away(p.id) ? "On leave" : extra.some((x) => x.id === p.id) ? "From another site" : ""}</span>
+                </label>
+              </li>
+            ))}
+            {crew.length + extra.length === 0 && <li className="px-2.5 py-2 text-muted">Nobody is on this site's list yet. Add people from the box below.</li>}
+          </ul>
+          <select
+            aria-label="Add someone from another site"
+            className="field mt-2"
+            value=""
+            onChange={(e) => {
+              const p = others.find((x) => x.id === e.target.value);
+              if (!p) return;
+              setExtra((x) => [...x, p]);
+              if (!away(p.id)) setPicked((x) => [...x, p.id]);
+            }}
+          >
+            <option value="">Add someone from another site</option>
+            {others.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}, {p.trade}
+              </option>
+            ))}
+          </select>
+        </fieldset>
+        <p className="text-[0.93rem] text-muted">They see it on their phone, under My week. Every hour on a Saturday or Sunday is overtime.</p>
+        {errors.length > 0 && (
+          <ul role="alert" className="grid gap-1 text-[0.93rem] text-bad">
+            {errors.map((e) => (
+              <li key={e}>{e}</li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </Dialog>
+  );
+}
 
 /** Everyone who still has a free day in the week, grouped by trade, so whoever is doing the roster can see who is left. */
 function NotPlaced({ db, week, ahead, weekOf, canEdit, onDragStart, onDragEnd, onPerson }: { db: Db; week: string[]; ahead: string[]; weekOf: WeekOf; canEdit: boolean; onDragStart: (d: Drag) => void; onDragEnd: () => void; onPerson: (p: Person) => void }) {
@@ -483,6 +693,7 @@ function WeekGrid({ sites, week, db, day, canEdit, clashes, liveIds, dragging, o
                 <span className="block text-[0.93rem] font-normal text-muted">
                   {dShort(d)}, {plural(total(d), "person", "people")}
                 </span>
+                {isBankHoliday(db.bankHolidays, d) && <span className="block text-[0.87rem] font-normal text-warn">{bankHolidayOn(db.bankHolidays, d)?.name}: double time</span>}
               </th>
             ))}
           </tr>

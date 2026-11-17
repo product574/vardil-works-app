@@ -18,7 +18,8 @@ const homeDept = (roleKey: string): DepartmentKey | undefined => {
   const home = ROLES.find((r) => r.key === roleKey)?.home.split("/")[1];
   return DEPARTMENTS.find((d) => d.home.split("/")[1] === home)?.key;
 };
-const depts = DEPARTMENTS.filter((d) => d.key !== "settings");
+// Settings and Profitability are the managing director's alone, so neither is offered to another level.
+const depts = DEPARTMENTS.filter((d) => d.key !== "settings" && d.key !== "profit");
 
 /**
  * Who may open, see and do what. Two layers: a level (by role), then exceptions for one

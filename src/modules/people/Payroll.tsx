@@ -5,7 +5,7 @@ import { checkPayrollWeek, recordPayrollExport, startDirectMessage } from "@/dat
 import { useData, useDay } from "@/data/store";
 import { addDays } from "@/lib/dates";
 import { dFull, dShort, plural, when } from "@/lib/format";
-import { blocking, FLAG_TEXT, OVERTIME_TO_QUERY, payrollCsv, payrollWeek, STANDARD_WEEK, weekCheck } from "@/lib/payroll";
+import { blocking, FLAG_TEXT, flagText, OVERTIME_TO_QUERY, payrollCsv, payrollWeek, STANDARD_WEEK, weekCheck, weekEnd } from "@/lib/payroll";
 import { workWeek } from "@/lib/week";
 import { Badge, Button, cx, Empty, PageBody, PageHead, Panel, Section } from "@/ui";
 import { toast } from "@/ui/toast";
@@ -31,11 +31,15 @@ export function PayrollExport() {
   const weeks = Array.from({ length: 6 }, (_, i) => addDays(thisMon, -7 * (i + 1)));
   const [week, setWeek] = useState(weeks[0]!);
   const days = workWeek(week);
-  const lines = payrollWeek(week, db.attendance, db.people);
+  // The pay week runs Monday to Sunday (17 Nov), so it ends on the Sunday and takes in that weekend's time stamps.
+  const end = weekEnd(week);
+  const bankHolidays = db.bankHolidays.map((b) => b.date);
+  const lines = payrollWeek(week, db.attendance, db.people, bankHolidays);
+  const weekendWork = lines.some((l) => l.weekend);
   const ready = lines.filter((l) => !blocking(l));
   const held = lines.filter(blocking);
   const done = db.payrollExports.filter((x) => x.weekStart === week);
-  const { check, stale } = weekCheck(db.payrollChecks, db.attendanceChanges, week);
+  const { check, stale } = weekCheck(db.payrollChecks, db.attendanceChanges, week, db.attendance);
   const checked = !!check && !stale;
   const file = payrollCsv(week, lines);
   // Whoever runs the sites someone worked on that week: the person to ask when a line looks wrong.
@@ -55,13 +59,13 @@ export function PayrollExport() {
     a.remove();
     URL.revokeObjectURL(url);
     recordPayrollExport(week, ready.map((l) => l.personId));
-    toast(`Hours for ${plural(ready.length, "person", "people")} exported for Sage Payroll, week ending ${dShort(days[4])}`);
+    toast(`Hours for ${plural(ready.length, "person", "people")} exported for Sage Payroll, week ending ${dShort(end)}`);
   };
   return (
     <>
       <PageHead
         title="Payroll export"
-        note={`Week ending ${dFull(days[4])}: ${plural(lines.length, "person", "people")}, ${h(total("total"))} hours. Hours only go to Sage Payroll; rates, tax, deductions and the bank payment are done in Sage.`}
+        note={`Week ending ${dFull(end)}, Monday to Sunday: ${plural(lines.length, "person", "people")}, ${h(total("total"))} hours. Hours only go to Sage Payroll; rates, tax, deductions and the bank payment are done in Sage.`}
         actions={
           <>
             {canCheck && !checked && lines.length > 0 && (
@@ -69,7 +73,7 @@ export function PayrollExport() {
                 variant="primary"
                 onClick={() => {
                   checkPayrollWeek(week);
-                  toast(`Week ending ${dShort(days[4])} marked as checked. It can go to Sage Payroll now`);
+                  toast(`Week ending ${dShort(end)} marked as checked. It can go to Sage Payroll now`);
                 }}
               >
                 {stale ? "Mark as checked again" : "Mark the week as checked"}
@@ -87,11 +91,11 @@ export function PayrollExport() {
           <select aria-label="Week" className="field w-auto" value={week} onChange={(e) => setWeek(e.target.value)}>
             {weeks.map((w, i) => (
               <option key={w} value={w}>
-                {i === 0 ? "Last week, " : ""}week ending {dShort(addDays(w, 4))}
+                {i === 0 ? "Last week, " : ""}week ending {dShort(weekEnd(w))}
               </option>
             ))}
           </select>
-          {!check ? <Badge tone="warn">Not checked yet</Badge> : stale ? <Badge tone="warn">Corrected since {check.by} checked it</Badge> : <Badge tone="ok">Checked {when(check.at, day)} by {check.by}</Badge>}
+          {!check ? <Badge tone="warn">Not checked yet</Badge> : stale ? <Badge tone="warn">Changed since {check.by} checked it</Badge> : <Badge tone="ok">Checked {when(check.at, day)} by {check.by}</Badge>}
           {done.length > 0 ? (
             <Badge tone="ok">
               Exported {when(done[0]!.at, day)} by {done[0]!.by}
@@ -132,7 +136,7 @@ export function PayrollExport() {
           {lines.length === 0 ? (
             <Empty title="No attendance recorded in this week" />
           ) : (
-            <table className="tbl" aria-label={`Hours for the week ending ${dShort(days[4])}`}>
+            <table className="tbl" aria-label={`Hours for the week ending ${dShort(end)}`}>
               <thead>
                 <tr>
                   <th>Sage no.</th>
@@ -140,11 +144,13 @@ export function PayrollExport() {
                   {days.map((d) => (
                     <th key={d}>
                       {wd(d)} {Number(d.slice(8))}
+                      {bankHolidays.includes(d) && <span className="block font-normal text-muted">Bank holiday</span>}
                     </th>
                   ))}
-                  <th className="num">Basic hours</th>
-                  <th className="num">Overtime x1.5</th>
-                  <th className="num">Overtime x2</th>
+                  {weekendWork && <th>Sat, Sun</th>}
+                  <th className="num w-[4.5rem] whitespace-normal">Basic hours</th>
+                  <th className="num w-[5rem] whitespace-normal">Overtime x1.5</th>
+                  <th className="num w-[5rem] whitespace-normal">Overtime x2</th>
                   <th className="num">Total</th>
                   <th>To check</th>
                 </tr>
@@ -153,12 +159,13 @@ export function PayrollExport() {
                 {lines.map((l) => (
                   <tr key={l.personId} className={cx(blocking(l) && "bg-warn-soft/40")}>
                     <td className="tabular-nums">{l.sageNo ?? <span className="text-warn">None</span>}</td>
-                    <td className="font-medium">{l.name}</td>
+                    <td className="font-medium whitespace-nowrap">{l.name}</td>
                     {days.map((d) => (
-                      <td key={d} className={cx("whitespace-nowrap", !l.days[d] && "text-faint")}>
+                      <td key={d} className={cx(!l.days[d] && "text-faint")}>
                         {l.days[d] || "-"}
                       </td>
                     ))}
+                    {weekendWork && <td className={cx(!l.weekend && "text-faint")}>{l.weekend || "-"}</td>}
                     <td className="num">{h(l.basic)}</td>
                     <td className="num">{l.timeAndHalf ? h(l.timeAndHalf) : "-"}</td>
                     <td className="num">{l.double ? h(l.double) : "-"}</td>
@@ -166,8 +173,8 @@ export function PayrollExport() {
                     <td>
                       <span className="flex flex-wrap gap-1">
                         {l.flags.map((f) => (
-                          <Badge key={f} tone={f === "no-sage" || f === "not-sent" || f === "much-overtime" ? "warn" : "neutral"}>
-                            {FLAG_TEXT[f]}
+                          <Badge key={f} tone={f === "no-sage" || f === "not-sent" || f === "much-overtime" || f === "double-only" ? "warn" : "neutral"}>
+                            {flagText(f, l)}
                           </Badge>
                         ))}
                       </span>
@@ -183,7 +190,7 @@ export function PayrollExport() {
               </tbody>
               <tfoot>
                 <tr>
-                  <td colSpan={7} className="border-t border-line-strong font-medium">
+                  <td colSpan={weekendWork ? 8 : 7} className="border-t border-line-strong font-medium">
                     Total
                   </td>
                   <td className="num border-t border-line-strong">{h(total("basic"))}</td>
@@ -196,7 +203,7 @@ export function PayrollExport() {
             </table>
           )}
         </Panel>
-        <p className="text-[0.93rem] text-muted">A full week is {STANDARD_WEEK} hours: 8 a day Monday to Thursday and 7 on Friday, half that for a half day. Overtime is the hours marked over on the timesheet, at the rate marked there: x1.5 is time and a half, x2 is double time. Total is hours worked. "A lot of overtime" marks {OVERTIME_TO_QUERY} hours or more in the week. If a line looks wrong, Ask opens a message to the site manager in Team chat. "Under 39 hours" is only a note for the reviewer: short weeks go to Sage as they are.</p>
+        <p className="text-[0.93rem] text-muted">A full week is {STANDARD_WEEK} hours: 8 a day Monday to Thursday and 7 on Friday, half that for a half day. Overtime is the hours marked over on the timesheet, at the rate marked there: x1.5 is time and a half, x2 is double time, and a day can have both. Saturday, Sunday and bank holiday time stamps are all overtime and go with the week they fall in, Monday to Sunday. Total is hours worked. "A lot of overtime" marks {OVERTIME_TO_QUERY} hours or more in the week. "Double time, no time and a half" is usually an early start entered as overtime, which it is not. If a line looks wrong, Ask opens a message to the site manager in Team chat. "Under {STANDARD_WEEK} hours" is only a note for the reviewer: short weeks go to Sage as they are, and a week with a bank holiday in it is measured against the hours left.</p>
         {ready.length > 0 && (
           <Section title="What Sage Payroll will receive" aside={file.fileName}>
             <Panel className="overflow-x-auto">
@@ -219,7 +226,7 @@ export function PayrollExport() {
               <tbody>
                 {db.payrollExports.slice(0, 8).map((x) => (
                   <tr key={x.id}>
-                    <td>{dFull(addDays(x.weekStart, 4))}</td>
+                    <td>{dFull(weekEnd(x.weekStart))}</td>
                     <td className="num">{x.people}</td>
                     <td className="num">{h(x.hours)}</td>
                     <td className="text-muted">

@@ -1,11 +1,12 @@
 import { invoiceNo, invoicedLine, paidLine, salesInvoiceFile } from "@/lib/billing";
 import { addDays } from "@/lib/dates";
 import { money0, r2 } from "@/lib/money";
+import { overtimeTotal } from "@/lib/overtime";
 import { labourCost, scopePercent } from "@/lib/project-costs";
 import { dashboardNumbers } from "../kpis";
 import { basicHours } from "@/lib/payroll";
 import { needsSignOff } from "@/lib/purchases";
-import { workWeek } from "@/lib/week";
+import { fullWeek, workWeek } from "@/lib/week";
 import type { Activity, Approval, Attendance, Automation, Client, DayInstruction, Db, Expense, FileItem, HiredPlant, Mail, PayrollCheck, PayrollExport, Person, Project, SalesInvoice, ScopeTask, SiteAccess, SupplierInvoice } from "../types";
 import type { Craft, ProjectMeta } from "./projects";
 import { type Rng, at, lastWeekday, weekday, workdays } from "./util";
@@ -214,7 +215,7 @@ export function seedMoney(r: Rng, today: string, ctx: Ctx) {
   for (const p of ctx.projects) {
     if (p.status === "Not started") continue;
     const m = ctx.meta.get(p.code)!;
-    const labour = labourCost(ctx.attendance.filter((a) => a.projectId === p.id).map((a) => ({ status: a.status, overtimeHours: a.overtimeHours, overtimeRate: a.overtimeRate, hourlyRate: rate.get(a.personId) ?? 0 })));
+    const labour = labourCost(ctx.attendance.filter((a) => a.projectId === p.id).map((a) => ({ date: a.date, status: a.status, overtimeHours: a.overtimeHours, doubleHours: a.doubleHours, hourlyRate: rate.get(a.personId) ?? 0 })));
     const pct = p.status === "Live" ? scopePercent(ctx.scopeTasks.filter((t) => t.projectId === p.id)) : 100;
     const earned = ((p.value ?? 0) * pct) / 100;
     const known = drafts.filter((d) => d.readStatus === "confirmed").flatMap((d) => d.allocations.filter((a) => a.projectId === p.id).map((a) => (d.docType === "credit_note" ? -a.amount : a.amount))).reduce((s, x) => s + x, 0);
@@ -532,8 +533,8 @@ export function weeklySummary(db: Db, demoToday: string, region: "IE" | "UK" = "
   const money = (v: number) => money0(v, region);
   const monday = lastWeekday(today, 1);
   const week = db.attendance.filter((a) => a.date >= monday && a.date < today);
-  const hours = week.reduce((s, a) => s + (a.status === "full" ? 8 : 4) + a.overtimeHours, 0);
-  const overtime = week.reduce((s, a) => s + a.overtimeHours, 0);
+  const hours = week.reduce((s, a) => s + (a.status === "full" ? 8 : a.status === "half" ? 4 : 0) + overtimeTotal(a), 0);
+  const overtime = week.reduce((s, a) => s + overtimeTotal(a), 0);
   const project = (code: string) => db.projects.find((p) => p.code === code)!;
   // Only what had happened by 07:00 that Friday: on a Monday the records also hold Friday's work.
   const asOf = at(today, "07:00");
@@ -703,9 +704,9 @@ export function seedPayrollExports(db: Db, today: string): PayrollExport[] {
   for (let i = 0; i < 8; i++, mon = addDays(mon, -7)) {
     const sent = addDays(mon, 8);
     if (sent >= today) continue;
-    const days = workWeek(mon);
+    const days = fullWeek(mon);
     const rows = db.attendance.filter((a) => days.includes(a.date));
-    out.push({ id: `pay-${mon}`, weekStart: mon, at: at(sent, "11:15"), by: "Maeve Quirke", people: new Set(rows.map((a) => a.personId)).size, hours: rows.reduce((n, a) => n + basicHours(a.date, a.status) + a.overtimeHours, 0) });
+    out.push({ id: `pay-${mon}`, weekStart: mon, at: at(sent, "11:15"), by: "Maeve Quirke", people: new Set(rows.map((a) => a.personId)).size, hours: rows.reduce((n, a) => n + basicHours(a.date, a.status) + overtimeTotal(a), 0) });
   }
   return out;
 }

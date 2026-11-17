@@ -7,11 +7,11 @@
  */
 import type { Attendance, DayInstruction, Holiday, ID, Project, SiteAccess } from "@/data/types";
 import type { DayState } from "./availability";
-import { addDays, datesBetween, isWeekend, MONTHS, weekStartOf } from "./dates";
-import { type OvertimeRate, overtimeRate, storedRate } from "./overtime";
+import { addDays, datesBetween, daysInMonth, isWeekend, MONTHS, weekStartOf } from "./dates";
+import { doubleOf, overtimeText, overtimeTotal, storedDouble } from "./overtime";
 import { basicHours } from "./payroll";
 import { opensSite } from "./site-access";
-import { overtimeNote, workdaysOfMonth, workWeek } from "./week";
+import { fullWeek, overtimeNote, workWeek } from "./week";
 
 // ── Week ahead: dropping a person on a day ───────────────────────────────────
 
@@ -73,11 +73,15 @@ export function overlapping(holidays: Holiday[], h: Pick<Holiday, "id" | "from" 
 /** "last-week", "this-week", or a month as "YYYY-MM". */
 export type Period = string;
 
-/** The working days a period covers, up to today. */
+/**
+ * The days a period covers, up to today. Every day, Saturdays and Sundays too, since someone
+ * can have a weekend time stamp (17 Nov): a week runs Monday to Sunday.
+ */
 export function periodDays(period: Period, day: string): string[] {
-  if (period === "last-week") return workWeek(addDays(weekStartOf(day), -7));
-  if (period === "this-week") return workWeek(day).filter((d) => d <= day);
-  return workdaysOfMonth(period).filter((d) => d <= day);
+  if (period === "last-week") return fullWeek(addDays(weekStartOf(day), -7));
+  if (period === "this-week") return fullWeek(day).filter((d) => d <= day);
+  const [y = 1970, m = 1] = period.split("-").map(Number);
+  return daysInMonth(y, m).filter((d) => d <= day);
 }
 
 /** The choices in the period box: last week, this week, then this month and the five before it. */
@@ -104,22 +108,26 @@ export function periodLabel(period: Period, day: string): string {
 
 // ── Attendance history: per site ─────────────────────────────────────────────
 
-/** `overtime` is every overtime hour; `double` is the part of it at double time, the rest being time and a half. */
-export type SiteTotals = { projectId: ID; people: { personId: ID; full: number; half: number; overtime: number; double: number; days: number; hours: number }[]; days: number; hours: number; overtime: number; double: number };
+/**
+ * `overtime` is every overtime hour; `double` is the part of it at double time, the rest being
+ * time and a half. `rest` counts weekend and bank holiday time stamps, which are not days.
+ */
+export type SiteTotals = { projectId: ID; people: { personId: ID; full: number; half: number; rest: number; overtime: number; double: number; days: number; hours: number }[]; days: number; rest: number; hours: number; overtime: number; double: number };
 
 /**
  * Attendance grouped by site, then by person: full days, half days, overtime, days in all (a half
  * day counts a half) and basic hours on the 39 hour week. Busiest site first.
  */
-export function perSite(rows: Pick<Attendance, "projectId" | "personId" | "date" | "status" | "overtimeHours" | "overtimeRate">[], nameOf: (id: ID) => string): SiteTotals[] {
-  const sites = new Map<ID, Map<ID, { full: number; half: number; overtime: number; double: number; hours: number }>>();
+export function perSite(rows: Pick<Attendance, "projectId" | "personId" | "date" | "status" | "overtimeHours" | "doubleHours">[], nameOf: (id: ID) => string): SiteTotals[] {
+  const sites = new Map<ID, Map<ID, { full: number; half: number; rest: number; overtime: number; double: number; hours: number }>>();
   for (const a of rows) {
     const people = sites.get(a.projectId) ?? new Map();
-    const t = people.get(a.personId) ?? { full: 0, half: 0, overtime: 0, double: 0, hours: 0 };
+    const t = people.get(a.personId) ?? { full: 0, half: 0, rest: 0, overtime: 0, double: 0, hours: 0 };
     if (a.status === "full") t.full++;
-    else t.half++;
-    t.overtime += a.overtimeHours;
-    if (overtimeRate(a) === 2) t.double += a.overtimeHours;
+    else if (a.status === "half") t.half++;
+    else t.rest++;
+    t.overtime += overtimeTotal(a);
+    t.double += doubleOf(a);
     t.hours += basicHours(a.date, a.status);
     people.set(a.personId, t);
     sites.set(a.projectId, people);
@@ -127,7 +135,7 @@ export function perSite(rows: Pick<Attendance, "projectId" | "personId" | "date"
   return [...sites.entries()]
     .map(([projectId, people]) => {
       const list = [...people.entries()].map(([personId, t]) => ({ personId, ...t, days: t.full + t.half / 2 })).sort((a, b) => b.days - a.days || nameOf(a.personId).localeCompare(nameOf(b.personId)));
-      return { projectId, people: list, days: list.reduce((n, p) => n + p.days, 0), hours: list.reduce((n, p) => n + p.hours, 0), overtime: list.reduce((n, p) => n + p.overtime, 0), double: list.reduce((n, p) => n + p.double, 0) };
+      return { projectId, people: list, days: list.reduce((n, p) => n + p.days, 0), rest: list.reduce((n, p) => n + p.rest, 0), hours: list.reduce((n, p) => n + p.hours, 0), overtime: list.reduce((n, p) => n + p.overtime, 0), double: list.reduce((n, p) => n + p.double, 0) };
     })
     .sort((a, b) => b.days - a.days || a.projectId.localeCompare(b.projectId));
 }
@@ -205,7 +213,7 @@ export const firstOnSite = (plan: { personId: ID; projectId: ID; date: string }[
  * week ahead both read the plan this way, so a change in one shows in the other.
  */
 export function dayRoster(
-  attendance: Pick<Attendance, "projectId" | "personId" | "date" | "status" | "overtimeHours" | "overtimeRate">[],
+  attendance: Pick<Attendance, "projectId" | "personId" | "date" | "status" | "overtimeHours" | "doubleHours">[],
   plan: { projectId: ID; personId: ID; date: string; part?: "half"; overtimeHours?: number }[],
   siteId: ID,
   date: string,
@@ -213,7 +221,8 @@ export function dayRoster(
 ): { from: "timesheet" | "plan"; rows: { personId: ID; note: string }[] } {
   const marked = attendance.filter((a) => a.projectId === siteId && a.date === date);
   // Overtime that was worked carries its rate ("+2h x2"); overtime that is only planned has none yet.
-  if (date < today || (date === today && marked.length > 0)) return { from: "timesheet", rows: marked.map((a) => ({ personId: a.personId, note: a.status === "half" ? "half day" : overtimeNote(a.overtimeHours, a.overtimeRate) })) };
+  // A rest day (weekend or bank holiday) is all overtime, so its note is the hours themselves.
+  if (date < today || (date === today && marked.length > 0)) return { from: "timesheet", rows: marked.map((a) => ({ personId: a.personId, note: a.status === "half" ? "half day" : a.status === "restday" ? overtimeText(a) : overtimeNote(a) })) };
   return { from: "plan", rows: plan.filter((x) => x.projectId === siteId && x.date === date).map((x) => ({ personId: x.personId, note: x.part === "half" ? "half day" : x.overtimeHours ? `+${x.overtimeHours}h` : "" })) };
 }
 
@@ -223,14 +232,14 @@ export function dayRoster(
  * today, once they have been marked); a day to come shows where they are planned.
  */
 export function personDay(
-  attendance: Pick<Attendance, "projectId" | "personId" | "date" | "status" | "overtimeHours" | "overtimeRate">[],
+  attendance: Pick<Attendance, "projectId" | "personId" | "date" | "status" | "overtimeHours" | "doubleHours">[],
   plan: { projectId: ID; personId: ID; date: string; part?: "half"; overtimeHours?: number }[],
   personId: ID,
   date: string,
   today: string,
   siteIds: Set<ID>,
-): { from: "timesheet" | "plan"; rows: { projectId: ID; half: boolean; overtimeHours: number; overtimeRate?: OvertimeRate }[] } {
+): { from: "timesheet" | "plan"; rows: { projectId: ID; half: boolean; restday?: boolean; overtimeHours: number; doubleHours?: number }[] } {
   const marked = attendance.filter((a) => a.personId === personId && a.date === date);
-  if (date < today || (date === today && marked.length > 0)) return { from: "timesheet", rows: marked.map((a) => ({ projectId: a.projectId, half: a.status === "half", overtimeHours: a.overtimeHours, ...storedRate(a.overtimeHours, a.overtimeRate) })) };
+  if (date < today || (date === today && marked.length > 0)) return { from: "timesheet", rows: marked.map((a) => ({ projectId: a.projectId, half: a.status === "half", ...(a.status === "restday" ? { restday: true } : {}), overtimeHours: a.overtimeHours, ...storedDouble(a.doubleHours) })) };
   return { from: "plan", rows: plan.filter((x) => x.personId === personId && x.date === date && siteIds.has(x.projectId)).map((x) => ({ projectId: x.projectId, half: x.part === "half", overtimeHours: x.overtimeHours ?? 0 })) };
 }

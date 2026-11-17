@@ -41,7 +41,7 @@ def steps(page, ctx):
     page.get_by_label("Today for Adrian Stoica").select_option("full")
     page.get_by_label("Today for Cormac Hession").select_option("half")
     page.get_by_label("Today for Krzysztof Nowicki").select_option("overtime"); page.wait_for_timeout(150)
-    ot = page.get_by_label("Overtime hours for Krzysztof Nowicki"); ot.click(); ot.press("ControlOrMeta+a"); page.keyboard.type("2.5", delay=40); page.wait_for_timeout(200)
+    ot = page.get_by_label("Hours at time and a half for Krzysztof Nowicki"); ot.click(); ot.press("ControlOrMeta+a"); page.keyboard.type("2.5", delay=40); page.wait_for_timeout(200)
     t = data(page, "db.attendance.filter(a => a.projectId==='pr-C722' && a.date===day).map(a => [db.people.find(p=>p.id===a.personId).name, a.status, a.overtimeHours, a.sent])")
     check("Timesheet: full, half and overtime are saved as marked, unsent", sorted(t) == sorted([["Adrian Stoica", "full", 0, False], ["Cormac Hession", "half", 0, False], ["Krzysztof Nowicki", "full", 2.5, False]]), t)
     check("Timesheet: the header counts 3 of 5, 3 not sent", "3 of 5 marked for today, 3 not sent yet" in main.inner_text())
@@ -79,7 +79,7 @@ def steps(page, ctx):
     page.goto(BASE + "/people/history"); page.wait_for_selector("table")
     page.screenshot(path=f"{OUT}/61-history-totals.png")
     # 17 Nov (Oldstone call): basic hours on a 39 hour week (8 Monday to Thursday, 7 Friday), overtime apart, no pay worked out.
-    tot = data(page, "(() => { const m = day.slice(0,7); const rows = db.attendance.filter(a => a.date.startsWith(m) && a.date <= day && a.personId==='p-101'); return [rows.reduce((s,a) => { const h = new Date(a.date+'T12:00:00Z').getUTCDay()===5 ? 7 : 8; return s + (a.status==='full'?h:h/2) }, 0), rows.filter(a => a.overtimeRate !== 2).reduce((s,a) => s + a.overtimeHours, 0), rows.filter(a => a.overtimeRate === 2).reduce((s,a) => s + a.overtimeHours, 0)] })()")
+    tot = data(page, "(() => { const m = day.slice(0,7); const rows = db.attendance.filter(a => a.date.startsWith(m) && a.date <= day && a.personId==='p-101'); return [rows.reduce((s,a) => { const h = new Date(a.date+'T12:00:00Z').getUTCDay()===5 ? 7 : 8; return s + (a.status==='full'?h:a.status==='half'?h/2:0) }, 0), rows.reduce((s,a) => s + a.overtimeHours, 0), rows.reduce((s,a) => s + (a.doubleHours ?? 0), 0)] })()")
     row = page.locator("tbody tr", has_text="Fergal Noone").inner_text().split("\t")
     hrs = lambda n: "-" if n == 0 else f"{n:g}"
     # 17 Nov: overtime in two columns, time and a half and double time.

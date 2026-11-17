@@ -23,6 +23,7 @@ import { seedPeople } from "./people";
 import { quoteTargets, seedProjects } from "./projects";
 import { seedSubscription } from "./subscription";
 import { seedPortalNotes, seedSpendRequests, seedSupplies } from "./supply";
+import { builtInBankHolidays } from "@/lib/bank-holidays";
 import { demoDay, rng, workdays } from "./util";
 
 export { demoDay } from "./util";
@@ -32,13 +33,16 @@ export { demoDay } from "./util";
  * in written text are swapped for UK ones. Firm, town and people names are invented and stay as they are.
  */
 const UK_COUNTY: Record<string, string> = { Roscommon: "Shropshire", Galway: "Cumbria", Donegal: "Northumberland", Kildare: "Kent", Dublin: "London", Clare: "Cornwall", Cavan: "Cheshire", Waterford: "Worcestershire", Mayo: "Norfolk", Wicklow: "Wiltshire", Kerry: "Devon", Wexford: "Sussex" };
-function toUK(db: Db): Db {
+function toUK(db: Db, day: string): Db {
   let text = JSON.stringify(db);
   for (const [ie, uk] of Object.entries(UK_COUNTY)) text = text.replace(new RegExp(`\\b${ie}\\b`, "g"), uk);
   // Irish mobiles (08x xxx xxxx) and landlines (0xx 555 xxxx) become UK-shaped numbers.
   text = text.replace(/"08(\d) (\d{3}) (\d{4})"/g, '"07$2 $3$1$1"').replace(/"0(\d{1,2}) 555 (\d{4})"/g, '"01$1 555 $2"');
   text = text.replace(/€/g, "£");
   const out = JSON.parse(text) as Db;
+  // The UK's bank holidays in place of Ireland's. The sample timesheets were written around the
+  // Irish ones, so a UK copy can show a normal day marked on a UK bank holiday.
+  out.bankHolidays = builtInBankHolidays(day, "UK");
   // Number plates: 231-G-4471 becomes a UK-style plate built from the same digits.
   for (const v of out.vehicles) {
     const [yy = "24", letters = "AB", n = "1"] = v.reg.split("-");
@@ -51,7 +55,7 @@ function toUK(db: Db): Db {
 
 export function buildSeed(realToday: string, opts: { emailDomain?: string; vatPct?: number; region?: "IE" | "UK" } = {}): { day: string; db: Db } {
   const built = buildIrishSeed(realToday, opts);
-  return opts.region === "UK" ? { day: built.day, db: toUK(built.db) } : built;
+  return opts.region === "UK" ? { day: built.day, db: toUK(built.db, built.day) } : built;
 }
 
 function buildIrishSeed(realToday: string, opts: { emailDomain?: string; vatPct?: number; region?: "IE" | "UK" } = {}): { day: string; db: Db } {
@@ -90,6 +94,7 @@ function buildIrishSeed(realToday: string, opts: { emailDomain?: string; vatPct?
     subscriptionInvoices: seedSubscription(day, people),
     payrollExports: [],
     payrollChecks: [],
+    bankHolidays: builtInBankHolidays(day, "IE"),
     vehicleChecks: seedVehicleChecks(day, assets.vehicles),
     expenses: seedExpenses(day),
     dayInstructions: seedDayInstructions(day),

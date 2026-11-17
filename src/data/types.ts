@@ -5,7 +5,6 @@
  * a real backend arrives, each `Db` key becomes a table and the screens do not change.
  * Dates are "YYYY-MM-DD" strings in the firm's local calendar; timestamps are ISO strings.
  */
-import type { OvertimeRate } from "@/lib/overtime";
 import type { Costing, QuoteLine } from "@/lib/quotes";
 import type { ServicePlan } from "@/lib/status";
 
@@ -335,10 +334,15 @@ export type Attendance = {
   projectId: ID;
   personId: ID;
   date: Day;
-  status: "full" | "half";
+  /**
+   * "full" or "half" for a normal working day. "restday" (Oisin, 17 Nov) is a weekend or bank
+   * holiday time stamp: no normal day in it, every hour at an overtime rate.
+   */
+  status: "full" | "half" | "restday";
+  /** Overtime hours at time and a half. */
   overtimeHours: number;
-  /** Set to 2 when the overtime is at double time. Left out for time and a half (Oisin, 17 Nov). */
-  overtimeRate?: OvertimeRate;
+  /** Overtime hours at double time. A day can have both rates; left off when there are none (17 Nov). */
+  doubleHours?: number;
   savedBy: string;
   savedAt: Stamp;
   /** False while a site manager has marked it but not yet sent the day's time stamps. */
@@ -503,6 +507,8 @@ export type SupplierInvoice = {
 
 /** A week of timesheet hours sent to Sage Payroll: hours only, pay is worked out in Sage. */
 export type PayrollExport = { id: ID; weekStart: Day; at: Stamp; by: string; people: number; hours: number };
+/** A bank holiday: every hour worked on it is at double time, and nobody is marked a normal day. */
+export type BankHoliday = { date: Day; name: string };
 /** A manager's check of a week's hours, before the office exports them to Sage Payroll by hand (17 Nov). */
 export type PayrollCheck = { id: ID; weekStart: Day; at: Stamp; by: string };
 
@@ -638,6 +644,8 @@ export type DepartmentKey =
   | "plant"
   | "files"
   | "invoicing"
+  /** Profitability (17 Nov): the managing director's alone. */
+  | "profit"
   | "portal"
   | "site"
   | "admin"
@@ -704,6 +712,8 @@ export type Db = {
   /** Weeks of hours sent to Sage Payroll, newest first. */
   payrollExports: PayrollExport[];
   payrollChecks: PayrollCheck[];
+  /** The days the firm treats as bank holidays: the public holidays, as changed in Admin (17 Nov). */
+  bankHolidays: BankHoliday[];
   /** Drivers' walkaround checks, newest first. */
   vehicleChecks: VehicleCheck[];
   /** Reimbursements claimed from the site phone, newest first. */

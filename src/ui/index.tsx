@@ -170,17 +170,23 @@ export function Field({ label, hint, children, className }: { label: string; hin
 /** A modal built on the browser's own <dialog>, so Escape, focus trapping and the backdrop come free. */
 export function Dialog({ open, onClose, title, children, footer, wide }: { open: boolean; onClose: () => void; title: string; children: ReactNode; footer?: ReactNode; wide?: boolean }) {
   const ref = useRef<HTMLDialogElement>(null);
+  // A close we make ourselves is not the person's, so it is not reported as one. Two cases. The
+  // screen says the dialog is shut (its own Close button, Cancel, Save): reporting that close as
+  // well called onClose twice, which nobody noticed until closing meant "keep a draft" and kept
+  // two (17 Nov). And a dialog taken off the page while still open as a modal can leave Chrome
+  // refusing to start a drag anywhere (found 17 Nov on the week ahead), so it is closed on the
+  // way out; in development React runs every effect twice, and reporting that one shut each
+  // dialog the moment it opened (`npm run dev` only, 17 Nov).
+  const ours = useRef(false);
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
     if (open && !el.open) el.showModal();
-    if (!open && el.open) el.close();
+    if (!open && el.open) {
+      ours.current = true;
+      el.close();
+    }
   }, [open]);
-  // A dialog taken off the page while still open as a modal can leave Chrome refusing to start a
-  // drag anywhere (found 17 Nov on the week ahead), so close it on the way out. That close is ours,
-  // not the person's, so it must not be reported as one: in development React runs every effect
-  // twice, and reporting it shut each dialog the moment it opened (`npm run dev` only, 17 Nov).
-  const ours = useRef(false);
   useEffect(() => {
     const el = ref.current;
     return () => {
@@ -394,7 +400,7 @@ export function Tick({ on, label, onChange, locked }: { on: boolean; label: stri
  * A number box that lets someone type freely ("12.", "0.5") and reports the number as they go.
  * A plain controlled input would rewrite "12." to "12" mid-keystroke and make decimals untypeable.
  */
-export function NumInput({ value, onChange, label, className }: { value: number; onChange: (n: number) => void; label: string; className?: string }) {
+export function NumInput({ value, onChange, label, className, disabled, id }: { value: number; onChange: (n: number) => void; label: string; className?: string; disabled?: boolean; id?: string }) {
   const [text, setText] = useState(String(value));
   useEffect(() => {
     // Follow outside changes (a reset, an edit elsewhere) without fighting the person's typing.
@@ -402,9 +408,11 @@ export function NumInput({ value, onChange, label, className }: { value: number;
   }, [value]);
   return (
     <input
+      id={id}
       aria-label={label}
       inputMode="decimal"
-      className={cx("field h-8 text-right", className)}
+      disabled={disabled}
+      className={cx("field h-8 text-right", disabled && "opacity-55", className)}
       value={text}
       onChange={(e) => {
         const next = e.target.value.replace(/[^\d.]/g, "");

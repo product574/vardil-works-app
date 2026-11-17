@@ -42,11 +42,13 @@ describe("holidays", () => {
 
 describe("periods", () => {
   const day = "2026-11-17";
-  it("last week is Monday to Friday of the week before", () => expect(periodDays("last-week", day)).toEqual(["2026-11-09", "2026-11-10", "2026-11-11", "2026-11-12", "2026-11-13"]));
+  // Every day of the week counts, since someone can have a weekend time stamp (17 Nov).
+  it("last week is Monday to Sunday of the week before", () => expect(periodDays("last-week", day)).toEqual(["2026-11-09", "2026-11-10", "2026-11-11", "2026-11-12", "2026-11-13", "2026-11-14", "2026-11-15"]));
   it("this week stops at today", () => expect(periodDays("this-week", day)).toEqual(["2026-11-16", "2026-11-17"]));
-  it("a month is its working days up to today", () => {
+  it("a month is its days up to today, weekends too", () => {
     const d = periodDays("2026-11", day);
-    expect(d[0]).toBe("2026-11-02");
+    expect(d[0]).toBe("2026-11-01");
+    expect(d).toContain("2026-11-14");
     expect(d[d.length - 1]).toBe("2026-11-17");
   });
   it("the box offers last week first, then this week, then six months", () => {
@@ -68,13 +70,19 @@ describe("perSite", () => {
   it("groups by site then person, a half day counting a half, busiest first", () => {
     const out = perSite([a("s1", "p1", "full"), a("s1", "p1", "half"), a("s2", "p2", "full", 2), a("s2", "p2", "full"), a("s2", "p3", "full"), a("s1", "p4", "full")], (id) => id);
     expect(out.map((s) => [s.projectId, s.days])).toEqual([["s2", 3], ["s1", 2.5]]);
-    expect(out[0]!.people).toEqual([{ personId: "p2", full: 2, half: 0, overtime: 2, double: 0, hours: 16, days: 2 }, { personId: "p3", full: 1, half: 0, overtime: 0, double: 0, hours: 8, days: 1 }]);
+    expect(out[0]!.people).toEqual([{ personId: "p2", full: 2, half: 0, rest: 0, overtime: 2, double: 0, hours: 16, days: 2 }, { personId: "p3", full: 1, half: 0, rest: 0, overtime: 0, double: 0, hours: 8, days: 1 }]);
     expect(out[1]!.people.map((p) => [p.personId, p.days])).toEqual([["p1", 1.5], ["p4", 1]]);
   });
   it("keeps the double time hours apart from the rest of the overtime", () => {
-    const out = perSite([{ ...a("s1", "p1", "full", 3), overtimeRate: 2 as const }, a("s1", "p1", "full", 2), a("s1", "p2", "full", 1)], (id) => id);
+    const out = perSite([{ ...a("s1", "p1", "full", 0), doubleHours: 3 }, a("s1", "p1", "full", 2), a("s1", "p2", "full", 1)], (id) => id);
     expect(out[0]).toMatchObject({ overtime: 6, double: 3 });
     expect(out[0]!.people.map((p) => [p.personId, p.overtime, p.double])).toEqual([["p1", 5, 3], ["p2", 1, 0]]);
+  });
+  it("counts a weekend time stamp apart from days: it has overtime hours and no basic hours", () => {
+    const sat = { projectId: "s1", personId: "p1", date: "2026-11-14", status: "restday" as const, overtimeHours: 4, doubleHours: 2 };
+    const out = perSite([a("s1", "p1", "full"), sat, { ...a("s1", "p2", "full", 7.5), doubleHours: 1.5 }], (id) => id);
+    expect(out[0]).toMatchObject({ days: 2, rest: 1, hours: 16, overtime: 15, double: 3.5 });
+    expect(out[0]!.people.find((p) => p.personId === "p1")).toMatchObject({ full: 1, half: 0, rest: 1, days: 1, hours: 8, overtime: 6, double: 2 });
   });
   it("adds up each site's basic and overtime hours, a Friday counting 7", () => {
     const out = perSite([a("s1", "p1", "full", 1.5), a("s1", "p2", "half"), { projectId: "s1", personId: "p1", date: "2026-11-20", status: "full", overtimeHours: 0 }], (id) => id);
@@ -84,8 +92,12 @@ describe("perSite", () => {
     const { db, day } = buildSeed("2026-11-16");
     const days = new Set(periodDays("last-week", day));
     const rows = db.attendance.filter((x) => days.has(x.date));
-    const total = rows.reduce((n, x) => n + (x.status === "full" ? 1 : 0.5), 0);
-    expect(perSite(rows, (id) => id).reduce((n, s) => n + s.days, 0)).toBe(total);
+    // A weekend time stamp is not a day: it is counted apart, as overtime only.
+    const total = rows.reduce((n, x) => n + (x.status === "full" ? 1 : x.status === "half" ? 0.5 : 0), 0);
+    const sites = perSite(rows, (id) => id);
+    expect(sites.reduce((n, s) => n + s.days, 0)).toBe(total);
+    expect(sites.reduce((n, s) => n + s.rest, 0)).toBe(rows.filter((x) => x.status === "restday").length);
+    expect(sites.reduce((n, s) => n + s.rest, 0)).toBe(5);
     expect(total).toBeGreaterThan(20);
   });
 });
@@ -150,7 +162,10 @@ describe("who to show for a site on a day", () => {
   it("today comes from the timesheet once the site has marked anyone, else from the plan", () => {
     expect(dayRoster(att, plan, "a", "2026-11-17", "2026-11-17")).toEqual({ from: "timesheet", rows: [{ personId: "p2", note: "+2h x1.5" }] });
     // Double time shows as such on a day that was worked.
-    expect(dayRoster([{ projectId: "a", personId: "p9", date: "2026-11-16", status: "full" as const, overtimeHours: 3, overtimeRate: 2 as const }], [], "a", "2026-11-16", "2026-11-17").rows).toEqual([{ personId: "p9", note: "+3h x2" }]);
+    expect(dayRoster([{ projectId: "a", personId: "p9", date: "2026-11-16", status: "full" as const, overtimeHours: 0, doubleHours: 3 }], [], "a", "2026-11-16", "2026-11-17").rows).toEqual([{ personId: "p9", note: "+3h x2" }]);
+    // A weekend time stamp shows its hours; a weekend still to come shows who is planned.
+    expect(dayRoster([{ projectId: "a", personId: "p9", date: "2026-11-14", status: "restday" as const, overtimeHours: 4, doubleHours: 2 }], [], "a", "2026-11-14", "2026-11-17").rows).toEqual([{ personId: "p9", note: "4h x1.5 + 2h x2" }]);
+    expect(dayRoster([], [{ projectId: "a", personId: "p9", date: "2026-11-21" }], "a", "2026-11-21", "2026-11-17")).toEqual({ from: "plan", rows: [{ personId: "p9", note: "" }] });
     expect(dayRoster(att, plan, "b", "2026-11-17", "2026-11-17")).toEqual({ from: "plan", rows: [{ personId: "p4", note: "" }] });
   });
   it("a day to come is the plan", () => expect(dayRoster(att, plan, "a", "2026-11-18", "2026-11-17")).toEqual({ from: "plan", rows: [{ personId: "p5", note: "half day" }] }));

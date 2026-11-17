@@ -2,7 +2,7 @@
  * The map of the whole app: every department in the bottom bar, and the short sidebar each
  * one shows. Adding a screen means adding a line here and a route in router.tsx.
  */
-import { Browsers, CalendarDots, ChatsCircle, DeviceMobile, EnvelopeSimple, FolderOpen, Gauge, GearSix, Handshake, HardHat, type Icon, Receipt, Truck, UserGear, UsersThree } from "@phosphor-icons/react";
+import { Browsers, CalendarDots, ChartLineUp, ChatsCircle, DeviceMobile, EnvelopeSimple, FolderOpen, Gauge, GearSix, Handshake, HardHat, type Icon, Receipt, Truck, UserGear, UsersThree } from "@phosphor-icons/react";
 import type { Brand } from "@/config/brand";
 import { totalUnread } from "@/lib/chat";
 import { openRequestCount, waitingOnDirector } from "@/lib/requests";
@@ -12,8 +12,9 @@ import { dueState } from "@/lib/status";
 import type { Db, DepartmentKey, ID } from "@/data/types";
 
 /** `mdOnly`: shown to the managing director only, even when the department is switched on for another level. */
+/** `notMd`: left out of the managing director's sidebar, because he has the same screen in another department. */
 /** `tabs`: other addresses inside the same page (its tabs), which Ask AI may link to but the sidebar does not list. */
-export type NavItem = { to: string; label: string; count?: (db: Db, today: string, me: ID | null) => number; countTone?: "accent" | "warn" | "bad"; end?: boolean; mdOnly?: boolean; tabs?: { to: string; label: string }[] };
+export type NavItem = { to: string; label: string; count?: (db: Db, today: string, me: ID | null) => number; countTone?: "accent" | "warn" | "bad"; end?: boolean; mdOnly?: boolean; notMd?: boolean; tabs?: { to: string; label: string }[] };
 /** `more`: items worked out from the records, such as one per Team chat channel. */
 export type NavGroup = { label: string; items: NavItem[]; more?: (db: Db, brand: Brand) => NavItem[] };
 export type Department = {
@@ -152,7 +153,19 @@ export const DEPARTMENTS: Department[] = [
       ] },
       { label: "Accounts", items: [
         { to: "/invoicing/export", label: "Accounts export" },
-        { to: "/invoicing/costs", label: "Job costs" },
+        // The managing director has Job costs in Profitability (17 Nov); the accounts office keeps it here.
+        { to: "/invoicing/costs", label: "Job costs", notMd: true },
+      ] },
+    ],
+  },
+  {
+    // What the firm's own people cost each site (Oisin, 17 Nov). The managing director's alone:
+    // it is not offered in Roles and access, so it cannot be switched on for anyone else.
+    key: "profit", label: "Profitability", icon: ChartLineUp, home: "/profit", inBar: true,
+    groups: [
+      { label: "Money per site", items: [
+        { to: "/profit", label: "By site", end: true },
+        { to: "/profit/costs", label: "Job costs" },
       ] },
     ],
   },
@@ -176,6 +189,7 @@ export const DEPARTMENTS: Department[] = [
       { label: "Access", items: [{ to: "/admin/access", label: "Roles and access", mdOnly: true }, { to: "/admin/sites", label: "Site access", mdOnly: true }] },
       { label: "Account", items: [{ to: "/admin/billing", label: "Billing", mdOnly: true }] },
       { label: "System", items: [
+        { to: "/admin/bank-holidays", label: "Bank holidays" },
         { to: "/admin/connections", label: "Connections" },
         { to: "/admin/automations", label: "Automations" },
         { to: "/admin/activity", label: "Activity log" },

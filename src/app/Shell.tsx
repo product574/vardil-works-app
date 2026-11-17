@@ -333,7 +333,7 @@ function useGroups(pathname: string) {
   const db = useData((s) => s.db);
   const brand = usePrefs((s) => s.brand);
   return departmentFor(pathname)
-    .groups.map((g) => ({ ...g, items: [...g.items, ...(g.more?.(db, brand) ?? [])].filter((it) => md || !it.mdOnly) }))
+    .groups.map((g) => ({ ...g, items: [...g.items, ...(g.more?.(db, brand) ?? [])].filter((it) => (md ? !it.notMd : !it.mdOnly)) }))
     .filter((g) => g.items.length > 0);
 }
 

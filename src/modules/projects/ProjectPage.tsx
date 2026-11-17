@@ -13,7 +13,7 @@ import { shrinkImage } from "@/lib/image";
 import { hireEstimate } from "@/lib/job-costs";
 import { CATEGORIES } from "@/lib/job-costs";
 import { money0, money2, pct1 } from "@/lib/money";
-import { overtimeRate, rateName } from "@/lib/overtime";
+import { overtimeText, overtimeTotal } from "@/lib/overtime";
 import { labourCost, scopePercent, supplierCostByCategory } from "@/lib/project-costs";
 import { mayHandleCrewRequest, withSite } from "@/lib/requests";
 import { dueLabel, dueState, nextServiceDate } from "@/lib/status";
@@ -154,7 +154,7 @@ function OverviewTab({ p, db }: TabProps) {
                       <tr key={person.id}>
                         <td className="font-medium">{person.name}</td>
                         <td>{person.trade}</td>
-                        <td>{a ? <Badge tone="ok">{a.status === "half" ? "Half day" : a.overtimeHours > 0 ? `Full day + ${a.overtimeHours}h at ${rateName(overtimeRate(a))}` : "Full day"}</Badge> : <span className="text-muted">Not marked</span>}</td>
+                        <td>{a ? <Badge tone="ok">{a.status === "half" ? "Half day" : overtimeTotal(a) > 0 ? `Full day + ${overtimeText(a)}` : "Full day"}</Badge> : <span className="text-muted">Not marked</span>}</td>
                       </tr>
                     );
                   })}
@@ -713,7 +713,7 @@ function CostsTab({ p, db, pct }: TabProps & { pct: number }) {
   const region = usePrefs((s) => s.brand.region);
   const rate = new Map(db.people.map((x) => [x.id, x.hourlyRate]));
   const att = db.attendance.filter((a) => a.projectId === p.id);
-  const labour = labourCost(att.map((a) => ({ status: a.status, overtimeHours: a.overtimeHours, overtimeRate: a.overtimeRate, hourlyRate: rate.get(a.personId) ?? 0 })));
+  const labour = labourCost(att.map((a) => ({ date: a.date, status: a.status, overtimeHours: a.overtimeHours, doubleHours: a.doubleHours, hourlyRate: rate.get(a.personId) ?? 0 })));
   const supplier = supplierCostByCategory(db.supplierInvoices.filter((s) => s.readStatus === "confirmed").flatMap((s) => s.allocations.filter((a) => a.projectId === p.id).map((a) => ({ category: a.category, amount: a.amount, credit: s.docType === "credit_note" }))));
   const supplierTotal = Object.values(supplier).reduce((s, n) => s + n, 0);
   const cost = labour + supplierTotal;

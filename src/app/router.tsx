@@ -21,6 +21,7 @@ const month = () => import("@/modules/schedule/Month");
 const plant = () => import("@/modules/plant");
 const files = () => import("@/modules/files/Files");
 const invoicing = () => import("@/modules/invoicing/Invoicing");
+const profit = () => import("@/modules/profit");
 const inbox = () => import("@/modules/inbox/Inbox");
 const chat = () => import("@/modules/chat/TeamChat");
 const portal = () => import("@/modules/portal/Portal");
@@ -125,10 +126,14 @@ export const router = create([
           screen("settings/region", settings, (m) => m.RegionAccounts),
           { path: "settings/roles", element: <Moved to={keep("/admin/access")} /> },
           screen("settings/about", settings, (m) => m.About),
+          screen("profit", profit, (m) => m.Profitability),
+          // Job costs, for the managing director: the same screen the accounts office has in Invoicing.
+          screen("profit/costs", invoicing, (m) => m.JobCosts),
           screen("admin", admin, (m) => m.Requests),
           screen("admin/access", admin, (m) => m.RolesAccess),
           screen("admin/sites", admin, (m) => m.SiteAccess),
           screen("admin/billing", admin, (m) => m.Billing),
+          screen("admin/bank-holidays", admin, (m) => m.BankHolidays),
           screen("admin/connections", admin, (m) => m.Connections),
           screen("admin/automations", admin, (m) => m.Automations),
           screen("admin/activity", admin, (m) => m.ActivityLog),

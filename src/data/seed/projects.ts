@@ -1,3 +1,4 @@
+import { builtInBankHolidays } from "@/lib/bank-holidays";
 import { addDays, dayOfWeek, isWeekend } from "@/lib/dates";
 import { quoteTotal } from "@/lib/quotes";
 import { nextWorkWeek } from "@/lib/week";
@@ -337,12 +338,6 @@ const PROJECTS: PSeed[] = [
   },
 ];
 
-/**
- * Sites whose overtime is at double time (17 Nov). Derrybawn Bridge is worked under traffic
- * lights, so its overtime is early starts before the road gets busy: before 8am is double time.
- */
-const DOUBLE_TIME_SITES = new Set(["C724"]);
-
 /** Paid hours expected on a planned day: 4% absent, 6% half days, and some overtime at time and a half. */
 const EXPECTED_HOURS = 0.9 * (8 + 0.12 * 2 * 1.5) + 0.06 * 4;
 /** Labour's share of the cost of a job, as in the quotes' cost build-up. */
@@ -500,6 +495,7 @@ export function seedProjects(r: Rng, today: string, quotes: Quote[], holidays: H
   }
 
   // Timesheets, day by day, for everyone's stints up to today.
+  const bankHolidays = new Set(builtInBankHolidays(today, "IE").map((h) => h.date));
   const markedToday = new Set(["C719", "C720", "C721"]);
   const sentToday = new Set(["C720"]);
   let attN = 0;
@@ -514,16 +510,60 @@ export function seedProjects(r: Rng, today: string, quotes: Quote[], holidays: H
         const roll = r.next();
         if (roll < 0.04) continue;
         const status: Attendance["status"] = roll < 0.1 ? "half" : "full";
-        const rolled = status === "full" && r.chance(0.12) ? r.int(1, 3) : 0;
-        // On a double time site the crew also start at 6am every Tuesday and Thursday, to set out
-        // the traffic lights before the road gets busy: two hours before 8am. Worked out from the
-        // day, not from the random run, so nothing else in the sample data moves.
-        const early = DOUBLE_TIME_SITES.has(code) && status === "full" && rolled === 0 && [2, 4].includes(new Date(`${d}T12:00:00Z`).getUTCDay()) ? 2 : 0;
-        const overtimeHours = rolled + early;
-        // Overtime is at time and a half, except where the job's overtime is early starts before 8am (double time).
-        attendance.push({ id: `att-${++attN}`, projectId: pid(code), personId, date: d, status, overtimeHours, ...(overtimeHours > 0 && DOUBLE_TIME_SITES.has(code) ? { overtimeRate: 2 as const } : {}), savedBy: names.get(p.sm)!, savedAt: at(d, isToday ? "08:20" : "12:40"), sent: !isToday || sentToday.has(code) });
+        // Ordinary overtime is an hour or three after a normal day, at time and a half.
+        const overtimeHours = status === "full" && r.chance(0.12) ? r.int(1, 3) : 0;
+        // Nobody is marked a normal day on a bank holiday. The random run above is still drawn
+        // for the day, so the rest of the sample data does not move.
+        if (bankHolidays.has(d)) continue;
+        attendance.push({ id: `att-${++attN}`, projectId: pid(code), personId, date: d, status, overtimeHours, savedBy: names.get(p.sm)!, savedAt: at(d, isToday ? "08:20" : "12:40"), sent: !isToday || sentToday.has(code) });
       }
     }
+  }
+
+  // The exceptions a timesheet has to hold (Oisin, 17 Nov), written in by hand rather than drawn
+  // from the random run: a night that ran on past midnight, weekend work, and a bank holiday.
+  const thisMonday = lastWeekdayOf(today, 1);
+  const running = (code: string, date: string) => {
+    const p = list.find((x) => x.code === code);
+    return !!p && p.status === "Live" && p.startDate <= date;
+  };
+  const fullOn = (code: string, date: string) => attendance.filter((a) => a.projectId === pid(code) && a.date === date && a.status === "full");
+  // Derrybawn Bridge, Wednesday of last week: the parapet stones were lifted under a night road
+  // closure, so two of the crew worked on from their day, time and a half up to midnight and
+  // double time after it. (An early start is not overtime; working on past midnight is.)
+  for (const a of fullOn("C724", addDays(thisMonday, -5)).slice(0, 2)) {
+    a.overtimeHours = 7.5;
+    a.doubleHours = 1.5;
+  }
+  // One mistake left in for the manager's weekly check to catch: double time on a weekday with
+  // no time and a half, which is how an early start gets entered by someone who thinks it counts.
+  const slip = fullOn("C722", addDays(thisMonday, -4))[0];
+  if (slip) {
+    slip.overtimeHours = 0;
+    slip.doubleHours = 2;
+  }
+  const stamp = (code: string, personId: string, date: string, timeAndHalf: number, double: number) => {
+    if (!running(code, date) || date >= today || approvedLeave(holidays, personId, date)) return;
+    const sm = list.find((x) => x.code === code)!.sm;
+    attendance.push({ id: `att-${++attN}`, projectId: pid(code), personId, date, status: "restday", overtimeHours: timeAndHalf, ...(double > 0 ? { doubleHours: double } : {}), savedBy: names.get(sm)!, savedAt: at(workdays(date, 1), "08:35"), sent: true });
+  };
+  // Last Saturday, Derrybawn Bridge: 8am to 2pm to finish under the closure, four hours at time
+  // and a half and two at double. One mason came across from St Finian's for the morning.
+  const lastSaturday = addDays(thisMonday, -2);
+  stamp("C724", "p-128", lastSaturday, 4, 2);
+  stamp("C724", "p-105", lastSaturday, 4, 2);
+  stamp("C724", "p-119", lastSaturday, 4, 0);
+  // Last Sunday, Ardmullen House: two came in to sheet the roof ahead of the weather. All double time.
+  stamp("C720", "p-106", addDays(thisMonday, -1), 0, 5);
+  stamp("C720", "p-107", addDays(thisMonday, -1), 0, 5);
+  // The Saturday before, St Finian's: a morning to strike the scaffold lift.
+  stamp("C719", "p-101", addDays(thisMonday, -9), 4, 0);
+  stamp("C719", "p-103", addDays(thisMonday, -9), 4, 0);
+  // The last bank holiday, the Old Corn Mill: two slaters made the roof safe. All double time.
+  const lastHoliday = [...bankHolidays].filter((d) => d < today && !isWeekend(d) && d >= addDays(today, -60)).sort().pop();
+  if (lastHoliday) {
+    stamp("C721", "p-109", lastHoliday, 0, 5);
+    stamp("C721", "p-110", lastHoliday, 0, 5);
   }
   attendance.sort((a, b) => a.date.localeCompare(b.date) || a.projectId.localeCompare(b.projectId) || a.personId.localeCompare(b.personId));
 
@@ -542,10 +582,17 @@ export function seedProjects(r: Rng, today: string, quotes: Quote[], holidays: H
         if (NEXT_WEEK_FREE[personId]?.includes(nextWeek.indexOf(date))) continue;
         // One half day in the sample, so the planner shows what a split day looks like.
         const half = personId === "p-126" && nextWeek.indexOf(date) === 1;
+        // Nobody is planned for a normal day on a bank holiday.
+        if (bankHolidays.has(date)) continue;
         plan.push({ id: `pl-${++planN}`, projectId: pid(p.code), personId, date, ...(half ? { part: "half" as const } : {}) });
       }
     }
   }
+  // Weekend work is planned one day at a time (17 Nov): Derrybawn Bridge has two down for this
+  // Saturday and next, while the road closure lasts.
+  for (const saturday of [addDays(thisMonday, 5), addDays(thisMonday, 12)])
+    for (const personId of ["p-128", "p-105"])
+      if (running("C724", saturday) && !approvedLeave(holidays, personId, saturday)) plan.push({ id: `pl-${++planN}`, projectId: pid("C724"), personId, date: saturday });
 
   const requests: SiteRequest[] = [
     { id: "rq-1", projectId: pid("C719"), kind: "personnel", description: "General operatives to help adapt the scaffold at belfry level", quantity: 2, neededFrom: workdays(today, 2), neededTo: workdays(today, 3), notes: "Must have Working at height in date", requestedBy: "Eoin Brosnan", createdAt: at(today, "08:05"), status: "Open" },

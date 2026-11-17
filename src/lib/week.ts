@@ -1,11 +1,17 @@
 // Working-week helpers for the timesheet and the planner.
 import { addDays, daysInMonth, isWeekend, weekStartOf } from "./dates";
-import { type OvertimeRate, overtimeRate, rateShort } from "./overtime";
+import { doubleOf, type Overtime, overtimeText, overtimeTotal, storedDouble } from "./overtime";
 
 /** Monday to Friday of the week containing `day`. */
 export function workWeek(day: string): string[] {
   const mon = weekStartOf(day);
   return [0, 1, 2, 3, 4].map((n) => addDays(mon, n));
+}
+
+/** Monday to Sunday of the week containing `day`: the pay week, with its weekend (17 Nov). */
+export function fullWeek(day: string): string[] {
+  const mon = weekStartOf(day);
+  return [0, 1, 2, 3, 4, 5, 6].map((n) => addDays(mon, n));
 }
 
 /** Monday to Friday of the week after the one containing `day`. */
@@ -24,31 +30,48 @@ export function shiftMonth(ym: string, by: number): string {
 }
 
 /**
- * How one attendance entry reads in a grid cell: "Full", "Half", or with overtime and its rate,
- * "Full +2h x1.5" (time and a half) or "Full +2h x2" (double time).
+ * One day's mark on the timesheet. "full" and "half" are a normal working day; "restday" is work
+ * on a Saturday, a Sunday or a bank holiday, which has no normal day in it: every hour is at an
+ * overtime rate. `overtimeHours` are at time and a half and `doubleHours` at double time, and a
+ * day can have both (17 Nov).
  */
-export function attendanceShort(status: "full" | "half", overtimeHours: number, rate?: OvertimeRate) {
-  if (status === "half") return "Half";
-  return overtimeHours > 0 ? `Full +${overtimeHours}h ${rateShort(overtimeRate({ overtimeRate: rate }))}` : "Full";
+export type DayStatus = "full" | "half" | "restday";
+export type DayMark = { status: DayStatus } & Overtime;
+
+/** The overtime on an entry as a note beside a name: "+2h x1.5", "+6h x1.5 +2h x2", or nothing. */
+export const overtimeNote = (a: Overtime) => [a.overtimeHours > 0 ? `+${a.overtimeHours}h x1.5` : "", doubleOf(a) > 0 ? `+${doubleOf(a)}h x2` : ""].filter(Boolean).join(" ");
+
+/**
+ * How one attendance entry reads in a grid cell: "Full", "Half", with its overtime at each rate
+ * "Full +2h x1.5" or "Full +6h x1.5 +2h x2", or for a rest day just the hours, "4h x1.5 + 2h x2".
+ */
+export function attendanceShort(a: DayMark): string {
+  if (a.status === "half") return "Half";
+  if (a.status === "restday") return overtimeText(a) || "No hours";
+  const ot = overtimeNote(a);
+  return ot ? `Full ${ot}` : "Full";
 }
 
-/** The overtime on an entry as a note beside a name: "+2h x1.5", or nothing. */
-export const overtimeNote = (overtimeHours: number, rate?: OvertimeRate) => (overtimeHours > 0 ? `+${overtimeHours}h ${rateShort(overtimeRate({ overtimeRate: rate }))}` : "");
-
-/** The timesheet's choices for a day: overtime at time and a half ("overtime") or at double time ("double"). */
-export type AttendanceChoice = "" | "full" | "half" | "overtime" | "double";
+/** The timesheet's choices for a normal day. "overtime" opens the two boxes of hours, one for each rate. */
+export type AttendanceChoice = "" | "full" | "half" | "overtime";
 
 /** The value of the timesheet's drop-down for an entry. */
-export function attendanceChoice(a: { status: "full" | "half"; overtimeHours: number; overtimeRate?: OvertimeRate } | undefined): AttendanceChoice {
+export function attendanceChoice(a: DayMark | undefined): AttendanceChoice {
   if (!a) return "";
   if (a.status === "half") return "half";
-  return a.overtimeHours > 0 ? (overtimeRate(a) === 2 ? "double" : "overtime") : "full";
+  return overtimeTotal(a) > 0 ? "overtime" : "full";
 }
 
-/** What a choice and its hours write on the timesheet. Nothing ("") takes the mark off. */
-export function choiceMark(c: AttendanceChoice, hours: number): { status: "full" | "half"; overtimeHours: number; overtimeRate?: OvertimeRate } | null {
+/**
+ * What a choice and its hours write on the timesheet. Nothing ("") takes the mark off. Overtime
+ * with no hours at either rate is a full day; hours are never less than nothing.
+ */
+export function choiceMark(c: AttendanceChoice, timeAndHalf = 0, double = 0): DayMark | null {
   if (c === "") return null;
   if (c === "half") return { status: "half", overtimeHours: 0 };
   if (c === "full") return { status: "full", overtimeHours: 0 };
-  return { status: "full", overtimeHours: Math.max(0.5, hours), ...(c === "double" ? { overtimeRate: 2 as const } : {}) };
+  return { status: "full", overtimeHours: Math.max(0, timeAndHalf || 0), ...storedDouble(Math.max(0, double || 0)) };
 }
+
+/** A rest day's mark from its two boxes of hours. */
+export const restDayMark = (timeAndHalf: number, double: number): DayMark => ({ status: "restday", overtimeHours: Math.max(0, timeAndHalf || 0), ...storedDouble(Math.max(0, double || 0)) });

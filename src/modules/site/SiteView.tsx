@@ -6,7 +6,8 @@ import { useData, useDay, usePrefs } from "@/data/store";
 import { type Language, LANGUAGE_NAME, type Person, type Project } from "@/data/types";
 import { personWeek } from "@/lib/availability";
 import { dayInstruction, managerJobs, personDay, siteOn } from "@/lib/roster";
-import { nextWorkWeek, overtimeNote, workWeek } from "@/lib/week";
+import { overtimeText, overtimeTotal } from "@/lib/overtime";
+import { fullWeek, nextWorkWeek, overtimeNote, workWeek } from "@/lib/week";
 import { Dialog, PageBody, PageHead, Segmented } from "@/ui";
 import { ManagerPhone } from "./ManagerPhone";
 import { AskSheet, BIG, DrivingSheet, ExpenseSheet, ExtraSheet, longDate, ManagerCard, PhotoSheet, ProfileButton, ProfileSheet } from "./sheets";
@@ -220,7 +221,9 @@ function WeekSheet({ me, lang, day, onClose }: { me: Person; lang: Language; day
   const [which, setWhich] = useState<"this" | "next">(new Date(day + "T12:00:00Z").getUTCDay() >= 5 ? "next" : "this");
   const week = which === "next" ? nextWorkWeek(day) : workWeek(day);
   const live = new Set(db.projects.filter((p) => p.status === "Live" || p.status === "Not started").map((p) => p.id));
-  const states = personWeek(db.plan, db.holidays, live, me.id, week);
+  // Monday to Friday, then the Saturday or Sunday only when they worked it or are down for it (17 Nov).
+  const weekend = fullWeek(week[0]!).slice(5).filter((d) => personDay(db.attendance, db.plan, me.id, d, day, live).rows.length > 0);
+  const states = [...personWeek(db.plan, db.holidays, live, me.id, week), ...weekend.map((date) => ({ date, leave: false }))];
   const project = (id: string) => db.projects.find((p) => p.id === id);
   return (
     <>
@@ -252,7 +255,7 @@ function WeekSheet({ me, lang, day, onClose }: { me: Person; lang: Language; day
                             <span className={d.date < day ? "font-normal text-muted" : undefined}>
                               {site?.code} {site?.name}
                               {e.half && <span className="font-normal text-muted">, {t.half}</span>}
-                              {e.overtimeHours ? <span className="font-normal text-muted">, {gone ? overtimeNote(e.overtimeHours, e.overtimeRate) : `+${e.overtimeHours}h`}</span> : null}
+                              {gone && e.restday ? <span className="font-normal text-muted">, {overtimeText(e)}</span> : overtimeTotal(e) > 0 ? <span className="font-normal text-muted">, {gone ? overtimeNote(e) : `+${e.overtimeHours}h`}</span> : null}
                             </span>
                             {site && manager && (
                               <button type="button" aria-label={`${t.manager}: ${manager.name}, ${site.code}`} className="press -my-1 inline-flex min-h-9 items-center gap-1 rounded text-[0.93rem] font-normal text-accent-ink underline decoration-line-strong underline-offset-2" onClick={() => setCard({ manager, site })}>

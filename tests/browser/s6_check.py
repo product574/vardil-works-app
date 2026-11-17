@@ -57,15 +57,15 @@ def steps(page, ctx):
     asides = main.locator("section h2 + div").all_inner_texts()
     check("Per site: a heading per site, with its site manager and county, like the plant overview", tables.count() >= 6 and all(re.match(r"C7\d\d ", h) for h in heads) and all(", Co. " in a for a in asides), (heads[:3], asides[:2]))
     cols = tables.first.locator("thead th").all_inner_texts()
-    check("Per site, totals: the payroll columns, with a total for each site", cols == ["Name", "Full days", "Half days", "Basic hours", "Overtime x1.5", "Overtime x2", "Total hours"] and all(t.startswith("Total on C7") for t in main.locator("tfoot tr td:first-child").all_inner_texts()), cols)
+    check("Per site, totals: the payroll columns, with a total for each site", cols == ["Name", "Full days", "Half days", "Weekend days", "Basic hours", "Overtime x1.5", "Overtime x2", "Total hours"] and all(t.startswith("Total on C7") for t in main.locator("tfoot tr td:first-child").all_inner_texts()), cols)
     per = [[num(x) for x in t.split("\t")[1:]] for t in main.locator("tfoot tr").all_inner_texts()]
-    sums = [round(sum(r[i] for r in per), 2) for i in range(6)]
+    sums = [round(sum(r[i] for r in per), 2) for i in range(7)]
     check("Per site, totals: the sites add up to the totals for everyone", sums == [round(x, 2) for x in everyone], (sums, everyone))
     check("Per site: nothing scrolls sideways", page.evaluate(SCROLLS) == 0)
     page.screenshot(path=f"{OUT}/600-history-per-site-totals.png", full_page=True)
     views.get_by_role("tab", name="Day by day").click(); page.wait_for_timeout(300)
     dtables = main.locator("table[aria-label*='day by day']")
-    n_rows = data(page, "(() => { const d = new Date(day+'T12:00:00Z'); const mon = new Date(d); mon.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7) - 7); const days = []; for (let i=0;i<5;i++){ const x = new Date(mon); x.setUTCDate(mon.getUTCDate()+i); days.push(x.toISOString().slice(0,10)) } return db.attendance.filter(a => days.includes(a.date)).length })()")
+    n_rows = data(page, "(() => { const d = new Date(day+'T12:00:00Z'); const mon = new Date(d); mon.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7) - 7); const days = []; for (let i=0;i<7;i++){ const x = new Date(mon); x.setUTCDate(mon.getUTCDate()+i); days.push(x.toISOString().slice(0,10)) } return db.attendance.filter(a => days.includes(a.date)).length })()")
     check("Per site, day by day: each site's days under its own heading, every entry once", dtables.count() >= 6 and dtables.locator("tbody tr").count() == n_rows and dtables.first.locator("thead th").all_inner_texts() == ["Date", "Name", "Attendance", "Marked by", "Sent"], (dtables.count(), dtables.locator("tbody tr").count(), n_rows))
     views.get_by_role("tab", name="Corrections").click(); page.wait_for_timeout(300)
     check("Per site, corrections: says so when there are none", "No corrections in this period" in main.inner_text())

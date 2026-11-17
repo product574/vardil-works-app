@@ -19,7 +19,7 @@ import { invoiceNo } from "@/lib/billing";
 import { addDays, fmtLong } from "@/lib/dates";
 import { hireEstimate, READ_STATUS } from "@/lib/job-costs";
 import { REGION, r2 } from "@/lib/money";
-import { overtimeRate, overtimeSplit } from "@/lib/overtime";
+import { EARLY_START_NOTE, overtimeSplit, overtimeText, overtimeTotal } from "@/lib/overtime";
 import { currentPlan, invoicePaid, nextInvoice } from "@/lib/subscription";
 import { costBreakdown, marginPct, quoteTotal } from "@/lib/quotes";
 import { daysBetween, dueState, nextServiceDate } from "@/lib/status";
@@ -170,7 +170,7 @@ export function buildSnapshot(db: Db, today: string, brand: Brand): string {
     for (const a of db.assignments.filter((x) => x.projectId === p.id)) {
       const pe = person.get(a.personId);
       const t = today_.find((x) => x.personId === a.personId);
-      crew.push(`- ${pe?.name ?? ""}, ${pe?.trade ?? ""}: ${t ? `${t.status} day${t.overtimeHours ? ` +${t.overtimeHours}h overtime${overtimeRate(t) === 2 ? " at double time" : ""}` : ""}` : "not marked today"}`);
+      crew.push(`- ${pe?.name ?? ""}, ${pe?.trade ?? ""}: ${t ? `${t.status} day${overtimeTotal(t) ? ` + overtime ${overtimeText(t)}` : ""}` : "not marked today"}`);
     }
   }
   out.push(crew.join("\n"));
@@ -188,19 +188,20 @@ export function buildSnapshot(db: Db, today: string, brand: Brand): string {
   // Attendance
   const month = today.slice(0, 7);
   const lastMonthDate = addDays(`${month}-01`, -1).slice(0, 7);
-  const att: string[] = ["## Attendance (time stamps)", `This week (${thisWeek[0]} to ${thisWeek[4]}) day by day, then days and overtime hours this month (${month}) and last month (${lastMonthDate}). Overtime is at time and a half unless it says double time. The firm's rule: double time from midnight to 8am, on Saturday after 12 noon, on Sunday and on bank holidays; time and a half on weekday evenings up to midnight and on Saturday from 8am to 12 noon.`];
+  const att: string[] = ["## Attendance (time stamps)", `This week (${thisWeek[0]} to ${thisWeek[4]}) day by day, then days and overtime hours this month (${month}) and last month (${lastMonthDate}). Overtime hours are written with their rate, x1.5 for time and a half and x2 for double time, and a day can have both. The firm's rule: time and a half on a weekday after a normal day's hours up to midnight and on Saturday from 8am to 12 noon; double time after midnight when the work carries on from the day before, on Saturday after 12 noon, on Sunday and on bank holidays. ${EARLY_START_NOTE} Weekend and bank holiday work is a time stamp with no normal day in it: every hour is overtime. Bank holidays: ${db.bankHolidays.filter((h) => h.date.startsWith(today.slice(0, 4))).map((h) => `${h.date} ${h.name}`).join(", ")}.`];
   for (const p of db.people.filter((x) => db.attendance.some((a) => a.personId === x.id))) {
     const mine = db.attendance.filter((a) => a.personId === p.id);
     const week = weekLine(thisWeek, (d) => {
       const a = mine.find((x) => x.date === d);
-      return a ? `${code(a.projectId)} ${a.status}${a.overtimeHours ? ` +${a.overtimeHours}h${overtimeRate(a) === 2 ? " double time" : ""}` : ""}` : null;
+      return a ? `${code(a.projectId)} ${a.status === "restday" ? "bank holiday work" : a.status}${overtimeTotal(a) ? ` + ${overtimeText(a)}` : ""}` : null;
     });
     const sum = (ym: string) => {
       const rows = mine.filter((a) => a.date.startsWith(ym));
-      const days = rows.reduce((s, a) => s + (a.status === "full" ? 1 : 0.5), 0);
-      const ot = rows.reduce((s, a) => s + a.overtimeHours, 0);
+      const days = rows.reduce((s, a) => s + (a.status === "full" ? 1 : a.status === "half" ? 0.5 : 0), 0);
+      const ot = rows.reduce((s, a) => s + overtimeTotal(a), 0);
       const dbl = overtimeSplit(rows).double;
-      return `${days} days${ot ? `, ${ot}h overtime${dbl ? ` (${dbl}h of it at double time)` : ""}` : ""}`;
+      const rest = rows.filter((a) => a.status === "restday");
+      return `${days} days${ot ? `, ${ot}h overtime${dbl ? ` (${dbl}h of it at double time)` : ""}` : ""}${rest.length ? `, weekend or bank holiday work: ${rest.map((a) => `${a.date} ${code(a.projectId)} ${overtimeText(a)}`).join(", ")}` : ""}`;
     };
     att.push(`${p.name}: this week ${week}; ${month} ${sum(month)}; ${lastMonthDate} ${sum(lastMonthDate)}`);
   }

@@ -24,12 +24,12 @@ import {
 import { type DragEvent as ReactDragEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import { Link, NavLink, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useAccess } from "@/data/access";
-import { composeMail, discardReplyDraft, fileMail, moveMail, routeMail, saveReplyDraft, sendReply, setMailRead, setStar, shareMailToChat, startReply, tagMail, toggleStar } from "@/data/actions";
+import { composeMail, discardDraft, discardReplyDraft, fileMail, moveMail, routeMail, saveDraft, saveReplyDraft, sendReply, setMailRead, setStar, shareMailToChat, startReply, tagMail, toggleStar } from "@/data/actions";
 import { useData, useDay } from "@/data/store";
 import type { Db, Mail, MailAttachment, MailIntent } from "@/data/types";
 import { isPdf, readAttachment } from "@/lib/image";
 import { tOf, when } from "@/lib/format";
-import { actionItems, attachmentsOf, byDay, folderCounts, inFolder, isFocused, labelUnread, MAX_ATTACHMENTS, type MailFolder, newestFirst, rowWhen, searchMail, sizeLabel, snippet, summary, whereKept, withLabel } from "@/lib/mail";
+import { actionItems, attachmentsOf, byDay, folderCounts, inFolder, isFocused, isNewDraft, labelUnread, MAX_ATTACHMENTS, type MailFolder, newestFirst, rowWhen, searchMail, sizeLabel, snippet, summary, whereKept, withLabel, worthKeeping } from "@/lib/mail";
 import { Avatar, Badge, Button, cx, Dialog, Empty, Field, Menu, MenuItem, type Tone, useOnce } from "@/ui";
 import { toast } from "@/ui/toast";
 
@@ -54,7 +54,8 @@ const FOLDERS: { folder: MailFolder; to: string; icon: typeof Tray }[] = [
 ];
 
 type View = { folder: MailFolder } | { label: MailIntent };
-type Draft = { to: string; cc?: string; bcc?: string; subject: string; body: string; attachments?: MailAttachment[] };
+/** A new email being written. `id` is set once it is being kept in Drafts (17 Nov). */
+type Draft = { id?: string; to: string; cc?: string; bcc?: string; subject: string; body: string; attachments?: MailAttachment[] };
 
 /** What a dragged email row carries: the ids of the emails being moved. */
 const DRAG_TYPE = "application/x-abc-mail-ids";
@@ -121,6 +122,8 @@ function Mailbox({ view }: { view: View }) {
             oldest={oldest}
             setOldest={setOldest}
             onOpen={(m) => {
+              // A draft of a new email opens back into Compose, to be finished and sent.
+              if (isNewDraft(m)) return setCompose({ id: m.id, to: m.to ?? "", cc: m.cc, bcc: m.bcc, subject: m.subject, body: m.body, attachments: m.attachments });
               setParams({ mail: m.id });
               if (!m.read) setMailRead(m.id, true);
             }}
@@ -353,16 +356,18 @@ function MailList(props: {
 function Row({ m, day, sent, inLabel, picked, dragIds, onPick, onOpen }: { m: Mail; day: string; sent: boolean; inLabel: boolean; picked: boolean; dragIds: string[]; onPick: () => void; onOpen: () => void }) {
   const unread = !m.read && !sent;
   const files = attachmentsOf(m);
-  const who = sent ? `To: ${m.to ?? m.fromName}` : m.fromName;
+  // A new email kept as a draft (17 Nov): it reads "Draft" where the sender would be, as in Gmail.
+  const draft = isNewDraft(m);
+  const who = draft ? `Draft${m.to ? `, to ${m.to}` : ""}` : sent ? `To: ${m.to ?? m.fromName}` : m.fromName;
   return (
     <li
-      draggable={!sent}
+      draggable={!sent && !draft}
       onDragStart={(e) => {
         e.dataTransfer.setData(DRAG_TYPE, JSON.stringify(dragIds));
         e.dataTransfer.setData("text/plain", dragIds.length === 1 ? m.subject : `${dragIds.length} emails`);
         e.dataTransfer.effectAllowed = "move";
       }}
-      title={sent ? undefined : "Drag onto a label or folder to file it"}
+      title={sent || draft ? undefined : "Drag onto a label or folder to file it"}
       className={cx("flex items-start gap-1 border-b border-line px-2 py-1.5", picked ? "bg-accent-soft" : unread ? "bg-surface" : "bg-canvas/40", "hover:bg-accent-soft/60")}>
       <label className="grid size-11 shrink-0 place-items-center">
         <span className="sr-only">Select {m.subject}</span>
@@ -372,10 +377,10 @@ function Row({ m, day, sent, inLabel, picked, dragIds, onPick, onOpen }: { m: Ma
         <Star size={18} weight={m.starred ? "fill" : "regular"} />
       </button>
       <button type="button" onClick={onOpen} className="press flex min-w-0 flex-1 items-start gap-3 py-1.5 pr-2 text-left">
-        <Avatar name={sent ? (m.to ?? m.fromName) : m.fromName} size={36} />
+        <Avatar name={sent || draft ? (m.to || m.fromName) : m.fromName} size={36} />
         <span className="min-w-0 flex-1">
-          <span className={cx("block truncate", unread && "font-semibold")}>{who}</span>
-          <span className={cx("block truncate", unread ? "font-semibold" : "font-medium")}>{m.subject}</span>
+          <span className={cx("block truncate", unread && "font-semibold", draft && "text-bad")}>{who}</span>
+          <span className={cx("block truncate", unread ? "font-semibold" : "font-medium")}>{m.subject || "(no subject)"}</span>
           <span className="block truncate text-[0.93rem] text-muted">{snippet(m.body)}</span>
           {files.length > 0 && (
             <span className="mt-1.5 inline-flex max-w-full items-center gap-1.5 rounded-md border border-line bg-surface px-2 py-0.5 text-[0.87rem]">
@@ -390,7 +395,7 @@ function Row({ m, day, sent, inLabel, picked, dragIds, onPick, onOpen }: { m: Ma
             {files.length > 0 && <Paperclip size={14} className="text-muted" aria-label="Has an attachment" />}
             {unread && <span className="size-2 rounded-full bg-accent" aria-label="Unread" />}
           </span>
-          {!sent && <Badge tone={TONE[m.intent] ?? "neutral"}>{m.intent}</Badge>}
+          {draft ? <Badge tone="neutral">Not sent</Badge> : !sent && <Badge tone={TONE[m.intent] ?? "neutral"}>{m.intent}</Badge>}
           {/* Under a label, as in Gmail: which of these are still in the inbox too. */}
           {inLabel && m.folder === "Inbox" && <Badge tone="neutral">Inbox</Badge>}
         </span>
@@ -720,20 +725,53 @@ function ComposeDialog({ draft, onClose }: { draft: Draft | null; onClose: () =>
   }, [draft]);
   const [send] = useOnce(() => {
     if (!d.to.trim()) return;
-    composeMail(d);
+    composeMail(d, d.id);
     toast(`Sent to ${d.to.trim()}${d.cc?.trim() ? `, copied to ${d.cc.trim()}` : ""}${files.length ? `, with ${files.length === 1 ? "1 file" : `${files.length} files`}` : ""}`);
     onClose();
     navigate("/inbox/sent");
   });
+  // Drafts, as in Gmail (Oisin, 17 Nov): closing keeps what was typed, Save draft keeps it and
+  // carries on, and Discard throws it away. An email with nothing in it is not kept.
+  const keep = (): string | undefined => {
+    if (worthKeeping(d)) return saveDraft(d, d.id);
+    if (d.id) discardDraft(d.id);
+    return undefined;
+  };
+  const closeAndKeep = () => {
+    if (keep()) toast("Saved to Drafts");
+    onClose();
+  };
   return (
     <Dialog
       open={!!draft}
-      onClose={onClose}
-      title="New email"
+      onClose={closeAndKeep}
+      title={d.id ? "Draft email" : "New email"}
       wide
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>Discard</Button>
+          <Button
+            variant="ghost"
+            className="mr-auto"
+            onClick={() => {
+              if (d.id) discardDraft(d.id);
+              if (d.id || worthKeeping(d)) toast("Draft discarded");
+              onClose();
+            }}
+          >
+            Discard
+          </Button>
+          <Button
+            disabled={!worthKeeping(d)}
+            onClick={() => {
+              const id = keep();
+              if (id) {
+                setD((now) => ({ ...now, id }));
+                toast("Saved to Drafts");
+              }
+            }}
+          >
+            Save draft
+          </Button>
           <Button variant="primary" disabled={!d.to.trim()} onClick={() => void send()}>
             <PaperPlaneTilt size={16} /> Send
           </Button>

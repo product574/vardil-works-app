@@ -8,15 +8,16 @@
 import { ASK_ACTIVITY } from "@/ai/tools";
 import { filedFolder, MAX_ATTACHMENTS } from "@/lib/mail";
 import { finalAccountNet, holdReason, invoiceNo, invoicedLine, paidLine, salesInvoiceFile } from "@/lib/billing";
-import { addDays, isWeekend } from "@/lib/dates";
+import { bankHolidayOn, isBankHoliday, isRestDay } from "@/lib/bank-holidays";
+import { addDays, dayOfWeek, isWeekend } from "@/lib/dates";
 import { normaliseReg } from "@/lib/fleet";
-import { type OvertimeRate, storedRate } from "@/lib/overtime";
-import { basicHours } from "@/lib/payroll";
+import { overtimeTotal, restDayKind, restDayProblem, storedDouble } from "@/lib/overtime";
+import { basicHours, weekEnd } from "@/lib/payroll";
 import { needsSignOff } from "@/lib/purchases";
 import { personWeek } from "@/lib/availability";
 import { dropOutcome } from "@/lib/roster";
 import { quoteTotal } from "@/lib/quotes";
-import { attendanceShort } from "@/lib/week";
+import { attendanceShort, type DayMark, restDayMark } from "@/lib/week";
 import { levelOf, levelValue, signedInPersonId } from "./access";
 import { PERMISSIONS } from "./permissions";
 import { ROLES } from "./roles";
@@ -854,7 +855,7 @@ export function decideSiteRequest(id: ID, approve: boolean, note?: string): "pla
     // A named person for one day (asked for on the phone planner): a yes puts them on the plan if
     // they are free that day, and the request is done. Otherwise it stays open for the office.
     const siteId = r.projectId;
-    if (approve && siteId && r.personId && r.neededFrom === r.neededTo && r.neededFrom > getDay() && !isWeekend(r.neededFrom)) {
+    if (approve && siteId && r.personId && r.neededFrom === r.neededTo && r.neededFrom > getDay()) {
       const live = new Set(db.projects.filter((x) => x.status === "Live" || x.status === "Not started").map((x) => x.id));
       const st = personWeek(db.plan, db.holidays, live, r.personId, [r.neededFrom])[0]!;
       const drop = dropOutcome(st, siteId);
@@ -993,17 +994,19 @@ export function addPhoto(projectId: ID, caption: string, stage: PhotoStage, pict
 
 // ── Labour: timesheet ─────────────────────────────────────────────────────────
 
-/** A day's mark on the timesheet. Overtime is at time and a half unless `overtimeRate` is 2, double time (17 Nov). */
-type Mark = { status: "full" | "half"; overtimeHours: number; overtimeRate?: OvertimeRate } | null;
-const markText = (m: Mark) => (m ? attendanceShort(m.status, m.overtimeHours, m.overtimeRate) : "Not in");
-/** Write a mark on an entry. The rate is kept only where there is double time overtime, so an old one never lingers. */
-function applyMark(a: Attendance, m: NonNullable<Mark>) {
-  a.status = m.status;
-  a.overtimeHours = m.status === "full" ? m.overtimeHours : 0;
-  if (a.overtimeHours > 0 && m.overtimeRate === 2) a.overtimeRate = 2;
-  else delete a.overtimeRate;
+/** A day's mark on the timesheet: a full or half day with any overtime at each rate, or a rest day's hours (17 Nov). */
+type Mark = DayMark | null;
+const markText = (m: Mark) => (m ? attendanceShort(m) : "Not in");
+/** Overtime belongs to a full day or a rest day. A half day has none. */
+const markFields = (m: DayMark) => ({ status: m.status, overtimeHours: m.status === "half" ? 0 : m.overtimeHours, ...storedDouble(m.status === "half" ? 0 : m.doubleHours) });
+/** Write a mark on an entry. Double time hours are kept only where there are some, so old ones never linger. */
+function applyMark(a: Attendance, m: DayMark) {
+  const f = markFields(m);
+  a.status = f.status;
+  a.overtimeHours = f.overtimeHours;
+  if (f.doubleHours) a.doubleHours = f.doubleHours;
+  else delete a.doubleHours;
 }
-const markFields = (m: NonNullable<Mark>) => ({ status: m.status, overtimeHours: m.status === "full" ? m.overtimeHours : 0, ...storedRate(m.status === "full" ? m.overtimeHours : 0, m.overtimeRate) });
 
 /** Mark today for one person. Stays editable until the day's time stamps are sent. */
 export function markAttendance(projectId: ID, personId: ID, date: string, mark: Mark) {
@@ -1037,7 +1040,7 @@ export function correctAttendance(projectId: ID, personId: ID, date: string, mar
   mutate((db) => {
     const i = db.attendance.findIndex((a) => a.projectId === projectId && a.personId === personId && a.date === date);
     const existing = db.attendance[i];
-    const from = markText(existing ? { status: existing.status, overtimeHours: existing.overtimeHours, overtimeRate: existing.overtimeRate } : null);
+    const from = markText(existing ?? null);
     const to = markText(mark);
     if (from === to) return;
     const who = actorName(db);
@@ -1053,6 +1056,60 @@ export function correctAttendance(projectId: ID, personId: ID, date: string, mar
     }
     db.attendanceChanges.unshift({ id: newId("chg"), attendanceId, projectId, personId, date, at: nowStamp(), by: who, from, to, reason: reason.trim() });
     log(db, "Corrected attendance", `${db.people.find((p) => p.id === personId)?.name}, ${date}: ${from} to ${to}`, "people", who);
+  });
+}
+
+/**
+ * A weekend or bank holiday time stamp (Oisin, 17 Nov): the hours one person worked on one site
+ * on a Saturday, a Sunday or a bank holiday, typed at each rate. There is no normal day in it:
+ * every hour is overtime. Anyone in the firm can be stamped, not only that site's crew. It is
+ * saved as sent, so it goes to the office with its week; changing or removing it afterwards is
+ * a correction, with a reason. Returns what is wrong in plain words, or nothing when it is saved.
+ */
+export function stampRestDay(projectId: ID, personId: ID, date: string, timeAndHalf: number, double: number): string | null {
+  const db0 = useData.getState().db;
+  if (date > getDay()) return "That day has not come yet";
+  const holiday = isBankHoliday(db0.bankHolidays, date);
+  const kind = restDayKind(dayOfWeek(date), holiday);
+  if (!kind) return "A weekend time stamp is for a Saturday, a Sunday or a bank holiday. Mark a normal day in the grid";
+  const problem = restDayProblem(kind, timeAndHalf, double);
+  if (problem) return problem;
+  const existing = db0.attendance.find((a) => a.projectId === projectId && a.personId === personId && a.date === date);
+  if (existing && existing.status !== "restday") return "They are already marked for a normal day on that date. Correct that day instead";
+  if (existing) return "They already have a time stamp on this site for that day. Open it in the list to change it";
+  mutate((db) => {
+    const who = actorName(db);
+    const mark = restDayMark(timeAndHalf, double);
+    db.attendance.push({ id: newId("att"), projectId, personId, date, ...markFields(mark), savedBy: who, savedAt: nowStamp(), sent: true });
+    const p = db.projects.find((x) => x.id === projectId);
+    log(db, kind === "bank-holiday" ? "Added a bank holiday time stamp" : "Added a weekend time stamp", `${db.people.find((x) => x.id === personId)?.name}, ${p?.code} ${p?.name}, ${date}: ${markText(mark)}`, "people", who);
+  });
+  return null;
+}
+
+// ── Bank holidays (Admin) ─────────────────────────────────────────────────────
+
+/** Add a day the firm treats as a bank holiday. Returns what is wrong, or nothing when it is added. */
+export function addBankHoliday(date: string, name: string): string | null {
+  const db0 = useData.getState().db;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return "Pick the date";
+  if (!name.trim()) return "Give the day a name";
+  if (isBankHoliday(db0.bankHolidays, date)) return `${bankHolidayOn(db0.bankHolidays, date)?.name} is already on that date`;
+  mutate((db) => {
+    db.bankHolidays.push({ date, name: name.trim() });
+    db.bankHolidays.sort((a, b) => a.date.localeCompare(b.date));
+    log(db, "Added a bank holiday", `${name.trim()}, ${date}`, "admin");
+  });
+  return null;
+}
+
+/** Take a day off the list of bank holidays. Time already recorded on it is kept as it is. */
+export function removeBankHoliday(date: string) {
+  mutate((db) => {
+    const h = db.bankHolidays.find((x) => x.date === date);
+    if (!h) return;
+    db.bankHolidays = db.bankHolidays.filter((x) => x.date !== date);
+    log(db, "Removed a bank holiday", `${h.name}, ${date}`, "admin");
   });
 }
 
@@ -1197,6 +1254,25 @@ export function setPlanDay(projectId: ID, personId: ID, date: string, mark: Plan
     if (i < 0) db.plan.push(entry);
     if (!db.assignments.some((a) => a.projectId === projectId && a.personId === personId)) db.assignments.push({ id: newId("as"), projectId, personId });
   });
+}
+
+/**
+ * Plan someone on a site for a Saturday, a Sunday or a bank holiday (Oisin, 17 Nov). Weekend
+ * work is the exception, so it is planned one person and one day at a time and never by the
+ * moves that fill a working week. Returns what is wrong, or nothing when it is planned.
+ */
+export function planRestDay(projectId: ID, personId: ID, date: string): string | null {
+  const db0 = useData.getState().db;
+  if (!isRestDay(db0.bankHolidays, date)) return "That is a normal working day. Plan it in the grid";
+  if (date < getDay()) return "That day has gone. Record it with a weekend time stamp on the Timesheet";
+  if (onLeave(db0, personId, date)) return "They are on approved leave that day";
+  if (db0.plan.some((p) => p.projectId === projectId && p.personId === personId && p.date === date)) return "They are already down for that site that day";
+  mutate((db) => {
+    db.plan.push({ id: newId("pl"), projectId, personId, date });
+    const p = db.projects.find((x) => x.id === projectId);
+    log(db, "Planned weekend work", `${db.people.find((x) => x.id === personId)?.name}, ${p?.code} ${p?.name}, ${date}`, "schedule");
+  });
+  return null;
 }
 
 /** Plan someone on a site for every day given that they are free to work. */
@@ -1638,9 +1714,9 @@ export function setSageNo(personId: ID, sageNo: string) {
 /** A week of hours sent to Sage Payroll. Hours only: rates, tax and deductions are Sage's. */
 export function recordPayrollExport(weekStart: string, personIds: ID[]) {
   mutate((db) => {
-    const end = addDays(weekStart, 4);
+    const end = weekEnd(weekStart);
     const rows = db.attendance.filter((a) => personIds.includes(a.personId) && a.date >= weekStart && a.date <= end);
-    const hours = rows.reduce((n, a) => n + basicHours(a.date, a.status) + a.overtimeHours, 0);
+    const hours = rows.reduce((n, a) => n + basicHours(a.date, a.status) + overtimeTotal(a), 0);
     db.payrollExports.unshift({ id: newId("pay"), weekStart, at: nowStamp(), by: actorName(db), people: personIds.length, hours });
     log(db, "Exported hours to Sage Payroll", `Week ending ${end}, ${personIds.length} people, ${hours} hours`, "people");
   });
@@ -1654,7 +1730,7 @@ export function recordPayrollExport(weekStart: string, personIds: ID[]) {
 export function checkPayrollWeek(weekStart: string) {
   mutate((db) => {
     db.payrollChecks.unshift({ id: newId("chk"), weekStart, at: nowStamp(), by: actorName(db) });
-    log(db, "Checked a week's hours for payroll", `Week ending ${addDays(weekStart, 4)}`, "people");
+    log(db, "Checked a week's hours for payroll", `Week ending ${weekEnd(weekStart)}`, "people");
   });
 }
 
@@ -1712,7 +1788,7 @@ export function routeMail(id: ID, personId: ID) {
 export function fileMail(id: ID, label: MailIntent) {
   mutate((db) => {
     const m = db.mails.find((x) => x.id === id);
-    if (!m || m.folder === "Sent") return;
+    if (!m || m.folder === "Sent" || m.folder === "Drafts") return;
     const to = filedFolder(m.folder);
     if (m.intent === label && m.folder === to) return;
     m.intent = label;
@@ -1724,7 +1800,8 @@ export function fileMail(id: ID, label: MailIntent) {
 export function moveMail(id: ID, folder: "Inbox" | "Archive") {
   mutate((db) => {
     const m = db.mails.find((x) => x.id === id);
-    if (!m || m.folder === folder) return;
+    // A draft of a new email is neither archived nor moved: it is sent or discarded.
+    if (!m || m.folder === folder || m.folder === "Drafts") return;
     m.folder = folder;
     m.read = true;
     log(db, folder === "Archive" ? "Archived an email" : "Moved an email back to the inbox", m.subject, "inbox");
@@ -1805,9 +1882,58 @@ export function startReply(id: ID) {
 }
 
 /** Send a new email from the shared address. In the demo it is filed under Sent; a real build sends it here. */
-export function composeMail(draft: { to: string; cc?: string; bcc?: string; subject: string; body: string; attachments?: MailAttachment[] }) {
+type NewMail = { to: string; cc?: string; bcc?: string; subject: string; body: string; attachments?: MailAttachment[] };
+
+/**
+ * Keep a new email as a draft (Oisin, 17 Nov: "save drafts for emails", as Gmail does): it goes
+ * in the Drafts folder and opens back into Compose. Saving it again replaces what was kept.
+ * Returns the draft's id.
+ */
+export function saveDraft(draft: NewMail, id?: ID): ID {
+  let out = id ?? "";
+  mutate((db) => {
+    const who = actorName(db);
+    const domain = db.mails[0]?.mailbox.split("@")[1] ?? "abcconstruction.example";
+    const files = (draft.attachments ?? []).slice(0, MAX_ATTACHMENTS);
+    const fields = { to: draft.to.trim(), subject: draft.subject.trim(), body: draft.body, receivedAt: nowStamp() };
+    const existing = db.mails.find((m) => m.id === id && m.folder === "Drafts");
+    const m: Mail = existing ?? { id: newId("mail"), mailbox: `info@${domain}`, folder: "Drafts", fromName: who, fromAddress: `info@${domain}`, ...fields, read: true, intent: "General", routedToId: myId(db) ?? "p-md" };
+    Object.assign(m, fields);
+    if (draft.cc?.trim()) m.cc = draft.cc.trim();
+    else delete m.cc;
+    if (draft.bcc?.trim()) m.bcc = draft.bcc.trim();
+    else delete m.bcc;
+    if (files.length) {
+      m.attachments = files;
+      m.attachment = files[0]!.name;
+    } else {
+      delete m.attachments;
+      delete m.attachment;
+    }
+    if (!existing) {
+      db.mails.unshift(m);
+      log(db, "Saved an email as a draft", `${m.subject || "(no subject)"}${m.to ? `: to ${m.to}` : ""}`, "inbox", who);
+    }
+    out = m.id;
+  });
+  return out;
+}
+
+/** Throw away a draft of a new email. */
+export function discardDraft(id: ID) {
+  mutate((db) => {
+    const m = db.mails.find((x) => x.id === id && x.folder === "Drafts");
+    if (!m) return;
+    db.mails = db.mails.filter((x) => x.id !== id);
+    log(db, "Discarded a draft email", m.subject || "(no subject)", "inbox");
+  });
+}
+
+/** Send a new email. If it was being kept as a draft, the draft is used up so it cannot go twice. */
+export function composeMail(draft: NewMail, draftId?: ID) {
   let id = "";
   mutate((db) => {
+    if (draftId) db.mails = db.mails.filter((x) => !(x.id === draftId && x.folder === "Drafts"));
     const who = actorName(db);
     const domain = db.mails[0]?.mailbox.split("@")[1] ?? "abcconstruction.example";
     const files = (draft.attachments ?? []).slice(0, MAX_ATTACHMENTS);

@@ -38,7 +38,11 @@ def steps(page, ctx):
     cell = lambda code, date: grid.locator(f"td[data-cell='{code} {date}']")
     heads = grid.locator("thead th")
     n_days = data(page, "new Date(Date.UTC(+day.slice(0,4), +day.slice(5,7), 0)).getUTCDate()")
-    check("Month: a column for every day of the month, weekends greyed and narrow, and three total rows", heads.count() == n_days + 1 and grid.locator("thead th[aria-hidden]").count() >= 8 and grid.locator("tfoot tr").count() == 3, heads.count())
+    # 17 Nov, round nine: a weekend opens out only where someone worked or is down for it, so the
+    # narrow strips and the opened weekend days together are every Saturday and Sunday.
+    weekends = data(page, "(() => { let n = 0; const y = +day.slice(0,4), m = +day.slice(5,7); for (let d = 1; d <= new Date(Date.UTC(y, m, 0)).getUTCDate(); d++) if ([0, 6].includes(new Date(Date.UTC(y, m - 1, d)).getUTCDay())) n++; return n })()")
+    strips = grid.locator("thead th[aria-hidden]").count(); opened = grid.locator("thead th[data-day]", has_text="weekend").count()
+    check("Month: a column for every day of the month, weekends greyed and narrow unless worked, and three total rows", heads.count() == n_days + 1 and strips + opened == weekends and strips >= 2 and grid.locator("tfoot tr").count() == 3, (heads.count(), strips, opened, weekends))
     row0 = grid.locator("tbody tr").first.locator("th").inner_text()
     check("Month: each row starts with the site code, name, site manager and dates", re.match(r"C7\d\d\n", row0) is not None and " to " in row0, row0)
     today_th = grid.locator(f"thead th[data-day='{day}']")

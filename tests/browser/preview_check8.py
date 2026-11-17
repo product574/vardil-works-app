@@ -20,7 +20,7 @@ with sync_playwright() as p:
     dlg = lambda: page.locator("dialog[open]").last
     # Overtime at time and a half or double time
     bar.get_by_role("link", name="People").click(); page.wait_for_selector("section[aria-label='Overtime rates']")
-    assert "Midnight to 8am" in page.locator("section[aria-label='Overtime rates']").inner_text()
+    assert "After midnight, when the work carries on from the day before" in page.locator("section[aria-label='Overtime rates']").inner_text()
     side.get_by_role("link", name="Attendance history").click(); page.wait_for_selector("text=Overtime x2")
     side.get_by_role("link", name="Payroll export").click(); page.wait_for_selector("text=Overtime hours x1.5,Overtime hours x2")
     # A note with a no

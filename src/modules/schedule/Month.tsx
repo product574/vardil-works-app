@@ -6,6 +6,7 @@ import { planDays, setPlanDay } from "@/data/actions";
 import { useData, useDay } from "@/data/store";
 import type { Db, Project } from "@/data/types";
 import { personWeek, planClashes } from "@/lib/availability";
+import { isBankHoliday } from "@/lib/bank-holidays";
 import { addDays, datesBetween, daysInMonth, isWeekend, MONTHS } from "@/lib/dates";
 import { dShort, dWeekday, plural } from "@/lib/format";
 import { dayRoster, planSteps, stepsToPlan, whereabouts } from "@/lib/roster";
@@ -58,6 +59,11 @@ export function MonthAhead() {
     for (const s of sites) for (const d of days) out.set(`${s.id}|${d}`, dayRoster(db.attendance, db.plan, s.id, d, day));
     return out;
   }, [db.attendance, db.plan, day, ym, sites.length]);
+  // A Saturday or Sunday is a narrow grey strip unless someone worked it or is down for it (17 Nov):
+  // then it opens out to show the names, still greyed. Weekend work is planned on the week ahead.
+  const weekendCell = (siteId: string, d: string) => dayRoster(db.attendance, db.plan, siteId, d, day);
+  const weekendUsed = new Set(all.filter((d) => isWeekend(d) && sites.some((s) => weekendCell(s.id, d).rows.length > 0)));
+  const widthOf = (d: string) => (!isWeekend(d) || weekendUsed.has(d) ? DAY_W : WEEKEND_W);
   const name = (id: string) => db.people.find((p) => p.id === id)?.name ?? "";
   const operatives = db.people.filter((p) => p.active && p.kind === "Operative");
   // Totals: days gone count who attended, days to come who is planned.
@@ -109,14 +115,21 @@ export function MonthAhead() {
           </Panel>
         ) : (
           <div ref={scroller} tabIndex={0} role="region" aria-label="Month ahead grid, scrolls sideways" className="max-h-[calc(100dvh-21rem)] min-h-72 overflow-auto rounded-md border border-line bg-surface">
-            <table className="table-fixed border-separate border-spacing-0" style={{ width: SITE_W + days.length * DAY_W + (all.length - days.length) * WEEKEND_W }} aria-label={`Month ahead, ${MONTHS[m - 1]} ${y}`}>
+            <table className="table-fixed border-separate border-spacing-0" style={{ width: SITE_W + all.reduce((w, d) => w + widthOf(d), 0) }} aria-label={`Month ahead, ${MONTHS[m - 1]} ${y}`}>
               <thead>
                 <tr>
                   <th scope="col" style={{ width: SITE_W }} className="sticky top-0 left-0 z-30 border-r border-b border-line-strong bg-surface px-3 py-2 text-left text-[0.93rem] font-medium text-muted">
                     Site
                   </th>
                   {all.map((d) =>
-                    isWeekend(d) ? (
+                    isWeekend(d) && weekendUsed.has(d) ? (
+                      <th key={d} scope="col" data-day={d} style={{ width: DAY_W }} className="sticky top-0 z-20 border-b border-l border-line-strong bg-canvas px-2 py-2 text-left text-muted">
+                        <span className="font-display text-[1.02rem] font-semibold">
+                          {wd(d)} {Number(d.slice(8))}
+                        </span>
+                        <span className="ml-1.5 text-[0.87rem] font-normal">weekend</span>
+                      </th>
+                    ) : isWeekend(d) ? (
                       <th key={d} aria-hidden style={{ width: WEEKEND_W }} className="sticky top-0 z-20 border-b border-line-strong bg-canvas px-0 py-2 text-center text-[0.87rem] font-normal text-faint">
                         {wd(d)[0]}
                         <span className="block">{Number(d.slice(8))}</span>
@@ -127,6 +140,7 @@ export function MonthAhead() {
                           {wd(d)} {Number(d.slice(8))}
                         </span>
                         {d === day && <span className="ml-1.5 text-[0.87rem] font-normal">today</span>}
+                        {isBankHoliday(db.bankHolidays, d) && <span className="block text-[0.87rem] font-normal text-warn">Bank holiday</span>}
                       </th>
                     ),
                   )}
@@ -146,6 +160,20 @@ export function MonthAhead() {
                       </span>
                     </th>
                     {all.map((d) => {
+                      if (isWeekend(d) && weekendUsed.has(d)) {
+                        const w = weekendCell(s.id, d);
+                        const names = [...w.rows].sort((a, b) => name(a.personId).localeCompare(name(b.personId)));
+                        return (
+                          <td key={d} className="border-b border-l border-line bg-canvas p-1 align-top" data-cell={`${s.code} ${d}`} aria-label={names.length > 0 ? `${s.code}, ${dWeekday(d)}: ${plural(names.length, "person", "people")}, ${w.from === "timesheet" ? "worked" : "planned"}` : undefined}>
+                            {names.map((r) => (
+                              <span key={r.personId} className={cx("block truncate rounded px-1.5 py-0.5 text-[0.87rem]", w.from === "timesheet" ? "text-muted" : "font-medium text-ink")}>
+                                {name(r.personId)}
+                                {r.note && <span className="font-normal"> {r.note}</span>}
+                              </span>
+                            ))}
+                          </td>
+                        );
+                      }
                       if (isWeekend(d)) return <td key={d} aria-hidden className="border-b border-line bg-canvas" />;
                       const running = d >= s.startDate && d <= s.endDate;
                       const cell = cells.get(`${s.id}|${d}`);
@@ -204,7 +232,7 @@ export function MonthAhead() {
             </table>
           </div>
         )}
-        <p className="mt-2 text-[0.93rem] text-muted">Weekends are greyed out. Anyone planned on two sites the same day is shown in red, on this screen and on the week ahead. "Free" counts operatives with no site and no leave that day; more than three free is shown in amber.</p>
+        <p className="mt-2 text-[0.93rem] text-muted">Weekends are greyed out, and open out to show names only where someone worked or is down for one; weekend work is planned on the week ahead. Anyone planned on two sites the same day is shown in red, on this screen and on the week ahead. "Free" counts operatives with no site and no leave that day; more than three free is shown in amber.</p>
       </PageBody>
       {open && openSite && <MonthDayDialog key={`${open.siteId}|${open.date}`} site={openSite} date={open.date} db={db} day={day} canEdit={canEdit} liveIds={liveIds} onClose={() => setOpen(null)} />}
     </>

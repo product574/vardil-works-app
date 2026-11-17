@@ -30,7 +30,8 @@ export const ROLES: RoleDef[] = [
     personId: "p-md",
     does: "Sees the whole firm: sales, sites, money and compliance.",
     home: "/dashboard",
-    departments: ["dashboard", "inbox", "chat", "sales", "projects", "schedule", "people", "plant", "files", "invoicing", "portal", "site", "admin", "settings"],
+    // Profitability shows what each person costs, so it is the managing director's alone and cannot be given to another level (17 Nov).
+    departments: ["dashboard", "inbox", "chat", "sales", "projects", "schedule", "people", "plant", "files", "invoicing", "profit", "portal", "site", "admin", "settings"],
     money: [true, true],
     perms: ALL_PERMS,
     locked: true,

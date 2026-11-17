@@ -10,16 +10,31 @@ import { dShort } from "./format";
 
 export type MailFolder = "Inbox" | "Starred" | "Sent" | "Drafts" | "Archive";
 
-/** Emails in a folder. Starred and Drafts gather from the others, as in Gmail: Drafts are replies written but not sent. */
+/**
+ * Emails in a folder. Starred and Drafts gather from the others, as in Gmail. Drafts holds two
+ * kinds: a new email written and not sent (kept in the Drafts folder, 17 Nov), and an email that
+ * came in with a reply written for it and not sent.
+ */
 export function inFolder(mails: Mail[], folder: MailFolder): Mail[] {
   if (folder === "Starred") return mails.filter((m) => m.starred);
-  if (folder === "Drafts") return mails.filter((m) => m.folder !== "Sent" && !!m.replyDraft);
+  if (folder === "Drafts") return mails.filter((m) => isNewDraft(m) || (m.folder !== "Sent" && !!m.replyDraft));
   return mails.filter((m) => m.folder === folder);
 }
 
-/** Emails with a label, wherever they are filed (not the copies in Sent). */
+/** A new email that was started and not sent. It opens back into Compose, not into the reader. */
+export const isNewDraft = (m: Pick<Mail, "folder">) => m.folder === "Drafts";
+
+/**
+ * Whether a new email has anything in it worth keeping as a draft: someone to send it to, a
+ * subject, a message or a file. Closing Compose keeps it if so, as Gmail does (Oisin, 17 Nov).
+ */
+export function worthKeeping(d: { to: string; cc?: string; bcc?: string; subject: string; body: string; attachments?: unknown[] }): boolean {
+  return [d.to, d.cc ?? "", d.bcc ?? "", d.subject, d.body].some((t) => t.trim() !== "") || (d.attachments?.length ?? 0) > 0;
+}
+
+/** Emails with a label, wherever they are filed (not the copies in Sent, nor drafts of new emails). */
 export function withLabel(mails: Mail[], label: MailIntent): Mail[] {
-  return mails.filter((m) => m.folder !== "Sent" && m.intent === label);
+  return mails.filter((m) => m.folder !== "Sent" && m.folder !== "Drafts" && m.intent === label);
 }
 
 /**

@@ -5,3 +5,4 @@ export { Connections } from "./Connections";
 export { Requests } from "./Requests";
 export { RolesAccess } from "./RolesAccess";
 export { SiteAccess } from "./SiteAccess";
+export { BankHolidays } from "./BankHolidays";
