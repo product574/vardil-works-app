@@ -40,14 +40,14 @@ with sync_playwright() as p:
     bar.get_by_role("link", name="Admin").click(); side.get_by_role("link", name="Bank holidays").click(); page.wait_for_selector("table[aria-label^='Bank holidays in']")
     assert main.locator("tbody tr").count() == 10
     # Profitability
-    bar.get_by_role("link", name="Profitability").click(); page.wait_for_selector("table[aria-label='Employee outgoings by site']")
-    t = main.get_by_role("table", name="Employee outgoings by site")
+    bar.get_by_role("link", name="Profitability").click(); page.wait_for_selector("table[aria-label='Costs by live site']")
+    t = main.get_by_role("table", name="Costs by live site")
     assert t.locator("tbody tr").count() >= 6 and "allowed in the quote" not in main.inner_text()
     t.get_by_role("button", name=re.compile("^C724 ")).click(); page.wait_for_selector("dialog[open] table")
     assert "Orla Prunty" in dlg().inner_text()
     dlg().get_by_role("button", name="Close").last.click(); page.wait_for_timeout(200)
     main.get_by_role("tab", name="Finished").click(); page.wait_for_selector("table[aria-label='Net profit by finished job']")
-    assert "Net profit %" in main.inner_text() and "Subcontractor invoices" in main.inner_text()
+    assert "Net profit %" in main.inner_text() and "Plant and hire" in main.inner_text() and "Subcontractors" in main.inner_text()
     side.get_by_role("link", name="Job costs").click(); page.wait_for_selector("text=Download profitability report")
     # Round ten: the operative's hours and a claim, then the site manager answers it on his phone
     bar.get_by_role("link", name="Site phone").click(); page.wait_for_selector("[aria-label='Phone screen']")

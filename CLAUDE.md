@@ -54,7 +54,7 @@ only). Merge into `main` only when Aodhan says publish, check it live, and updat
 Each round starts from the latest version: if `main` changed while the co-founder worked,
 send him a fresh zip first, or bring his changes across with care, so the two do not clash.
 
-**Round ten, 17 Nov:** decisions 108 to 116.
+**Round ten, 17 Nov:** decisions 108 to 116, and 117 after it.
 
 **On Oisin's copy, from 16 Nov evening:** Oisin directs the work himself ("forget about
 Aodhan's steps for now, I will take control of the steps from now"). The list below is
@@ -239,6 +239,7 @@ Two sources were merged (November 2026):
 | 114 | Attendance history per site first | It opens on the Per site layout; Everyone is the switch beside it |
 | 115 | Month ahead in whole weeks | "for monday the 30th of November ... in November month planning and same for the other way for December". The grid runs from the Monday of the month's first week to the Sunday of its last (`monthWeeks` in `week.ts`), days from the months either side greyed and named (Mon 30 Nov in December, Fri 4 Dec in November). The site manager's phone month shows those days too |
 | 116 | Profitability, round ten | "Labour allowed in the quote" removed everywhere (the column, the warning, the site dialog line, `allowed`, `usedPct`, `labourState`). Finished jobs (only, his pick) show Contract value, Wages, Reimbursements, Subcontractor invoices, Supplier invoices, Net profit and Net profit %: net profit is the contract value, agreed extras included, less all of those (his pick, `netProfit`, `netPct`). The invoices are the checked ones posted to the job, subcontractors (the labour heading) apart from everything else (`jobInvoices` in `figures.ts`), so the two add up to Job costs less the firm's own labour. A line above the table names any job at a loss or under 10% (`profitState`, `THIN_PROFIT_PCT`; his pick). Live sites keep wages, reimbursements, contract value and what is left after employees |
+| 117 | Profitability: costs by heading | Oisin, 17 Nov (after round ten): "in the profitability in the by site include plant and hire, materials, and subcontractor for costs". Seven questions first; his picks: both tabs; a fourth column, Other, for carriage and anything else, so the columns add up; plant and hire from checked invoices only (plant still on hire and the firm's own plant count once invoiced); equipment (scaffold, generators, small tools) under Plant and hire, as on Job costs. `jobInvoices` in `figures.ts` now gives `plantHire` (plant and equipment), `materials`, `subcontractors` (the labour heading) and `other` (transport and other); "Supplier invoices" went. Live sites: Site, Wages, Reimbursements, Plant and hire, Materials, Subcontractors, Other, Total costs so far (replaces "Outgoings for employees"), Contract value, Left after all costs so far (replaces "Left after employees"; the same `netProfit` as a finished job's). Finished jobs: the same four in place of the two invoice columns, then Net profit and Net profit %. A site's box shows the costs line by line on both tabs. Headings and the wage lines wrap so both tables fit at 1280 pixels and wider; narrower, the table scrolls inside its panel |
 
 Standing preferences (these come from Aodhan and are not optional):
 
@@ -639,6 +640,13 @@ Email to match their Gmail layout and Team chat their Ping, dropping the AI in T
   new Polish, Romanian, Portuguese and Lithuanian button name ("My hours and overtime"). Not built:
   the overtime claim sheet in the operative's own language (English, like the driving check);
   supplier invoices on live sites in Profitability (finished jobs only, his pick).
+- 17 Nov, after round ten (decision 117): Profitability's costs by heading on both tabs.
+  509 automated tests (`profitability.test.ts` checks every live and finished site against
+  Job costs heading by heading; `overtime-claims.test.ts` the four-way split of one job's
+  invoices). 1,264 browser checks in twenty-two suites, all passing: `s10_check.py` 52 (the four columns on both tabs, against the checked
+  invoices, adding up, fitting the page), `s9_check.py` and `preview_check10.py` for the new
+  live columns. Not tested: below 1280 pixels the table scrolls inside its panel (checked by
+  eye at 1100); a real phone.
 - Tests: 235 automated tests (new `mail.test.ts`, 17; `chat.test.ts` rewritten, 20); 690
   browser checks in fourteen suites (`s2_check.py` rewritten for Team chat, 34; the Email
   part of `m5_check.py` rewritten, 69 in all; `m1_check.py` counts seven departments for a
@@ -1547,8 +1555,8 @@ each card is the way on a phone, and is tested at phone width).
 - Overtime hours are typed by whoever marks time (decision 100): nothing checks them against
   clock times, so the split between time and a half and double time is theirs to get right.
   The Saturday and Sunday limits on a weekend time stamp are the only ones enforced.
-- Profitability's outgoings are wages and approved reimbursements only; supplier invoices
-  per job are still on Job costs alone (decision 105).
+- Profitability counts plant only once its invoice is checked: hire still running and the
+  firm's own plant cost nothing there until then (decision 117, his pick).
 - Other sample events (emails, invoices, deliveries) are dated on working days by weekday
   only, so one can fall on a bank holiday on some demo days; timesheets and the plan cannot.
 

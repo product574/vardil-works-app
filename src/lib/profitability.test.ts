@@ -53,24 +53,24 @@ describe("one site", () => {
 
   it("measures the wages against the contract value", () => {
     const s = siteProfit({ id: "s1", value: 10000 }, att, people, claims);
-    expect(s).toMatchObject({ value: 10000, shareOfValue: 8, left: 10000 - 831.4 });
+    expect(s).toMatchObject({ value: 10000, shareOfValue: 8, netProfit: 10000 - 831.4 });
     // The labour allowed in the quote is gone everywhere (round ten).
     expect(s).not.toHaveProperty("allowed");
     expect(s).not.toHaveProperty("usedPct");
   });
 
-  it("takes the invoices that came in for the job off the contract value to give the net profit", () => {
-    const s = siteProfit({ id: "s1", value: 10000 }, att, people, claims, { subcontractors: 1500, suppliers: 2668.6 });
-    expect(s).toMatchObject({ subcontractors: 1500, suppliers: 2668.6, costs: 831.4 + 1500 + 2668.6, netProfit: 5000, netPct: 50 });
-    // With no invoices in, the net profit is what is left after employees.
-    expect(siteProfit({ id: "s1", value: 10000 }, att, people, claims)).toMatchObject({ subcontractors: 0, suppliers: 0, netProfit: 10000 - 831.4, netPct: 91.7 });
+  it("takes the invoices for the job, under four headings, off the contract value to give the net profit", () => {
+    const s = siteProfit({ id: "s1", value: 10000 }, att, people, claims, { plantHire: 900, materials: 1500.6, subcontractors: 1500, other: 268 });
+    expect(s).toMatchObject({ plantHire: 900, materials: 1500.6, subcontractors: 1500, other: 268, costs: 831.4 + 900 + 1500.6 + 1500 + 268, netProfit: 5000, netPct: 50 });
+    // With no invoices in, it is what is left after employees.
+    expect(siteProfit({ id: "s1", value: 10000 }, att, people, claims)).toMatchObject({ plantHire: 0, materials: 0, subcontractors: 0, other: 0, netProfit: 10000 - 831.4, netPct: 91.7 });
     // A job that cost more than it was worth shows the loss as it is.
-    expect(siteProfit({ id: "s1", value: 3000 }, att, people, claims, { subcontractors: 1500, suppliers: 1000 })).toMatchObject({ netProfit: -331.4, netPct: -11 });
+    expect(siteProfit({ id: "s1", value: 3000 }, att, people, claims, { plantHire: 500, materials: 500, subcontractors: 1500, other: 0 })).toMatchObject({ netProfit: -331.4, netPct: -11 });
   });
 
   it("says nothing about the value where there is none", () => {
-    const s = siteProfit({ id: "s1", value: null }, att, people, claims, { subcontractors: 10, suppliers: 20 });
-    expect(s).toMatchObject({ value: null, shareOfValue: null, left: null, netProfit: null, netPct: null, costs: 831.4 + 30 });
+    const s = siteProfit({ id: "s1", value: null }, att, people, claims, { plantHire: 5, materials: 10, subcontractors: 10, other: 5 });
+    expect(s).toMatchObject({ value: null, shareOfValue: null, netProfit: null, netPct: null, costs: 831.4 + 30 });
   });
 
   it("lists who the wages went to, dearest first, with days, weekend days and reimbursements", () => {
@@ -82,8 +82,8 @@ describe("one site", () => {
   });
 
   it("adds sites up", () => {
-    const t = profitTotals([siteProfit({ id: "s1", value: 10000 }, att, people, claims, { subcontractors: 1000, suppliers: 2000 }), siteProfit({ id: "s2", value: 5000 }, att, people, claims, { subcontractors: 0, suppliers: 500 })]);
-    expect(t).toMatchObject({ wages: 960, reimbursements: 130.4, outgoings: 1090.4, value: 15000, left: 15000 - 1090.4, subcontractors: 1000, suppliers: 2500, costs: 1090.4 + 3500, netProfit: 15000 - 1090.4 - 3500 });
+    const t = profitTotals([siteProfit({ id: "s1", value: 10000 }, att, people, claims, { plantHire: 600, materials: 1200, subcontractors: 1000, other: 200 }), siteProfit({ id: "s2", value: 5000 }, att, people, claims, { plantHire: 100, materials: 400, subcontractors: 0, other: 0 })]);
+    expect(t).toMatchObject({ wages: 960, reimbursements: 130.4, outgoings: 1090.4, value: 15000, plantHire: 700, materials: 1600, subcontractors: 1000, other: 200, costs: 1090.4 + 3500, netProfit: 15000 - 1090.4 - 3500 });
     expect(t.netPct).toBe(69.4);
     // Overtime (60 + 180) as a share of the wage bill.
     expect(t.overtimeShare).toBe(25);
@@ -119,20 +119,23 @@ describe("from the sample data", () => {
     const c721 = db.projects.find((p) => p.code === "C721")!;
     expect(siteProfit(c721, db.attendance, db.people, db.expenses).reimbursements).toBe(31.4);
   });
-  it("gives every finished job a net profit that is its value less the wages, reimbursements and invoices on Job costs", () => {
-    const finished = db.projects.filter((x) => ["Complete", "Invoiced", "Closed"].includes(x.status));
-    expect(finished.length).toBeGreaterThan(2);
-    for (const p of finished) {
+  it("gives every site, live or finished, a result that is its value less the wages, reimbursements and invoices on Job costs", () => {
+    const sites = db.projects.filter((x) => ["Live", "Complete", "Invoiced", "Closed"].includes(x.status));
+    for (const p of sites) {
       const inv = jobInvoices(db, p);
       const costs = projectCosts(db, p);
-      // Subcontractor and supplier invoices together are everything on Job costs but the firm's own labour.
-      expect(inv.subcontractors + inv.suppliers, p.code).toBeCloseTo(costs.cost - costs.labour, 1);
+      // The four headings together are everything on Job costs but the firm's own labour.
+      expect(inv.plantHire + inv.materials + inv.subcontractors + inv.other, p.code).toBeCloseTo(costs.cost - costs.labour, 1);
+      // Plant and hire is the same figure as plant on Job costs (equipment included); materials too.
+      expect(inv.plantHire, p.code).toBeCloseTo(costs.plant, 1);
+      expect(inv.materials, p.code).toBeCloseTo(costs.material, 1);
       const s = siteProfit(p, db.attendance, db.people, db.expenses, inv);
       expect(s.netProfit, p.code).toBeCloseTo((p.value ?? 0) - costs.cost - s.reimbursements, 1);
       expect(s.netPct, p.code).not.toBeNull();
     }
-    // The finished jobs have invoices of both kinds between them.
-    expect(finished.some((p) => jobInvoices(db, p).subcontractors > 0)).toBe(true);
-    expect(finished.every((p) => jobInvoices(db, p).suppliers > 0)).toBe(true);
+    // Between them the sites have invoices under every heading.
+    for (const k of ["plantHire", "materials", "subcontractors", "other"] as const) expect(sites.some((p) => jobInvoices(db, p)[k] > 0), k).toBe(true);
+    // Live sites have costs in so far, beyond wages.
+    expect(db.projects.filter((x) => x.status === "Live").every((p) => jobInvoices(db, p).materials > 0)).toBe(true);
   });
 });

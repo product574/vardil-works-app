@@ -196,12 +196,16 @@ describe("a month in whole weeks", () => {
   });
 });
 
-describe("invoices for a finished job", () => {
-  it("splits the checked invoices into subcontractors and every other supplier", () => {
+describe("invoices for a job", () => {
+  it("splits the checked invoices into plant and hire, materials, subcontractors and other", () => {
     const p = db().projects.find((x) => x.status === "Closed" || x.status === "Invoiced" || x.status === "Complete")!;
     const inv = jobInvoices(db(), p);
     const confirmed = db().supplierInvoices.filter((s) => s.readStatus === "confirmed").flatMap((s) => s.allocations.filter((a) => a.projectId === p.id).map((a) => ({ a, sign: s.docType === "credit_note" ? -1 : 1 })));
-    expect(inv.subcontractors + inv.suppliers).toBeCloseTo(confirmed.reduce((n, x) => n + x.sign * x.a.amount, 0), 1);
-    expect(inv.subcontractors).toBeCloseTo(confirmed.filter((x) => x.a.category === "labour").reduce((n, x) => n + x.sign * x.a.amount, 0), 1);
+    const of = (cats: string[]) => confirmed.filter((x) => cats.includes(x.a.category)).reduce((n, x) => n + x.sign * x.a.amount, 0);
+    expect(inv.plantHire).toBeCloseTo(of(["plant", "equipment"]), 1);
+    expect(inv.materials).toBeCloseTo(of(["material"]), 1);
+    expect(inv.subcontractors).toBeCloseTo(of(["labour"]), 1);
+    expect(inv.other).toBeCloseTo(of(["transport", "other"]), 1);
+    expect(inv.plantHire + inv.materials + inv.subcontractors + inv.other).toBeCloseTo(confirmed.reduce((n, x) => n + x.sign * x.a.amount, 0), 1);
   });
 });

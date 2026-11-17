@@ -14,15 +14,12 @@ const h = (n: number) => (n === 0 ? "-" : n.toLocaleString("en-IE"));
 const pct = (n: number | null) => (n == null ? "-" : `${n.toLocaleString("en-IE", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`);
 
 /**
- * Profitability by site (Oisin, 17 Nov), for the managing director alone.
- *
- * Live sites: what each has cost in the firm's own people (wages at basic, time and a half and
- * double time, from the timesheets, and the reimbursements approved for it), against what the
- * job is worth.
- *
- * Finished jobs (round ten): the same, plus the invoices that came in for the job, from
- * subcontractors and from suppliers, and the net profit as an amount and as a share of the
- * contract value. The labour allowed in the quote was taken out everywhere at his word.
+ * Profitability by site (Oisin, 17 Nov), for the managing director alone. For every site, live
+ * or finished: wages (basic, time and a half and double time, from the timesheets), the
+ * reimbursements approved for it, and the checked invoices that came in for it under four
+ * headings, plant and hire, materials, subcontractors and other (after round ten). Live sites
+ * end with what is left of the contract value after all costs so far; finished jobs with the
+ * net profit and its percentage. The labour allowed in the quote was taken out at his word.
  */
 export function Profitability() {
   const db = useData((s) => s.db);
@@ -49,7 +46,7 @@ export function Profitability() {
   const thin = rows.filter((r) => profitState(r.netPct) === "thin");
   const open = rows.find((r) => r.p.id === openId);
   const siteCell = (r: (typeof rows)[number]) => (
-    <td>
+    <td className="min-w-[10.5rem]">
       <button type="button" className="press text-left font-medium text-accent-ink underline-offset-2 hover:underline" aria-label={`${r.p.code} ${r.p.name}: see who the wages went to`} onClick={() => setOpenId(r.p.id)}>
         {r.p.code}
       </button>{" "}
@@ -62,14 +59,31 @@ export function Profitability() {
   const wagesCell = (w: { total: number; basic: number; timeAndHalf: number; double: number }, cls?: string) => (
     <td className={cx("num", cls)}>
       <span className="font-medium">{m(w.total)}</span>
-      <span className="block text-[0.87rem] text-muted">
-        basic {m(w.basic)}
-        {w.timeAndHalf > 0 && `, x1.5 ${m(w.timeAndHalf)}`}
-        {w.double > 0 && `, x2 ${m(w.double)}`}
-      </span>
+      {/* One rate a line, so the column stays narrow enough for every cost to fit beside it. */}
+      <span className="block text-[0.87rem] text-muted">basic {m(w.basic)}</span>
+      {w.timeAndHalf > 0 && <span className="block text-[0.87rem] text-muted">x1.5 {m(w.timeAndHalf)}</span>}
+      {w.double > 0 && <span className="block text-[0.87rem] text-muted">x2 {m(w.double)}</span>}
     </td>
   );
   const top = "border-t border-line-strong";
+  // The four kinds of invoice, in the same order on both tabs (after round ten).
+  const invoiceHeads = (
+    <>
+      <th className="num">Plant and hire</th>
+      <th className="num">Materials</th>
+      <th className="num">Subcontractors</th>
+      <th className="num">Other</th>
+    </>
+  );
+  const invoiceCells = (r: { plantHire: number; materials: number; subcontractors: number; other: number }, cls?: string) => (
+    <>
+      {[r.plantHire, r.materials, r.subcontractors, r.other].map((n, i) => (
+        <td key={i} className={cx("num", cls)}>
+          {n !== 0 ? m(n) : "-"}
+        </td>
+      ))}
+    </>
+  );
   return (
     <>
       <PageHead
@@ -77,7 +91,7 @@ export function Profitability() {
         note={
           finished
             ? `Finished jobs, to ${dShort(day)}: ${m(total.value)} of work, ${m(total.costs)} in costs, ${m(total.netProfit)} net profit (${pct(total.netPct)}).`
-            : `Live sites, to ${dShort(day)}: ${m(total.wages)} in wages and ${m(total.reimbursements)} in reimbursements. Overtime is ${total.overtimeShare}% of the wage bill, and cost ${m(total.premium)} more than the same hours at the basic rate.`
+            : `Live sites, to ${dShort(day)}: ${m(total.costs)} in costs so far, ${m(total.wages)} of it wages. Overtime is ${total.overtimeShare}% of the wage bill, and cost ${m(total.premium)} more than the same hours at the basic rate.`
         }
         actions={<Segmented label="Which sites" value={show} onChange={setShow} options={[{ value: "live", label: "Live sites" }, { value: "finished", label: "Finished" }]} />}
       />
@@ -100,15 +114,14 @@ export function Profitability() {
           {rows.length === 0 ? (
             <Empty title={finished ? "No finished jobs" : "No live sites"}>Wages show here once a site has timesheets.</Empty>
           ) : finished ? (
-            <table className="tbl" aria-label="Net profit by finished job">
+            <table className="tbl [&_td]:px-2.5 [&_th]:px-2.5 [&_th]:align-bottom [&_th]:whitespace-normal" aria-label="Net profit by finished job">
               <thead>
                 <tr>
                   <th>Job</th>
                   <th className="num">Contract value</th>
                   <th className="num">Wages</th>
                   <th className="num">Reimbursements</th>
-                  <th className="num">Subcontractor invoices</th>
-                  <th className="num">Supplier invoices</th>
+                  {invoiceHeads}
                   <th className="num">Net profit</th>
                   <th className="num">Net profit %</th>
                 </tr>
@@ -123,8 +136,7 @@ export function Profitability() {
                       <td className="num">{m(r.value)}</td>
                       {wagesCell(r.wages)}
                       <td className="num">{r.reimbursements > 0 ? money2(r.reimbursements, region) : "-"}</td>
-                      <td className="num">{r.subcontractors > 0 ? m(r.subcontractors) : "-"}</td>
-                      <td className="num">{r.suppliers > 0 ? m(r.suppliers) : "-"}</td>
+                      {invoiceCells(r)}
                       <td className={cx("num font-medium", tone)}>{m(r.netProfit)}</td>
                       <td className={cx("num font-medium", tone)}>{pct(r.netPct)}</td>
                     </tr>
@@ -137,23 +149,23 @@ export function Profitability() {
                   <td className={cx("num", top)}>{m(total.value)}</td>
                   {wagesCell({ total: total.wages, basic: total.basic, timeAndHalf: total.timeAndHalf, double: total.double }, top)}
                   <td className={cx("num", top)}>{total.reimbursements > 0 ? money2(total.reimbursements, region) : "-"}</td>
-                  <td className={cx("num", top)}>{m(total.subcontractors)}</td>
-                  <td className={cx("num", top)}>{m(total.suppliers)}</td>
+                  {invoiceCells(total, top)}
                   <td className={cx("num font-medium", top)}>{m(total.netProfit)}</td>
                   <td className={cx("num font-medium", top)}>{pct(total.netPct)}</td>
                 </tr>
               </tfoot>
             </table>
           ) : (
-            <table className="tbl" aria-label="Employee outgoings by site">
+            <table className="tbl [&_td]:px-2.5 [&_th]:px-2.5 [&_th]:align-bottom [&_th]:whitespace-normal" aria-label="Costs by live site">
               <thead>
                 <tr>
                   <th>Site</th>
                   <th className="num">Wages</th>
                   <th className="num">Reimbursements</th>
-                  <th className="num">Outgoings for employees</th>
+                  {invoiceHeads}
+                  <th className="num">Total costs so far</th>
                   <th className="num">Contract value</th>
-                  <th className="num">Left after employees</th>
+                  <th className="num">Left after all costs so far</th>
                 </tr>
               </thead>
               <tbody>
@@ -162,12 +174,13 @@ export function Profitability() {
                     {siteCell(r)}
                     {wagesCell(r.wages)}
                     <td className="num">{r.reimbursements > 0 ? money2(r.reimbursements, region) : "-"}</td>
-                    <td className="num font-medium">{m(r.outgoings)}</td>
+                    {invoiceCells(r)}
+                    <td className="num font-medium">{m(r.costs)}</td>
                     <td className="num">
                       {m(r.value)}
-                      {r.shareOfValue != null && <span className="block text-[0.87rem] text-muted">wages are {r.shareOfValue}% of it</span>}
+                      {r.shareOfValue != null && <span className="block text-[0.87rem] whitespace-normal text-muted">wages {r.shareOfValue}% of it</span>}
                     </td>
-                    <td className={cx("num font-medium", r.left != null && r.left < 0 && "text-bad")}>{m(r.left)}</td>
+                    <td className={cx("num font-medium", r.netProfit != null && r.netProfit < 0 && "text-bad")}>{m(r.netProfit)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -176,33 +189,26 @@ export function Profitability() {
                   <td className={cx(top, "font-medium")}>All sites shown</td>
                   {wagesCell({ total: total.wages, basic: total.basic, timeAndHalf: total.timeAndHalf, double: total.double }, top)}
                   <td className={cx("num", top)}>{total.reimbursements > 0 ? money2(total.reimbursements, region) : "-"}</td>
-                  <td className={cx("num font-medium", top)}>{m(total.outgoings)}</td>
+                  {invoiceCells(total, top)}
+                  <td className={cx("num font-medium", top)}>{m(total.costs)}</td>
                   <td className={cx("num", top)}>{m(total.value)}</td>
-                  <td className={cx("num font-medium", top)}>{m(total.left)}</td>
+                  <td className={cx("num font-medium", top)}>{m(total.netProfit)}</td>
                 </tr>
               </tfoot>
             </table>
           )}
         </Panel>
-        {finished ? (
-          <p className="max-w-[90ch] text-[0.93rem] text-muted">
-            Net profit is the contract value, agreed extras included, less everything the job cost: wages, reimbursements, subcontractor invoices and supplier invoices. The percentage is that as a share of the contract value. Wages are the hours on the timesheets at each person's hourly rate.
-            The invoices are the ones checked and posted to the job: subcontractors apart, and under suppliers everything else, materials, plant hire, carriage and the rest. Heading by heading they are on{" "}
-            <Link to="/profit/costs" className="font-medium text-accent-ink underline-offset-2 hover:underline">
-              Job costs
-            </Link>
-            . Click a job's code to see who its wages went to.
-          </p>
-        ) : (
-          <p className="max-w-[90ch] text-[0.93rem] text-muted">
-            Wages are the hours on the timesheets at each person's hourly rate: a normal day on the 39 hour week (8 hours, 7 on a Friday), time and a half hours at one and a half times the rate, and double time hours at twice it. Work on a Saturday, a Sunday or a bank holiday is all at an overtime rate.
-            Reimbursements are the ones the director has approved for the site. "Left after employees" is the contract value less those two only. Subcontractor and supplier invoices, and the net profit, are shown once a job is finished, under Finished; while a site is live they are on{" "}
-            <Link to="/profit/costs" className="font-medium text-accent-ink underline-offset-2 hover:underline">
-              Job costs
-            </Link>
-            . Click a site code to see who its wages went to.
-          </p>
-        )}
+        <p className="max-w-[90ch] text-[0.93rem] text-muted">
+          {finished
+            ? "Net profit is the contract value, agreed extras included, less everything the job cost. The percentage is that as a share of the contract value. "
+            : "Left after all costs so far is the contract value, agreed extras included, less everything the site has cost to date. "}
+          Wages are the hours on the timesheets at each person's hourly rate: a normal day on the 39 hour week (8 hours, 7 on a Friday), time and a half hours at one and a half times the rate, and double time hours at twice it. Reimbursements are the ones the director has approved for the site.
+          The four invoice columns are the invoices checked and posted to the job: plant and hire (scaffold, generators and small tools included), materials, subcontractors, and other (carriage and anything else). Plant still on hire, and the firm's own plant, count once an invoice for it is checked. Heading by heading they are on{" "}
+          <Link to="/profit/costs" className="font-medium text-accent-ink underline-offset-2 hover:underline">
+            Job costs
+          </Link>
+          . Click a {finished ? "job's" : "site"} code to see who its wages went to and what it cost.
+        </p>
       </PageBody>
       {open && <SiteDialog row={open} finished={finished} region={region} onClose={() => setOpenId(null)} />}
     </>
@@ -218,7 +224,7 @@ function SiteDialog({ row, finished, region, onClose }: { row: SiteProfit & { p:
       open
       wide
       onClose={onClose}
-      title={`${row.p.code} ${row.p.name}: ${finished ? "what the job cost" : "outgoings for employees"}`}
+      title={`${row.p.code} ${row.p.name}: ${finished ? "what the job cost" : "costs so far"}`}
       footer={
         <>
           <Link to={`/projects/${row.p.code}?tab=costs`} className="mr-auto text-[0.93rem] font-medium text-accent-ink underline-offset-2 hover:underline">
@@ -279,30 +285,30 @@ function SiteDialog({ row, finished, region, onClose }: { row: SiteProfit & { p:
             </tfoot>
           </table>
         </div>
-        {finished && (
-          <Section title="What the job cost">
-            <ul className="grid gap-1 text-[0.93rem] sm:grid-cols-2" aria-label="What the job cost">
-              <li>
-                Contract value: <span className="font-medium">{row.value == null ? "-" : m2(row.value)}</span>
+        <Section title={finished ? "What the job cost" : "What it has cost so far"}>
+          <ul className="grid gap-1 text-[0.93rem] sm:grid-cols-2" aria-label="What the job cost">
+            {(
+              [
+                ["Contract value", row.value],
+                ["Wages", w.total],
+                ["Reimbursements", row.reimbursements],
+                ["Plant and hire", row.plantHire],
+                ["Materials", row.materials],
+                ["Subcontractors", row.subcontractors],
+                ["Other", row.other],
+                ["Costs in all", row.costs],
+              ] as [string, number | null][]
+            ).map(([label, n]) => (
+              <li key={label}>
+                {label}: <span className="font-medium">{n == null ? "-" : m2(n)}</span>
               </li>
-              <li>
-                Wages: <span className="font-medium">{m2(w.total)}</span>
-              </li>
-              <li>
-                Reimbursements: <span className="font-medium">{m2(row.reimbursements)}</span>
-              </li>
-              <li>
-                Subcontractor invoices: <span className="font-medium">{m2(row.subcontractors)}</span>
-              </li>
-              <li>
-                Supplier invoices: <span className="font-medium">{m2(row.suppliers)}</span>
-              </li>
-              <li>
-                Net profit: <span className={cx("font-medium", row.netProfit != null && row.netProfit < 0 && "text-bad")}>{row.netProfit == null ? "-" : m2(row.netProfit)}</span> <span className="text-muted">({pct(row.netPct)} of the contract value)</span>
-              </li>
-            </ul>
-          </Section>
-        )}
+            ))}
+            <li className="sm:col-span-2">
+              {finished ? "Net profit" : "Left after all costs so far"}: <span className={cx("font-medium", row.netProfit != null && row.netProfit < 0 && "text-bad")}>{row.netProfit == null ? "-" : m2(row.netProfit)}</span>{" "}
+              <span className="text-muted">({pct(row.netPct)} of the contract value)</span>
+            </li>
+          </ul>
+        </Section>
         <Section title="Wages by rate">
           <ul className="grid gap-1 text-[0.93rem] sm:grid-cols-3" aria-label="Wages by rate">
             <li>

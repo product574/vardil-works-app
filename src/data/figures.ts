@@ -41,13 +41,14 @@ export function projectCosts(db: Db, p: Project): ProjectCosts {
 }
 
 /**
- * The checked invoices that came in for a job, as Profitability shows them (round ten):
- * subcontractors apart from every other supplier. The two add up to everything on Job costs
- * that is not the firm's own labour.
+ * The checked invoices that came in for a job, as Profitability shows them, under four
+ * headings (Oisin, 17 Nov, after round ten): plant and hire (with equipment, as on Job costs),
+ * materials, subcontractors, and other (carriage and anything else). Invoices only: plant still
+ * on hire and the firm's own plant are not charged until an invoice is checked (his picks).
+ * The four add up to everything on Job costs that is not the firm's own labour.
  */
-export function jobInvoices(db: Db, p: Project): { subcontractors: number; suppliers: number } {
+export function jobInvoices(db: Db, p: Project): { plantHire: number; materials: number; subcontractors: number; other: number } {
   const { supplier } = projectCosts(db, p);
-  const subcontractors = supplier.labour ?? 0;
-  const all = Object.values(supplier).reduce((s, n) => s + (n ?? 0), 0);
-  return { subcontractors: r2(subcontractors), suppliers: r2(all - subcontractors) };
+  const get = (k: string) => supplier[k] ?? 0;
+  return { plantHire: r2(get("plant") + get("equipment")), materials: r2(get("material")), subcontractors: r2(get("labour")), other: r2(get("transport") + get("other")) };
 }

@@ -1,11 +1,11 @@
 /**
  * Profitability (Oisin, 17 Nov): what each site has cost the firm, and what is left of what it
- * is worth. While a site is live the page shows what it has cost in the firm's own people: the
- * wages, at basic, time and a half and double time, and the reimbursements approved for it.
- * Once a job is finished it also takes in the invoices that came in for it, from
- * subcontractors and from suppliers, and shows the net profit as an amount and as a share of
- * the contract value (round ten, 17 Nov). The labour allowed in the quote, which the first
- * version measured wages against, was taken out everywhere at his word.
+ * is worth. For every site, live or finished: the wages, at basic, time and a half and double
+ * time, the reimbursements approved for it, and the checked invoices that came in for it under
+ * four headings, plant and hire, materials, subcontractors and other (after round ten). Taken
+ * off the contract value, that is what is left after all costs so far on a live site, and the
+ * net profit, as an amount and a share of the value, on a finished one. The labour allowed in
+ * the quote, which the first version measured wages against, was taken out at his word.
  *
  * Wages are hours from the timesheets at each person's hourly rate, on the same rule as Job
  * costs (`labourCost`), so the two screens never disagree. Pay itself is worked out in the
@@ -59,8 +59,9 @@ export function wagesOf(rows: Att[], rateOf: (personId: string) => number): Wage
 
 export type PersonWages = { personId: string; name: string; trade: string; hourlyRate: number; days: number; restDays: number; wages: Wages; reimbursements: number };
 
-/** The invoices that came in for a job and were checked: subcontractors apart from every other supplier. */
-export type JobInvoices = { subcontractors: number; suppliers: number };
+/** The checked invoices that came in for a job, under four headings. */
+export type JobInvoices = { plantHire: number; materials: number; subcontractors: number; other: number };
+const NO_INVOICES: JobInvoices = { plantHire: 0, materials: 0, subcontractors: 0, other: 0 };
 
 export type SiteProfit = {
   projectId: string;
@@ -72,15 +73,20 @@ export type SiteProfit = {
   value: number | null;
   /** Wages as a share of the contract value, to one decimal place. */
   shareOfValue: number | null;
-  /** The contract value less the outgoings for employees. Invoices are not in it: see `netProfit`. */
-  left: number | null;
-  /** Checked invoices from subcontractors for this job. */
+  /** Checked invoices for plant and hire, equipment included. */
+  plantHire: number;
+  /** Checked invoices for materials. */
+  materials: number;
+  /** Checked invoices from subcontractors. */
   subcontractors: number;
-  /** Checked invoices from every other supplier: materials, plant hire, carriage and the rest. */
-  suppliers: number;
-  /** Everything the job cost: wages, reimbursements, subcontractor invoices and supplier invoices. */
+  /** Checked invoices for carriage and anything else. */
+  other: number;
+  /** Everything the job has cost so far: wages, reimbursements and the four kinds of invoice. */
   costs: number;
-  /** The contract value, agreed extras included, less everything the job cost. */
+  /**
+   * The contract value, agreed extras included, less everything it has cost. On a finished job
+   * it is the net profit; on a live site, what is left after all costs so far.
+   */
   netProfit: number | null;
   /** Net profit as a share of the contract value, to one decimal place. */
   netPct: number | null;
@@ -91,7 +97,7 @@ export type SiteProfit = {
  * One site: its wages by rate, its reimbursements and the invoices that came in for it, with
  * the net profit against the contract value and who the wages went to, dearest first.
  */
-export function siteProfit(site: Site, attendance: Att[], people: Who[], claims: Claim[], invoices: JobInvoices = { subcontractors: 0, suppliers: 0 }): SiteProfit {
+export function siteProfit(site: Site, attendance: Att[], people: Who[], claims: Claim[], invoices: JobInvoices = NO_INVOICES): SiteProfit {
   const rows = attendance.filter((a) => a.projectId === site.id);
   const who = new Map(people.map((p) => [p.id, p]));
   const rateOf = (id: string) => who.get(id)?.hourlyRate ?? 0;
@@ -99,9 +105,11 @@ export function siteProfit(site: Site, attendance: Att[], people: Who[], claims:
   const approved = claims.filter((c) => c.projectId === site.id && c.status === "Approved");
   const reimbursements = r2(approved.reduce((s, c) => s + c.amount, 0));
   const outgoings = r2(wages.total + reimbursements);
+  const plantHire = r2(invoices.plantHire);
+  const materials = r2(invoices.materials);
   const subcontractors = r2(invoices.subcontractors);
-  const suppliers = r2(invoices.suppliers);
-  const costs = r2(outgoings + subcontractors + suppliers);
+  const other = r2(invoices.other);
+  const costs = r2(outgoings + plantHire + materials + subcontractors + other);
   const netProfit = site.value == null ? null : r2(site.value - costs);
   const ids = [...new Set([...rows.map((a) => a.personId), ...approved.map((c) => c.personId)])];
   const list = ids
@@ -127,9 +135,10 @@ export function siteProfit(site: Site, attendance: Att[], people: Who[], claims:
     outgoings,
     value: site.value,
     shareOfValue: site.value && site.value > 0 ? Math.round((wages.total / site.value) * 1000) / 10 : null,
-    left: site.value == null ? null : r2(site.value - outgoings),
+    plantHire,
+    materials,
     subcontractors,
-    suppliers,
+    other,
     costs,
     netProfit,
     netPct: netProfit != null && site.value && site.value > 0 ? Math.round((netProfit / site.value) * 1000) / 10 : null,
@@ -152,9 +161,10 @@ export function profitTotals(rows: SiteProfit[]) {
     reimbursements: sum((r) => r.reimbursements),
     outgoings: sum((r) => r.outgoings),
     value,
-    left: sum((r) => r.left ?? 0),
+    plantHire: sum((r) => r.plantHire),
+    materials: sum((r) => r.materials),
     subcontractors: sum((r) => r.subcontractors),
-    suppliers: sum((r) => r.suppliers),
+    other: sum((r) => r.other),
     costs: sum((r) => r.costs),
     netProfit,
     netPct: value > 0 ? Math.round((netProfit / value) * 1000) / 10 : null,
