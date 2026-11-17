@@ -6,11 +6,11 @@ import { planDays, setPlanDay } from "@/data/actions";
 import { useData, useDay } from "@/data/store";
 import type { Db, Project } from "@/data/types";
 import { personWeek, planClashes } from "@/lib/availability";
-import { isBankHoliday } from "@/lib/bank-holidays";
-import { addDays, datesBetween, daysInMonth, isWeekend, MONTHS } from "@/lib/dates";
+import { bankHolidayOn, isBankHoliday, isRestDay } from "@/lib/bank-holidays";
+import { addDays, datesBetween, isWeekend, MONTHS } from "@/lib/dates";
 import { dShort, dWeekday, plural } from "@/lib/format";
 import { dayRoster, planSteps, stepsToPlan, whereabouts } from "@/lib/roster";
-import { shiftMonth } from "@/lib/week";
+import { monthWeeks, shiftMonth } from "@/lib/week";
 import { Button, cx, Dialog, Empty, PageBody, PageHead, Panel } from "@/ui";
 import { toast } from "@/ui/toast";
 
@@ -33,6 +33,9 @@ const plain = (t: string) =>
  * site from the timesheet; days to come show the plan, the same plan the week ahead shows, so a
  * change in either appears in both. Click a square to add or remove people. Weekends are greyed
  * out, and the grid scrolls sideways across the whole month.
+ *
+ * The month is shown in whole weeks (round ten): the week of Monday 30 November is complete in
+ * November's plan and in December's, with the days from the month next door named as such.
  */
 export function MonthAhead() {
   const db = useData((s) => s.db);
@@ -43,7 +46,8 @@ export function MonthAhead() {
   const [open, setOpen] = useState<{ siteId: string; date: string } | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const [y, m] = ym.split("-").map(Number) as [number, number];
-  const all = daysInMonth(y, m);
+  const all = monthWeeks(ym);
+  const outside = (d: string) => d.slice(0, 7) !== ym;
   const days = all.filter((d) => !isWeekend(d));
   const inMonth = new Set(days);
   // A job that finished during the month still has its days worked to show.
@@ -85,7 +89,7 @@ export function MonthAhead() {
 
   return (
     <>
-      <PageHead title="Month ahead" note={`${MONTHS[m - 1]} ${y}. Days gone show who was on site, from the timesheet. Days to come show the plan, the same one as the week ahead, so a change in either shows in both.${canEdit ? " Click a day to add or remove people." : ""}`}>
+      <PageHead title="Month ahead" note={`${MONTHS[m - 1]} ${y}, in whole weeks: ${dWeekday(all[0])} to ${dWeekday(all[all.length - 1])}. Days gone show who was on site, from the timesheet. Days to come show the plan, the same one as the week ahead, so a change in either shows in both.${canEdit ? " Click a day to add or remove people." : ""}`}>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <Button size="sm" onClick={() => setYm(shiftMonth(ym, -1))}>
             Earlier month
@@ -126,6 +130,7 @@ export function MonthAhead() {
                       <th key={d} scope="col" data-day={d} style={{ width: DAY_W }} className="sticky top-0 z-20 border-b border-l border-line-strong bg-canvas px-2 py-2 text-left text-muted">
                         <span className="font-display text-[1.02rem] font-semibold">
                           {wd(d)} {Number(d.slice(8))}
+                          {outside(d) && ` ${MONTHS[Number(d.slice(5, 7)) - 1]!.slice(0, 3)}`}
                         </span>
                         <span className="ml-1.5 text-[0.87rem] font-normal">weekend</span>
                       </th>
@@ -135,12 +140,13 @@ export function MonthAhead() {
                         <span className="block">{Number(d.slice(8))}</span>
                       </th>
                     ) : (
-                      <th key={d} scope="col" data-day={d} style={{ width: DAY_W }} className={cx("sticky top-0 z-20 border-b border-l border-line-strong px-2 py-2 text-left", d === day ? "bg-accent-soft text-accent-ink" : "bg-surface", d < day && "text-muted")}>
+                      <th key={d} scope="col" data-day={d} data-outside={outside(d) || undefined} style={{ width: DAY_W }} className={cx("sticky top-0 z-20 border-b border-l border-line-strong px-2 py-2 text-left", d === day ? "bg-accent-soft text-accent-ink" : outside(d) ? "bg-canvas" : "bg-surface", d < day && "text-muted")}>
                         <span className="font-display text-[1.02rem] font-semibold">
                           {wd(d)} {Number(d.slice(8))}
+                          {outside(d) && <span className="font-normal text-muted"> {MONTHS[Number(d.slice(5, 7)) - 1]!.slice(0, 3)}</span>}
                         </span>
                         {d === day && <span className="ml-1.5 text-[0.87rem] font-normal">today</span>}
-                        {isBankHoliday(db.bankHolidays, d) && <span className="block text-[0.87rem] font-normal text-warn">Bank holiday</span>}
+                        {isBankHoliday(db.bankHolidays, d) && <span className="block text-[0.87rem] font-normal text-warn">Bank holiday: overtime only</span>}
                       </th>
                     ),
                   )}
@@ -232,7 +238,7 @@ export function MonthAhead() {
             </table>
           </div>
         )}
-        <p className="mt-2 text-[0.93rem] text-muted">Weekends are greyed out, and open out to show names only where someone worked or is down for one; weekend work is planned on the week ahead. Anyone planned on two sites the same day is shown in red, on this screen and on the week ahead. "Free" counts operatives with no site and no leave that day; more than three free is shown in amber.</p>
+        <p className="mt-2 text-[0.93rem] text-muted">The month is shown in whole weeks, so a week that runs into the month before or after is complete here; those days carry their month's name. Weekends are greyed out, and open out to show names only where someone worked or is down for one. Work on a Saturday, a Sunday or a bank holiday is overtime, planned with Plan overtime work on the week ahead. Anyone planned on two sites the same day is shown in red, on this screen and on the week ahead. "Free" counts operatives with no site and no leave that day; more than three free is shown in amber.</p>
       </PageBody>
       {open && openSite && <MonthDayDialog key={`${open.siteId}|${open.date}`} site={openSite} date={open.date} db={db} day={day} canEdit={canEdit} liveIds={liveIds} onClose={() => setOpen(null)} />}
     </>
@@ -253,7 +259,9 @@ function MonthDayDialog({ site, date, db, day, canEdit, liveIds, onClose }: { si
   const person = (id: string) => db.people.find((p) => p.id === id);
   const code = (id: string) => db.projects.find((p) => p.id === id)?.code ?? "";
   const running = (d: string) => d >= site.startDate && d <= site.endDate;
-  const editable = canEdit && !gone && date > day && running(date);
+  // Nobody is planned a normal day on a bank holiday (round ten).
+  const holiday = isBankHoliday(db.bankHolidays, date);
+  const editable = canEdit && !gone && date > day && running(date) && !holiday;
   const clashes = gone ? new Map<string, string[]>() : planClashes(db.plan.filter((p) => liveIds.has(p.projectId) && p.date === date));
   const rows = [...roster.rows].sort((a, b) => (person(a.personId)?.name ?? "").localeCompare(person(b.personId)?.name ?? ""));
   const pool = !editable
@@ -264,7 +272,7 @@ function MonthDayDialog({ site, date, db, day, canEdit, liveIds, onClose }: { si
         .filter(({ p }) => !q.trim() || plain(`${p.name} ${p.trade}`).includes(plain(q.trim())))
         .sort((a, b) => Number(a.st.leave) - Number(b.st.leave) || a.st.load - b.st.load || a.p.name.localeCompare(b.p.name));
   const last = until < date ? date : until;
-  const steps = personId ? planSteps(personWeek(db.plan, db.holidays, liveIds, personId, datesBetween(date, last).filter((d) => !isWeekend(d))), site.id, { running, onBusy: "clash" }) : [];
+  const steps = personId ? planSteps(personWeek(db.plan, db.holidays, liveIds, personId, datesBetween(date, last).filter((d) => !isRestDay(db.bankHolidays, d))), site.id, { running, onBusy: "clash" }) : [];
   const todo = stepsToPlan(steps);
   const count = (a: string) => steps.filter((s) => s.action === a).length;
   const picked = person(personId);
@@ -365,7 +373,8 @@ function MonthDayDialog({ site, date, db, day, canEdit, liveIds, onClose }: { si
             </Button>
           </form>
         )}
-        {!editable && !gone && <p className="text-[0.93rem] text-muted">{!canEdit ? 'Changing the plan needs the "Plan the week ahead" permission.' : date <= day ? "Today is already under way, so it is changed on the timesheet, not here." : `${site.code} is not running that day.`}</p>}
+        {holiday && !gone && <p className="rounded-md bg-warn-soft px-3 py-2 text-[0.93rem] text-warn">{bankHolidayOn(db.bankHolidays, date)?.name} is a bank holiday, so nobody is planned a normal day on it. Work that day is overtime: plan it with Plan overtime work, under the week ahead.</p>}
+        {!editable && !gone && !holiday && <p className="text-[0.93rem] text-muted">{!canEdit ? 'Changing the plan needs the "Plan the week ahead" permission.' : date <= day ? "Today is already under way, so it is changed on the timesheet, not here." : `${site.code} is not running that day.`}</p>}
       </div>
     </Dialog>
   );

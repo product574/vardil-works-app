@@ -7,7 +7,7 @@ import { useData, useDay } from "@/data/store";
 import { type Db, LANGUAGE_NAME, type Person, type Project } from "@/data/types";
 import { type DayState, daysLabel, openDays, partLoad, personWeek, planClashes, planShort } from "@/lib/availability";
 import { dayRoster, dropOutcome, firstOnSite, planSteps, stepsToPlan } from "@/lib/roster";
-import { bankHolidayOn, isBankHoliday } from "@/lib/bank-holidays";
+import { bankHolidayOn, isBankHoliday, isRestDay } from "@/lib/bank-holidays";
 import { addDays } from "@/lib/dates";
 import { dShort, dWeekday, plural } from "@/lib/format";
 import { fullWeek, nextWorkWeek, workWeek } from "@/lib/week";
@@ -73,6 +73,8 @@ export function WeekAhead() {
     setDragging(null);
     const person = db.people.find((p) => p.id === drag.personId);
     if (!person || !canEdit || date <= day || date < site.startDate || date > site.endDate) return;
+    // A bank holiday is not a normal day: work on it is planned with Plan overtime work (round ten).
+    if (isBankHoliday(db.bankHolidays, date)) return void toast(`${dWeekday(date)} is a bank holiday. Use Plan overtime work, under the grid`);
     const state = personWeek(db.plan, db.holidays, liveIds, person.id, [date])[0]!;
     // Dragged from another site on the same day: a move, not a second booking.
     if (drag.fromSiteId && drag.fromDate === date && drag.fromSiteId !== site.id) {
@@ -204,14 +206,16 @@ export function WeekAhead() {
 type WeekOf = (personId: string) => DayState[];
 
 /**
- * Weekend work under the week's grid (Oisin, 17 Nov). The grid stays Monday to Friday; a Saturday
- * or Sunday is planned here one person at a time, since it is the exception and is paid as
- * overtime. A day gone shows who was stamped in on the Timesheet; a day to come shows the plan,
- * the same rule as the grid above, the month ahead and both phones.
+ * Overtime work under the week's grid (Oisin, 17 Nov; headed "Weekend" until round ten). The
+ * grid holds normal days only; a Saturday, a Sunday or a bank holiday is planned here one person
+ * at a time, since it is the exception and every hour of it is overtime. A day gone shows who
+ * was stamped in on the Timesheet; a day to come shows the plan, the same rule as the grid
+ * above, the month ahead and both phones.
  */
 function WeekendPlan({ db, week, day, sites, canEdit }: { db: Db; week: string[]; day: string; sites: Project[]; canEdit: boolean }) {
   const [adding, setAdding] = useState(false);
-  const weekend = fullWeek(week[0]!).slice(5);
+  // The Saturday and Sunday, and any bank holiday in the week.
+  const weekend = fullWeek(week[0]!).filter((d) => isRestDay(db.bankHolidays, d));
   const person = (id: string) => db.people.find((p) => p.id === id);
   const lines = weekend.flatMap((d) =>
     sites
@@ -221,11 +225,11 @@ function WeekendPlan({ db, week, day, sites, canEdit }: { db: Db; week: string[]
   const open = weekend.filter((d) => d >= day);
   return (
     <Section
-      title="Weekend"
+      title="Overtime"
       aside={
         canEdit && open.length > 0 ? (
           <Button size="sm" onClick={() => setAdding(true)}>
-            Plan weekend work
+            Plan overtime work
           </Button>
         ) : undefined
       }
@@ -233,10 +237,10 @@ function WeekendPlan({ db, week, day, sites, canEdit }: { db: Db; week: string[]
       <Panel className="overflow-x-auto">
         {lines.length === 0 ? (
           <p className="px-3 py-3 text-muted">
-            Nobody is down for {dWeekday(weekend[0])} or {dWeekday(weekend[1])}.{canEdit && open.length > 0 ? " Weekend work is planned one person at a time, with Plan weekend work." : ""}
+            Nobody is down for {weekend.map((d) => dWeekday(d)).join(", ").replace(/, ([^,]*)$/, " or $1")}.{canEdit && open.length > 0 ? " Work on a Saturday, a Sunday or a bank holiday is planned one person at a time, with Plan overtime work." : ""}
           </p>
         ) : (
-          <table className="tbl" aria-label="Weekend work by day and site">
+          <table className="tbl" aria-label="Overtime work by day and site">
             <thead>
               <tr>
                 <th>Day</th>
@@ -249,7 +253,10 @@ function WeekendPlan({ db, week, day, sites, canEdit }: { db: Db; week: string[]
                 <tr key={`${d}|${site.id}`}>
                   <td className="whitespace-nowrap">
                     {dWeekday(d)}
-                    <span className="block text-[0.87rem] text-muted">{roster.from === "timesheet" ? "Worked" : "Planned"}</span>
+                    <span className="block text-[0.87rem] text-muted">
+                      {isBankHoliday(db.bankHolidays, d) ? `${bankHolidayOn(db.bankHolidays, d)?.name}. ` : ""}
+                      {roster.from === "timesheet" ? "Worked" : "Planned"}
+                    </span>
                   </td>
                   <td>
                     <span className="font-medium">{site.code}</span> {site.name}
@@ -286,13 +293,13 @@ function WeekendPlan({ db, week, day, sites, canEdit }: { db: Db; week: string[]
           </table>
         )}
       </Panel>
-      <p className="mt-2 text-[0.93rem] text-muted">Saturday is at time and a half from 8am to 12 noon and double time after. Sunday is all double time. The hours go in afterwards with Weekend time stamp on the Timesheet.</p>
+      <p className="mt-2 text-[0.93rem] text-muted">Saturday is at time and a half from 8am to 12 noon and double time after. Sunday and bank holidays are all double time. The hours go in afterwards with Overtime time stamp on the Timesheet.</p>
       {adding && <PlanWeekendDialog db={db} days={open} sites={sites} onClose={() => setAdding(false)} />}
     </Section>
   );
 }
 
-/** Plan weekend work: the day, the site, and who. Anyone in the firm can be put down, that site's crew first. */
+/** Plan overtime work, on a Saturday, a Sunday or a bank holiday: the day, the site, and who. Anyone in the firm can be put down, that site's crew first. */
 function PlanWeekendDialog({ db, days, sites, onClose }: { db: Db; days: string[]; sites: Project[]; onClose: () => void }) {
   const [date, setDate] = useState(days[0] ?? "");
   const [siteId, setSiteId] = useState(sites[0]?.id ?? "");
@@ -329,7 +336,7 @@ function PlanWeekendDialog({ db, days, sites, onClose }: { db: Db; days: string[
     <Dialog
       open
       onClose={onClose}
-      title="Plan weekend work"
+      title="Plan overtime work"
       footer={
         <>
           <Button onClick={onClose}>Cancel</Button>
@@ -347,6 +354,7 @@ function PlanWeekendDialog({ db, days, sites, onClose }: { db: Db; days: string[
                 {days.map((d) => (
                   <option key={d} value={d}>
                     {dWeekday(d)}
+                    {isBankHoliday(db.bankHolidays, d) ? `, ${bankHolidayOn(db.bankHolidays, d)?.name}` : ""}
                   </option>
                 ))}
               </select>
@@ -693,7 +701,7 @@ function WeekGrid({ sites, week, db, day, canEdit, clashes, liveIds, dragging, o
                 <span className="block text-[0.93rem] font-normal text-muted">
                   {dShort(d)}, {plural(total(d), "person", "people")}
                 </span>
-                {isBankHoliday(db.bankHolidays, d) && <span className="block text-[0.87rem] font-normal text-warn">{bankHolidayOn(db.bankHolidays, d)?.name}: double time</span>}
+                {isBankHoliday(db.bankHolidays, d) && <span className="block text-[0.87rem] font-normal text-warn">{bankHolidayOn(db.bankHolidays, d)?.name}: overtime only</span>}
               </th>
             ))}
           </tr>
@@ -715,7 +723,9 @@ function WeekGrid({ sites, week, db, day, canEdit, clashes, liveIds, dragging, o
                 const key = `${site.id}|${d}`;
                 const running = d >= site.startDate && d <= site.endDate;
                 const past = d <= day;
-                const editable = canEdit && running && !past;
+                // Nobody is planned a normal day on a bank holiday (round ten): no Add, no drop.
+                const holiday = isBankHoliday(db.bankHolidays, d);
+                const editable = canEdit && running && !past && !holiday;
                 const shown = roster(site.id, d);
                 // Names from the timesheet are grey; today's plan, before anyone is marked, still reads as a plan.
                 const marked = shown.from === "timesheet";
@@ -793,7 +803,8 @@ function WeekGrid({ sites, week, db, day, canEdit, clashes, liveIds, dragging, o
                               </button>
                             );
                           })}
-                          {sorted.length === 0 && <span className={cx("px-1.5 py-1 text-[0.93rem]", hint ? "font-medium text-accent-ink" : "text-faint")}>{hint || (past ? "Nobody marked" : "Nobody yet")}</span>}
+                          {sorted.length === 0 && !holiday && <span className={cx("px-1.5 py-1 text-[0.93rem]", hint ? "font-medium text-accent-ink" : "text-faint")}>{hint || (past ? "Nobody marked" : "Nobody yet")}</span>}
+                          {holiday && <span className="px-1.5 py-1 text-[0.87rem] text-muted">Bank holiday. {past ? "Any work was overtime." : canEdit ? "Not a normal day: use Plan overtime work, under the grid." : "Not a normal day."}</span>}
                           {editable && (
                             <button type="button" aria-label={`Add someone to ${site.code} on ${dWeekday(d)}`} tabIndex={dragging ? -1 : undefined} className={cx(dragging && "invisible", "press mt-auto flex min-h-9 items-center justify-center rounded-md border border-dashed border-line-strong text-[0.93rem] text-muted hover:border-accent hover:text-accent-ink")} onClick={() => onAdd(site.id, d)}>
                               Add

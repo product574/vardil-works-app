@@ -40,7 +40,7 @@ def steps(page, ctx):
     rafael, adrian = pid("Rafael Mendonça"), pid("Adrian Stoica")
 
     # ── 1. Attendance history: Everyone or Per site, from the top right
-    go(page, "/people/history", "table")
+    go(page, "/people/history", "table"); page.get_by_role("tablist", name="Attendance layout").get_by_role("tab", name="Everyone").click(); page.wait_for_timeout(300)  # opens per site since round ten
     layout = page.get_by_role("tablist", name="Attendance layout")
     box, h1, vw = layout.bounding_box(), main.locator("h1").bounding_box(), page.viewport_size["width"]
     check("History: Everyone or Per site is a switch at the top right, level with the title", layout.get_by_role("tab").all_inner_texts() == ["Everyone", "Per site"] and box["x"] + box["width"] > vw - 40 and abs((box["y"] + box["height"] / 2) - (h1["y"] + h1["height"] / 2)) < 14, (box, h1))

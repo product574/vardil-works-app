@@ -28,7 +28,8 @@ export function AttendanceHistory() {
   const [period, setPeriod] = useState<Period>(day.slice(0, 7));
   const [siteId, setSiteId] = useState("all");
   const [view, setView] = useState<View>("totals");
-  const [layout, setLayout] = useState<"all" | "sites">("all");
+  // Opens laid out per site (Oisin, round ten); Everyone is one click away, at the top right.
+  const [layout, setLayout] = useState<"all" | "sites">("sites");
   // Which days to count (the call of 17 Nov: a filter for time and a half and for double time).
   // A day can have hours at both rates, so each choice is the days that have hours at that rate.
   const [ot, setOt] = useState<"all" | "any" | "half" | "double" | "rest">("all");

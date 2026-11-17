@@ -61,7 +61,7 @@ def steps(page, ctx):
     check("Holiday requests: declining too", reqs.count() == n0 - 2)
 
     # ── Attendance history: period and Per site
-    go(page, "/people/history", "table")
+    go(page, "/people/history", "table"); page.get_by_role("tablist", name="Attendance layout").get_by_role("tab", name="Everyone").click(); page.wait_for_timeout(300)  # opens per site since round ten
     opts = page.get_by_label("Period").locator("option").all_inner_texts()
     check("History: a period box in place of the month buttons, starting with Last week", opts[0].startswith("Last week, ") and "This week so far" in opts and page.get_by_role("button", name="Earlier month").count() == 0, opts)
     page.get_by_label("Period").select_option("last-week"); page.wait_for_timeout(300)

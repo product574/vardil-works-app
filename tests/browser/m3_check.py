@@ -35,8 +35,8 @@ def steps(page, ctx):
 
     # ── Timesheet: week grid
     page.goto(BASE + "/people/timesheet?site=pr-C722"); page.wait_for_selector("table")
-    check("Timesheet: five weekday columns, today marked", page.locator("thead th").count() == 7 and "(today)" in page.locator("thead").inner_text(), page.locator("thead").inner_text())
-    check("Timesheet: C722 has 5 people and nobody marked today", page.locator("tbody tr").count() == 5 and "0 of 5 marked for today" in main.inner_text())
+    check("Timesheet: five weekday columns, today marked", page.locator("thead").first.locator("th").count() == 7 and "(today)" in page.locator("thead").first.inner_text(), page.locator("thead").first.inner_text())
+    check("Timesheet: C722 has 5 people and nobody marked today", page.locator("table").first.locator("tbody tr").count() == 5 and "0 of 5 marked for today" in main.inner_text())
     check("Timesheet: nothing to send yet, so the send button is off", page.get_by_role("button", name="Send today's time stamps").is_disabled())
     page.get_by_label("Today for Adrian Stoica").select_option("full")
     page.get_by_label("Today for Cormac Hession").select_option("half")
@@ -70,13 +70,13 @@ def steps(page, ctx):
     page.get_by_role("button", name="Take Orla Prunty off this site").click(); page.wait_for_timeout(200)
     check("Roster: taking someone off removes the row", page.locator("tbody tr", has_text="Orla Prunty").count() == 0)
     page.get_by_role("button", name="Earlier week").click(); page.wait_for_timeout(200)
-    check("Timesheet: earlier week shows history and no today column", "(today)" not in page.locator("thead").inner_text() and page.get_by_role("button", name="Back to this week").count() == 1)
+    check("Timesheet: earlier week shows history and no today column", "(today)" not in page.locator("thead").first.inner_text() and page.get_by_role("button", name="Back to this week").count() == 1)
     page.goto(BASE + "/people/timesheet?site=pr-C725"); page.wait_for_selector("table")
     page.get_by_role("button", name="Earlier week").click(); page.wait_for_timeout(200)
-    check("Timesheet: approved leave shows in the grid for the days it covered", "Leave" in page.locator("tbody tr", has_text="Liam Costigan").inner_text(), page.locator("tbody tr", has_text="Liam Costigan").inner_text())
+    check("Timesheet: approved leave shows in the grid for the days it covered", "Leave" in page.locator("table").first.locator("tbody tr", has_text="Liam Costigan").inner_text(), page.locator("table").first.locator("tbody tr", has_text="Liam Costigan").inner_text())
 
     # ── History
-    page.goto(BASE + "/people/history"); page.wait_for_selector("table")
+    page.goto(BASE + "/people/history"); page.wait_for_selector("table"); page.get_by_role("tablist", name="Attendance layout").get_by_role("tab", name="Everyone").click(); page.wait_for_timeout(300)  # opens per site since round ten
     page.screenshot(path=f"{OUT}/61-history-totals.png")
     # 17 Nov (Oldstone call): basic hours on a 39 hour week (8 Monday to Thursday, 7 Friday), overtime apart, no pay worked out.
     tot = data(page, "(() => { const m = day.slice(0,7); const rows = db.attendance.filter(a => a.date.startsWith(m) && a.date <= day && a.personId==='p-101'); return [rows.reduce((s,a) => { const h = new Date(a.date+'T12:00:00Z').getUTCDay()===5 ? 7 : 8; return s + (a.status==='full'?h:a.status==='half'?h/2:0) }, 0), rows.reduce((s,a) => s + a.overtimeHours, 0), rows.reduce((s,a) => s + (a.doubleHours ?? 0), 0)] })()")

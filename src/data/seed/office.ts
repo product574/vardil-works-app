@@ -7,7 +7,7 @@ import { dashboardNumbers } from "../kpis";
 import { basicHours } from "@/lib/payroll";
 import { needsSignOff } from "@/lib/purchases";
 import { fullWeek, workWeek } from "@/lib/week";
-import type { Activity, Approval, Attendance, Automation, Client, DayInstruction, Db, Expense, FileItem, HiredPlant, Mail, PayrollCheck, PayrollExport, Person, Project, SalesInvoice, ScopeTask, SiteAccess, SupplierInvoice } from "../types";
+import type { Activity, Approval, Attendance, Automation, Client, DayInstruction, Db, Expense, FileItem, OvertimeClaim, HiredPlant, Mail, PayrollCheck, PayrollExport, Person, Project, SalesInvoice, ScopeTask, SiteAccess, SupplierInvoice } from "../types";
 import type { Craft, ProjectMeta } from "./projects";
 import { type Rng, at, lastWeekday, weekday, workdays } from "./util";
 
@@ -727,6 +727,35 @@ export function seedExpenses(today: string): Expense[] {
     { id: "ex-2", personId: "p-sm2", createdAt: at(today, "07:55"), date: today, kind: "Fuel", what: "Diesel for the crew van, the fuel card was declined", amount: 92.15, projectId: "pr-C720", status: "Waiting" },
     { id: "ex-1", personId: "p-110", createdAt: at(workdays(today, -6), "16:10"), date: workdays(today, -6), kind: "Parking and tolls", what: "M50 toll and parking at the builders' providers", amount: 9.6, projectId: null, status: "Approved", decidedBy: "Aidan King", decidedAt: at(workdays(today, -5), "09:05"), exportedAt: at(workdays(today, -4), "11:20"), exportedBy: "Maeve Quirke" },
   ];
+}
+
+/**
+ * Overtime claimed from the phones (round ten), read off the timesheets so the two agree: two
+ * claims waiting for Eoin Brosnan from the last working day, the night at Derrybawn Bridge that
+ * ran past midnight (claimed the next morning and approved as it stands on the timesheet), and
+ * one from Dunmoy Courthouse that was declined with a note.
+ */
+export function seedOvertimeClaims(db: Db, today: string): OvertimeClaim[] {
+  const site = (code: string) => db.projects.find((p) => p.code === code);
+  const managerOf = (code: string) => db.people.find((p) => p.id === site(code)?.siteManagerId)?.name ?? "";
+  const rows = (code: string, date: string) => db.attendance.filter((a) => a.projectId === site(code)?.id && a.date === date).sort((a, b) => a.personId.localeCompare(b.personId));
+  const monday = workWeek(today)[0]!;
+  const last = workdays(today, -1);
+  const out: OvertimeClaim[] = [];
+  const plain = (code: string) => rows(code, last).find((a) => a.status === "full" && a.sent && overtimeTotal(a) === 0);
+  const bridge = plain("C724");
+  if (bridge) out.push({ id: "oc-4", personId: bridge.personId, projectId: bridge.projectId, date: last, hours: 2, note: "Stayed on to reset the traffic lights after the stone delivery", createdAt: at(last, "18:10"), status: "Waiting" });
+  const church = plain("C719");
+  if (church) out.push({ id: "oc-3", personId: church.personId, projectId: church.projectId, date: last, hours: 1.5, note: "Finished pointing the east buttress before the rain came in", createdAt: at(last, "17:50"), status: "Waiting" });
+  const wednesday = addDays(monday, -5);
+  const night = rows("C724", wednesday).find((a) => (a.doubleHours ?? 0) > 0);
+  if (night)
+    out.push({ id: "oc-2", personId: night.personId, projectId: night.projectId, date: wednesday, hours: overtimeTotal(night), note: "Night road closure for the parapet lift, worked through until half one", createdAt: at(addDays(wednesday, 1), "07:35"), status: "Approved", decidedBy: managerOf("C724"), decidedAt: at(addDays(wednesday, 1), "08:40"), overtimeHours: night.overtimeHours, doubleHours: night.doubleHours ?? 0 });
+  const friday = addDays(monday, -3);
+  const court = rows("C722", friday)[0];
+  if (court)
+    out.push({ id: "oc-1", personId: court.personId, projectId: court.projectId, date: friday, hours: 2, note: "Stayed back to cover the lime plaster", createdAt: at(friday, "17:15"), status: "Declined", decidedBy: managerOf("C722"), decidedAt: at(monday, "08:15"), declineNote: "The crew finished at half four that day. Come and see me if I have that wrong." });
+  return out;
 }
 
 /**

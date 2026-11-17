@@ -54,6 +54,8 @@ only). Merge into `main` only when Aodhan says publish, check it live, and updat
 Each round starts from the latest version: if `main` changed while the co-founder worked,
 send him a fresh zip first, or bring his changes across with care, so the two do not clash.
 
+**Round ten, 17 Nov:** decisions 108 to 116.
+
 **On Oisin's copy, from 16 Nov evening:** Oisin directs the work himself ("forget about
 Aodhan's steps for now, I will take control of the steps from now"). The list below is
 Aodhan's plan, kept for reference; on this copy, follow Oisin's own requests and ask him,
@@ -228,6 +230,15 @@ Two sources were merged (November 2026):
 | 105 | Profitability | Oisin, 17 Nov: "there should be a profitability app that can be built now and will calculate the outgoings for employees and then will eventually link up the invoices when we sort them out". A department of its own in the bottom bar, after Invoicing (his pick), the managing director's alone and fixed, like Ask AI: not offered to other levels in Roles and access, and its address sends anyone else home. By site only (his pick): wages (basic, time and a half, double time), approved reimbursements for the site, outgoings for employees, and two measures (his pick: both), the labour allowed in the quote ("% used" beside the work done, or "over") and the contract value ("wages are x% of it", "Left after employees"). Live sites first, with a switch for Finished. A site opens to who its wages went to: rate an hour, days, weekend days, hours at each rate, wages, reimbursed. Wages are costed on the 39 hour week (8 hours Monday to Thursday, 7 on Friday, overtime at its rate), the same as Job costs, so a site's wages here equal its labour there by construction (`wagesOf`, `siteProfit`, `labourState` in `src/lib/profitability.ts`; `paidHours` in `project-costs.ts` now takes the date). Job costs is under Profitability for the managing director and stays in Invoicing for accounts (his pick; `notMd` on the sidebar item). Supplier invoices per job are to be linked later, at his word |
 | 106 | Email drafts | Like Gmail (his pick): closing Compose (the X or Escape) keeps what was typed as a draft and says "Saved to Drafts"; Compose has Discard, Save draft and Send; a draft is under Drafts with the replies not sent, reads "Draft, to ..." with "Not sent", opens back into Compose ("Draft email"), and is used up when sent (`saveDraft`, `discardDraft`, `composeMail(d, id)`; `Mail.folder` "Drafts"). An email with nothing in it is not kept. Found while testing: the shared `Dialog` reported its own close as the person's, so onClose ran twice and two drafts were kept; a close the screen asked for is no longer reported |
 | 107 | Ask many questions | Oisin, 17 Nov: "ask as many questions as possible when building these web apps to get as much user input as possible". Sixteen were asked before round nine was built (four rounds of buttons). When he is away, build the default and list each open question in the checklist as a "Decision for you" row |
+| 108 | Overtime claims from the phone | Oisin, 17 Nov (round ten): "in the operative phone app make it possible to claim overtime and this will be sent to site manager phone where he approve or not and it will go into the timesheets"; it is optional and only for overtime ("they can say extra 2 hours that day or a previous day to make site manager aware ... they do not have to do this for normal hrs"). On the operative's phone, My hours and overtime has "Claim overtime" and a Claim button beside each day: the day (today and the 7 before it, his pick), the site (the one they were on that day), the extra hours in all, and an optional note (`claimOvertime`; `OvertimeClaim` in `db.overtimeClaims`; rules in `src/lib/overtime-claims.ts`). It goes to that site's manager: on his phone, a job's "Overtime claims" (a count on the job card), each claim starting split by the day's rule (`suggestedSplit`: time and a half on a normal day, 4 then double on a Saturday, all double on a Sunday or bank holiday), which he can change before Approve (his pick), or Decline with an optional note. Also on the desktop Timesheet, in the Overtime list, for anyone who may mark that site (his pick), with a count beside Timesheet in the People sidebar (`overtimeClaimCount`). A yes adds the hours to that day (`approvalEffect`, `decideOvertimeClaim`): onto today's mark if not yet sent, as a correction with "Overtime claim approved: ..." as its reason once sent, as a full day with the overtime where nobody marked them in, or as an overtime time stamp on a rest day; a half day is refused until put right. The operative sees each claim's state on the phone. Sample data: two waiting for Eoin Brosnan (C724, C719), the C724 night past midnight approved, one on C722 declined with a note (`seedOvertimeClaims`) |
+| 109 | The Overtime list | "Weekend and bank holidays" under the Timesheet grid is now "Overtime" and lists all overtime on the site in the week shown (his pick: the week in the grid): weekday hours marked in the grid, overtime time stamps and approved claims, with how each came in and a total, then claims waiting and declined. Change opens the right correction for each |
+| 110 | "Weekend" becomes "Overtime" | His pick, everywhere: Overtime time stamp (Timesheet and the site manager's phone), the Week ahead's Overtime section and Plan overtime work, which now also takes a weekday bank holiday. Log lines "Added an overtime time stamp", "Planned overtime work" |
+| 111 | Bank holidays blocked as normal days | His yes to the open question, everywhere (his pick): no Add or drop on a bank holiday in the Week ahead grid (it says to use Plan overtime work), none in the Month ahead's day dialog, no normal day marked or corrected on one (`markAttendance`, `correctAttendance`, the plan actions use `isRestDay`). Adding a bank holiday in Admin for a day to come takes whoever was down for a normal day off the plan and says how many (`plannedOn`) |
+| 112 | Site manager's phone timesheet | "add/edit timesheets even if it is already sent in ... filled out on the phone". A Day box from today back to the Monday of last week (his pick), Add someone to this site, today marked as before, and a Change button on a sent or earlier day, which opens the same correction as the office, with a short reason (his pick; `CorrectDialog` is shared from `Timesheet.tsx`). Once a week has gone to payroll only the office changes it (his pick): whoever has "Check the week's hours" or "Export hours", on the phone and the desktop (`weekExported` in `payroll.ts`) |
+| 113 | My hours on the operative's phone | "let them see what hours they have been down for the one week back where they can check it is correct". A button of its own (his pick), "My hours and overtime" (translated as a button name; the sheet is in English): this week so far and last week, day by day as the timesheet holds it, with totals in basic, x1.5 and x2 hours. Hours only, no pay (his pick; `hoursWeek`, `hoursText`) |
+| 114 | Attendance history per site first | It opens on the Per site layout; Everyone is the switch beside it |
+| 115 | Month ahead in whole weeks | "for monday the 30th of November ... in November month planning and same for the other way for December". The grid runs from the Monday of the month's first week to the Sunday of its last (`monthWeeks` in `week.ts`), days from the months either side greyed and named (Mon 30 Nov in December, Fri 4 Dec in November). The site manager's phone month shows those days too |
+| 116 | Profitability, round ten | "Labour allowed in the quote" removed everywhere (the column, the warning, the site dialog line, `allowed`, `usedPct`, `labourState`). Finished jobs (only, his pick) show Contract value, Wages, Reimbursements, Subcontractor invoices, Supplier invoices, Net profit and Net profit %: net profit is the contract value, agreed extras included, less all of those (his pick, `netProfit`, `netPct`). The invoices are the checked ones posted to the job, subcontractors (the labour heading) apart from everything else (`jobInvoices` in `figures.ts`), so the two add up to Job costs less the firm's own labour. A line above the table names any job at a loss or under 10% (`profitState`, `THIN_PROFIT_PCT`; his pick). Live sites keep wages, reimbursements, contract value and what is left after employees |
 
 Standing preferences (these come from Aodhan and are not optional):
 
@@ -311,7 +322,8 @@ src/
                         manager opens), fleet.ts (the Fleet page: search, repair spend by
                         period, reading an uploaded file's name), reimbursements.ts (approved
                         claims for the office to pay), bank-holidays.ts (the built-in lists and
-                        which days are rest days), profitability.ts (wages and outgoings by site)
+                        which days are rest days), profitability.ts (wages, invoices and net
+                        profit by site), overtime-claims.ts (claims from the phone, My hours)
   ui/                   the interface kit: Button, Badge, PageHead, Panel, Dialog, Menu, toast
   modules/<department>/ one folder per department, one file per screen. dashboard/ is the
                         overview plus ApprovalsPanel.tsx; admin/ (16 Nov) holds Requests,
@@ -610,6 +622,23 @@ Email to match their Gmail layout and Team chat their Ping, dropping the AI in T
   blocking a weekday bank holiday in the week grid, which can still be planned as a normal
   day; a UK set of timesheets (switching region swaps the bank holiday list, but the
   sample timesheets were written around the Irish days).
+- 17 Nov, round ten (decisions 108 to 116): overtime claims from the operative's phone answered
+  by the site manager, the Overtime list, "weekend" renamed "overtime", bank holidays blocked as
+  normal days, the site manager's phone timesheet back to last Monday week with the payroll lock,
+  My hours, Attendance history per site first, the month in whole weeks, and Profitability with
+  invoices and net profit. Sixteen questions were put to Oisin first (four rounds of buttons).
+  The screenshot he mentioned for "Add someone to this site" did not arrive, so it was built from
+  his words. DATA_VERSION 22. 509 automated tests in 51 files (new `src/lib/overtime-claims.test.ts`
+  and `src/data/overtime-claims.test.ts`; `profitability.test.ts` rewritten for net profit;
+  `rest-days.test.ts` for the new log lines). 1,262 browser checks in twenty-two suites, all passing
+  (new `s10_check.py`, 50; `s9_check.py` updated for the new names and the Overtime list; `m3`,
+  `s3`, `s6`, `s7`, `s8` and `s9` pick Everyone in Attendance history; `m3` reads the grid as the
+  first table now that the Overtime list is a second; `s5` counts the month's whole weeks).
+  `csp_check.py` clean. `preview_check10.py` now also claims and approves overtime and opens the
+  whole-week month, from the single-file preview on disk. Not tested: a real phone, Safari and Firefox, `npm run dev`, the
+  new Polish, Romanian, Portuguese and Lithuanian button name ("My hours and overtime"). Not built:
+  the overtime claim sheet in the operative's own language (English, like the driving check);
+  supplier invoices on live sites in Profitability (finished jobs only, his pick).
 - Tests: 235 automated tests (new `mail.test.ts`, 17; `chat.test.ts` rewritten, 20); 690
   browser checks in fourteen suites (`s2_check.py` rewritten for Team chat, 34; the Email
   part of `m5_check.py` rewritten, 69 in all; `m1_check.py` counts seven departments for a
@@ -1513,6 +1542,8 @@ each card is the way on a phone, and is tested at phone width).
 
 ## Known gaps to pick up later
 
+- An overtime claim is in English on the operative's phone; only its button name is translated
+  (decision 113).
 - Overtime hours are typed by whoever marks time (decision 100): nothing checks them against
   clock times, so the split between time and a half and double time is theirs to get right.
   The Saturday and Sunday limits on a weekend time stamp are the only ones enforced.

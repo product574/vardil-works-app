@@ -349,6 +349,33 @@ export type Attendance = {
   sent: boolean;
 };
 
+/**
+ * Overtime an operative claims from the phone (Oisin, 17 Nov, round ten): extra hours on one
+ * day, for the site manager to know about. It is optional and only for overtime. The site
+ * manager approves it, at the hours and rates he settles on, or declines it; an approved claim
+ * is added to that day on the timesheet.
+ */
+export type OvertimeClaim = {
+  id: ID;
+  personId: ID;
+  /** The site they worked the hours on. */
+  projectId: ID;
+  /** The day worked: today or one of the seven days before the claim was made. */
+  date: Day;
+  /** The extra hours claimed, in all. Whoever approves splits them between the rates. */
+  hours: number;
+  note: string;
+  createdAt: Stamp;
+  status: "Waiting" | "Approved" | "Declined";
+  decidedBy?: string;
+  decidedAt?: Stamp;
+  /** What was approved, at each rate. It can differ from what was claimed. */
+  overtimeHours?: number;
+  doubleHours?: number;
+  /** Why it was declined, if whoever declined it said. */
+  declineNote?: string;
+};
+
 export type AttendanceChange = {
   id: ID;
   attendanceId: ID;
@@ -714,6 +741,8 @@ export type Db = {
   payrollChecks: PayrollCheck[];
   /** The days the firm treats as bank holidays: the public holidays, as changed in Admin (17 Nov). */
   bankHolidays: BankHoliday[];
+  /** Overtime claimed from the site phone, newest first (round ten). */
+  overtimeClaims: OvertimeClaim[];
   /** Drivers' walkaround checks, newest first. */
   vehicleChecks: VehicleCheck[];
   /** Reimbursements claimed from the site phone, newest first. */

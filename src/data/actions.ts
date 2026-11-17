@@ -11,7 +11,8 @@ import { finalAccountNet, holdReason, invoiceNo, invoicedLine, paidLine, salesIn
 import { bankHolidayOn, isBankHoliday, isRestDay } from "@/lib/bank-holidays";
 import { addDays, dayOfWeek, isWeekend } from "@/lib/dates";
 import { normaliseReg } from "@/lib/fleet";
-import { overtimeTotal, restDayKind, restDayProblem, storedDouble } from "@/lib/overtime";
+import { overtimeText, overtimeTotal, restDayKind, restDayProblem, storedDouble } from "@/lib/overtime";
+import { approvalEffect, claimHours, claimProblem } from "@/lib/overtime-claims";
 import { basicHours, weekEnd } from "@/lib/payroll";
 import { needsSignOff } from "@/lib/purchases";
 import { personWeek } from "@/lib/availability";
@@ -1014,6 +1015,8 @@ export function markAttendance(projectId: ID, personId: ID, date: string, mark: 
     const i = db.attendance.findIndex((a) => a.projectId === projectId && a.personId === personId && a.date === date);
     const existing = db.attendance[i];
     if (existing?.sent) return; // sent entries change only through a correction, with a reason
+    // Nobody is marked a normal day on a bank holiday (round ten): work on one is overtime.
+    if (mark && mark.status !== "restday" && isBankHoliday(db.bankHolidays, date)) return;
     if (!mark) {
       if (i >= 0) db.attendance.splice(i, 1);
       return;
@@ -1043,6 +1046,8 @@ export function correctAttendance(projectId: ID, personId: ID, date: string, mar
     const from = markText(existing ?? null);
     const to = markText(mark);
     if (from === to) return;
+    // A bank holiday holds an overtime time stamp or nothing, never a normal day (round ten).
+    if (mark && mark.status !== "restday" && isBankHoliday(db.bankHolidays, date)) return;
     const who = actorName(db);
     let attendanceId = existing?.id ?? "";
     if (!mark && i >= 0) db.attendance.splice(i, 1);
@@ -1060,7 +1065,8 @@ export function correctAttendance(projectId: ID, personId: ID, date: string, mar
 }
 
 /**
- * A weekend or bank holiday time stamp (Oisin, 17 Nov): the hours one person worked on one site
+ * An overtime time stamp (Oisin, 17 Nov; called a weekend time stamp until round ten, when he
+ * had every "weekend" name changed to "overtime"): the hours one person worked on one site
  * on a Saturday, a Sunday or a bank holiday, typed at each rate. There is no normal day in it:
  * every hour is overtime. Anyone in the firm can be stamped, not only that site's crew. It is
  * saved as sent, so it goes to the office with its week; changing or removing it afterwards is
@@ -1071,7 +1077,7 @@ export function stampRestDay(projectId: ID, personId: ID, date: string, timeAndH
   if (date > getDay()) return "That day has not come yet";
   const holiday = isBankHoliday(db0.bankHolidays, date);
   const kind = restDayKind(dayOfWeek(date), holiday);
-  if (!kind) return "A weekend time stamp is for a Saturday, a Sunday or a bank holiday. Mark a normal day in the grid";
+  if (!kind) return "An overtime time stamp is for a Saturday, a Sunday or a bank holiday. Overtime after a normal day is marked in the grid";
   const problem = restDayProblem(kind, timeAndHalf, double);
   if (problem) return problem;
   const existing = db0.attendance.find((a) => a.projectId === projectId && a.personId === personId && a.date === date);
@@ -1082,14 +1088,78 @@ export function stampRestDay(projectId: ID, personId: ID, date: string, timeAndH
     const mark = restDayMark(timeAndHalf, double);
     db.attendance.push({ id: newId("att"), projectId, personId, date, ...markFields(mark), savedBy: who, savedAt: nowStamp(), sent: true });
     const p = db.projects.find((x) => x.id === projectId);
-    log(db, kind === "bank-holiday" ? "Added a bank holiday time stamp" : "Added a weekend time stamp", `${db.people.find((x) => x.id === personId)?.name}, ${p?.code} ${p?.name}, ${date}: ${markText(mark)}`, "people", who);
+    log(db, "Added an overtime time stamp", `${db.people.find((x) => x.id === personId)?.name}, ${p?.code} ${p?.name}, ${date}: ${markText(mark)}`, "people", who);
+  });
+  return null;
+}
+
+// ── Overtime claims from the phone (round ten) ────────────────────────────────
+
+/**
+ * An operative tells their site manager about extra hours on a day (Oisin, 17 Nov): "extra 2
+ * hours that day or a previous day to make site manager aware". Optional, and only for overtime.
+ * Returns what is wrong in plain words, or nothing when the claim is with the site manager.
+ */
+export function claimOvertime(personId: ID, projectId: ID, date: string, hours: number, note: string): string | null {
+  const db0 = useData.getState().db;
+  const problem = claimProblem(getDay(), { personId, projectId, date, hours }, db0.overtimeClaims);
+  if (problem) return problem;
+  mutate((db) => {
+    const who = db.people.find((x) => x.id === personId)?.name ?? "";
+    db.overtimeClaims.unshift({ id: newId("oc"), personId, projectId, date, hours, note: note.trim().replace(/\s+/g, " "), createdAt: nowStamp(), status: "Waiting" });
+    const p = db.projects.find((x) => x.id === projectId);
+    log(db, "Claimed overtime", `${who}, ${p?.code} ${p?.name}, ${date}: ${claimHours(hours)}`, "people", who);
+  });
+  return null;
+}
+
+/**
+ * The site manager's yes or no to an overtime claim, from his phone or from the Timesheet. A
+ * yes takes the hours at each rate, which he may have changed from what was claimed, and adds
+ * them to that day on the timesheet: onto the day's mark, as a correction if the day has
+ * already been sent, or as an overtime time stamp on a Saturday, a Sunday or a bank holiday.
+ * A no can carry a note. Returns what is wrong, or nothing when it is done.
+ */
+export function decideOvertimeClaim(id: ID, approve: boolean, opts: { timeAndHalf?: number; double?: number; note?: string } = {}): string | null {
+  const db0 = useData.getState().db;
+  const c = db0.overtimeClaims.find((x) => x.id === id);
+  if (!c || c.status !== "Waiting") return "That claim has already been answered";
+  const t = Math.max(0, opts.timeAndHalf ?? 0);
+  const d = Math.max(0, opts.double ?? 0);
+  if (approve) {
+    const existing = db0.attendance.find((a) => a.projectId === c.projectId && a.personId === c.personId && a.date === c.date);
+    const kind = restDayKind(dayOfWeek(c.date), isBankHoliday(db0.bankHolidays, c.date));
+    const effect = approvalEffect(existing, kind, c.date === getDay(), t, d);
+    if (effect.kind === "refuse") return effect.message;
+    if (effect.kind === "stamp") {
+      const problem = stampRestDay(c.projectId, c.personId, c.date, effect.timeAndHalf, effect.double);
+      if (problem) return problem;
+    } else if (effect.kind === "mark") markAttendance(c.projectId, c.personId, c.date, effect.mark);
+    else correctAttendance(c.projectId, c.personId, c.date, effect.mark, `Overtime claim approved: ${c.note || claimHours(c.hours)}`);
+  }
+  mutate((db) => {
+    const x = db.overtimeClaims.find((y) => y.id === id);
+    if (!x) return;
+    x.status = approve ? "Approved" : "Declined";
+    x.decidedBy = actorName(db);
+    x.decidedAt = nowStamp();
+    if (approve) {
+      x.overtimeHours = t;
+      x.doubleHours = d;
+    } else if (cleanNote(opts.note)) x.declineNote = cleanNote(opts.note);
+    const p = db.projects.find((y) => y.id === x.projectId);
+    const text = `${db.people.find((y) => y.id === x.personId)?.name}, ${p?.code} ${p?.name}, ${x.date}: ${approve ? overtimeText({ overtimeHours: t, doubleHours: d }) : claimHours(x.hours)}`;
+    log(db, approve ? "Approved an overtime claim" : "Declined an overtime claim", withNote(text, approve ? undefined : opts.note), "people");
   });
   return null;
 }
 
 // ── Bank holidays (Admin) ─────────────────────────────────────────────────────
 
-/** Add a day the firm treats as a bank holiday. Returns what is wrong, or nothing when it is added. */
+/**
+ * Add a day the firm treats as a bank holiday. Anyone already down for a normal day on it, if it
+ * is still to come, is taken off the plan. Returns what is wrong, or nothing when it is added.
+ */
 export function addBankHoliday(date: string, name: string): string | null {
   const db0 = useData.getState().db;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return "Pick the date";
@@ -1098,10 +1168,17 @@ export function addBankHoliday(date: string, name: string): string | null {
   mutate((db) => {
     db.bankHolidays.push({ date, name: name.trim() });
     db.bankHolidays.sort((a, b) => a.date.localeCompare(b.date));
-    log(db, "Added a bank holiday", `${name.trim()}, ${date}`, "admin");
+    // Nobody is planned a normal day on a bank holiday (round ten), so a day still to come loses
+    // whoever was down for it. Work that day is planned again as overtime, one person at a time.
+    const off = date > getDay() && !isWeekend(date) ? db.plan.filter((p) => p.date === date).length : 0;
+    if (off > 0) db.plan = db.plan.filter((p) => p.date !== date);
+    log(db, "Added a bank holiday", `${name.trim()}, ${date}${off > 0 ? `. ${off} taken off the plan for that day` : ""}`, "admin");
   });
   return null;
 }
+
+/** How many people are down for a normal day on a date still to come: who adding a bank holiday there takes off the plan. */
+export const plannedOn = (date: string) => (date > getDay() && !isWeekend(date) ? useData.getState().db.plan.filter((p) => p.date === date).length : 0);
 
 /** Take a day off the list of bank holidays. Time already recorded on it is kept as it is. */
 export function removeBankHoliday(date: string) {
@@ -1236,7 +1313,8 @@ export type PlanMark = { part: "full" | "half"; overtimeHours: number } | null;
 
 /**
  * Set what someone is doing on one site on one day: a full day, a half day, a full day with
- * overtime, or nothing (null takes them off that day). Weekends and approved leave are refused.
+ * overtime, or nothing (null takes them off that day). Weekends, bank holidays and approved leave
+ * are refused: work on a rest day is planned with Plan overtime work (round ten).
  */
 export function setPlanDay(projectId: ID, personId: ID, date: string, mark: PlanMark) {
   mutate((db) => {
@@ -1245,7 +1323,7 @@ export function setPlanDay(projectId: ID, personId: ID, date: string, mark: Plan
       if (i >= 0) db.plan.splice(i, 1);
       return;
     }
-    if (isWeekend(date) || onLeave(db, personId, date)) return;
+    if (isRestDay(db.bankHolidays, date) || onLeave(db, personId, date)) return;
     const entry = i >= 0 ? db.plan[i]! : { id: newId("pl"), projectId, personId, date };
     if (mark.part === "half") entry.part = "half";
     else delete entry.part;
@@ -1264,13 +1342,13 @@ export function setPlanDay(projectId: ID, personId: ID, date: string, mark: Plan
 export function planRestDay(projectId: ID, personId: ID, date: string): string | null {
   const db0 = useData.getState().db;
   if (!isRestDay(db0.bankHolidays, date)) return "That is a normal working day. Plan it in the grid";
-  if (date < getDay()) return "That day has gone. Record it with a weekend time stamp on the Timesheet";
+  if (date < getDay()) return "That day has gone. Record it with an overtime time stamp on the Timesheet";
   if (onLeave(db0, personId, date)) return "They are on approved leave that day";
   if (db0.plan.some((p) => p.projectId === projectId && p.personId === personId && p.date === date)) return "They are already down for that site that day";
   mutate((db) => {
     db.plan.push({ id: newId("pl"), projectId, personId, date });
     const p = db.projects.find((x) => x.id === projectId);
-    log(db, "Planned weekend work", `${db.people.find((x) => x.id === personId)?.name}, ${p?.code} ${p?.name}, ${date}`, "schedule");
+    log(db, "Planned overtime work", `${db.people.find((x) => x.id === personId)?.name}, ${p?.code} ${p?.name}, ${date}`, "schedule");
   });
   return null;
 }
@@ -1279,7 +1357,7 @@ export function planRestDay(projectId: ID, personId: ID, date: string): string |
 export function planPerson(projectId: ID, personId: ID, dates: string[]) {
   mutate((db) => {
     for (const date of dates) {
-      if (isWeekend(date) || onLeave(db, personId, date)) continue;
+      if (isRestDay(db.bankHolidays, date) || onLeave(db, personId, date)) continue;
       if (db.plan.some((p) => p.projectId === projectId && p.personId === personId && p.date === date)) continue;
       db.plan.push({ id: newId("pl"), projectId, personId, date });
     }
@@ -1291,13 +1369,13 @@ export function planPerson(projectId: ID, personId: ID, dates: string[]) {
 /**
  * Put someone on a site for several days in one go (the rest of the week, or "repeat each weekday
  * until" on the month ahead). A step with `moveFrom` takes them off that site for the day first.
- * Weekends and approved leave are never planned.
+ * Weekends, bank holidays and approved leave are never planned.
  */
 export function planDays(projectId: ID, personId: ID, steps: { date: string; half?: boolean; moveFrom?: ID }[]) {
   let done = 0;
   mutate((db) => {
     for (const st of steps) {
-      if (isWeekend(st.date) || onLeave(db, personId, st.date)) continue;
+      if (isRestDay(db.bankHolidays, st.date) || onLeave(db, personId, st.date)) continue;
       if (st.moveFrom) db.plan = db.plan.filter((p) => !(p.projectId === st.moveFrom && p.personId === personId && p.date === st.date));
       if (db.plan.some((p) => p.projectId === projectId && p.personId === personId && p.date === st.date)) continue;
       db.plan.push({ id: newId("pl"), projectId, personId, date: st.date, ...(st.half ? { part: "half" as const } : {}) });

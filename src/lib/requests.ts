@@ -79,3 +79,13 @@ export function requestsFor(db: Pick<Db, "people" | "access" | "personAccess" | 
 export function openRequestCount(db: Pick<Db, "people" | "access" | "personAccess" | "projects" | "requests" | "siteAccess">, personId: string | null): number {
   return requestsFor(db, personId).filter((r) => r.status === "Open").length;
 }
+
+/**
+ * The number beside Timesheet in the People sidebar (round ten): overtime claims from the phones
+ * still waiting for a yes or no, on the live sites this person's screen covers.
+ */
+export function overtimeClaimCount(db: Pick<Db, "people" | "access" | "personAccess" | "projects" | "overtimeClaims" | "siteAccess">, personId: string | null): number {
+  const all = seesEveryProject(db, personId);
+  const mine = new Set(db.projects.filter((p) => p.status === "Live" && (all || opensSite(p, personId, db.siteAccess))).map((p) => p.id));
+  return db.overtimeClaims.filter((c) => c.status === "Waiting" && mine.has(c.projectId)).length;
+}

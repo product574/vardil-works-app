@@ -5,7 +5,7 @@
 import { Browsers, CalendarDots, ChartLineUp, ChatsCircle, DeviceMobile, EnvelopeSimple, FolderOpen, Gauge, GearSix, Handshake, HardHat, type Icon, Receipt, Truck, UserGear, UsersThree } from "@phosphor-icons/react";
 import type { Brand } from "@/config/brand";
 import { totalUnread } from "@/lib/chat";
-import { openRequestCount, waitingOnDirector } from "@/lib/requests";
+import { openRequestCount, waitingOnDirector, overtimeClaimCount } from "@/lib/requests";
 import { lastWeekStart, payrollStage } from "@/lib/payroll";
 import { toPay } from "@/lib/reimbursements";
 import { dueState } from "@/lib/status";
@@ -98,7 +98,7 @@ export const DEPARTMENTS: Department[] = [
     key: "people", label: "People", icon: UsersThree, home: "/people/timesheet", inBar: true,
     groups: [
       { label: "Labour", items: [
-        { to: "/people/timesheet", label: "Timesheet" },
+        { to: "/people/timesheet", label: "Timesheet", count: (db, _today, me) => overtimeClaimCount(db, me) },
         { to: "/people/history", label: "Attendance history" },
         // The numbers are what is waiting: last week's hours on their way to payroll, and approved claims to pay.
         { to: "/people/payroll", label: "Payroll export", count: (db, today) => (["to-check", "to-export"].includes(payrollStage(lastWeekStart(today), db.attendance, db.payrollChecks, db.attendanceChanges, db.payrollExports)) ? 1 : 0) },

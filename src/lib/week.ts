@@ -23,6 +23,19 @@ export function workdaysOfMonth(ym: string): string[] {
   return daysInMonth(y, m).filter((d) => !isWeekend(d));
 }
 
+/**
+ * A month shown in whole weeks (Oisin, round ten): every day from the Monday of the week its
+ * first day is in to the Sunday of the week its last day is in. So the week of Monday 30
+ * November is whole in November's plan and in December's.
+ */
+export function monthWeeks(ym: string): string[] {
+  const [y = 1970, m = 1] = ym.split("-").map(Number);
+  const days = daysInMonth(y, m);
+  const out: string[] = [];
+  for (let d = weekStartOf(days[0]!), end = addDays(weekStartOf(days[days.length - 1]!), 6); d <= end; d = addDays(d, 1)) out.push(d);
+  return out;
+}
+
 export function shiftMonth(ym: string, by: number): string {
   const [y = 1970, m = 1] = ym.split("-").map(Number);
   const d = new Date(Date.UTC(y, m - 1 + by, 1));

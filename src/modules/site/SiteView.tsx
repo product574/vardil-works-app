@@ -1,4 +1,4 @@
-import { CalendarBlank, Camera, HandPalm, Phone, PlusCircle, Receipt, Truck } from "@phosphor-icons/react";
+import { CalendarBlank, Camera, Clock, HandPalm, Phone, PlusCircle, Receipt, Truck } from "@phosphor-icons/react";
 import { useState } from "react";
 import { useAccess } from "@/data/access";
 import { co } from "@/data/place";
@@ -8,12 +8,13 @@ import { personWeek } from "@/lib/availability";
 import { dayInstruction, managerJobs, personDay, siteOn } from "@/lib/roster";
 import { overtimeText, overtimeTotal } from "@/lib/overtime";
 import { fullWeek, nextWorkWeek, overtimeNote, workWeek } from "@/lib/week";
-import { Dialog, PageBody, PageHead, Segmented } from "@/ui";
+import { Badge, Dialog, PageBody, PageHead, Segmented } from "@/ui";
+import { HoursSheet } from "./hours";
 import { ManagerPhone } from "./ManagerPhone";
 import { AskSheet, BIG, DrivingSheet, ExpenseSheet, ExtraSheet, longDate, ManagerCard, PhotoSheet, ProfileButton, ProfileSheet } from "./sheets";
 import { INSTRUCTIONS, MORE, WORDS } from "./words";
 
-type Sheet = "photo" | "extra" | "ask" | "week" | "driving" | "profile" | "expense" | "manager" | null;
+type Sheet = "photo" | "extra" | "ask" | "week" | "hours" | "driving" | "profile" | "expense" | "manager" | null;
 
 type PhoneOf = "operative" | "manager";
 
@@ -47,7 +48,7 @@ export function SiteView() {
     <>
       <PageHead
         title="Site phone view"
-        note={kind === "operative" ? "What each operative sees on their own phone, in English or their own language. Photos and extras land in the office straight away; a request goes to their site manager first." : "What a site manager sees on their phone: the jobs they run, and in each one the timesheet, the week and month ahead, the day's site instructions, what the crew has asked for, photos, extra work and requests."}
+        note={kind === "operative" ? "What each operative sees on their own phone, in English or their own language. Photos and extras land in the office straight away; a request or an overtime claim goes to their site manager first. My hours shows what is on the timesheet for them." : "What a site manager sees on their phone: the jobs they run, and in each one the timesheet (today, or any day back to the Monday of last week), the crew's overtime claims, the week and month ahead, the day's site instructions, what the crew has asked for, photos, extra work and requests."}
         actions={
           role !== "operative" && (
             <div className="flex flex-wrap items-center gap-2">
@@ -115,6 +116,8 @@ function Phone_({ me, lang, day }: { me: Person; lang: Language; day: string }) 
   const translated = site ? INSTRUCTIONS[site.code]?.[lang] : undefined;
   const instructions = lang === "en" || showOriginal || !translated ? site?.siteInstructions : translated;
   const close = () => setSheet(null);
+  // Their own overtime claims still waiting for the site manager.
+  const claimsOpen = db.overtimeClaims.filter((c) => c.personId === me.id && c.status === "Waiting").length;
   return (
     <div className="w-full max-w-[24rem] overflow-hidden rounded-2xl border border-line-strong bg-canvas" aria-label="Phone screen" lang={lang}>
       <div className="bg-accent-strong px-4 py-3 text-white">
@@ -195,12 +198,19 @@ function Phone_({ me, lang, day }: { me: Person; lang: Language; day: string }) 
         <button type="button" className={BIG} onClick={() => setSheet("week")}>
           <CalendarBlank size={24} className="text-accent-ink" /> {t.week}
         </button>
+        {/* Last week's hours to check, and a way to claim overtime (Oisin, round ten). */}
+        <button type="button" className={BIG} onClick={() => setSheet("hours")}>
+          <Clock size={24} className="shrink-0 text-accent-ink" />
+          <span className="min-w-0 flex-1">{m.hours}</span>
+          {claimsOpen > 0 && <Badge tone="accent">{claimsOpen}</Badge>}
+        </button>
       </div>
       {site && sheet === "photo" && <PhotoSheet site={site} me={me} lang={lang} onClose={close} />}
       {site && sheet === "extra" && <ExtraSheet site={site} me={me} lang={lang} onClose={close} />}
       {site && sheet === "ask" && <AskSheet site={site} me={me} lang={lang} day={day} toManager onClose={close} />}
       {site && manager && sheet === "manager" && <ManagerCard manager={manager} site={site} lang={lang} onClose={close} />}
       {sheet === "week" && <WeekSheet me={me} lang={lang} day={day} onClose={close} />}
+      {sheet === "hours" && <HoursSheet me={me} day={day} onClose={close} />}
       {sheet === "driving" && <DrivingSheet me={me} day={day} onClose={close} />}
       {sheet === "expense" && <ExpenseSheet me={me} day={day} siteId={site?.id ?? null} sites={mine} onClose={close} />}
       {sheet === "profile" && <ProfileSheet me={me} lang={lang} day={day} onClose={close} />}

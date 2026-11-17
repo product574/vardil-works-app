@@ -2,22 +2,27 @@ import { X } from "@phosphor-icons/react";
 import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useAccess } from "@/data/access";
-import { addToRoster, correctAttendance, markAttendance, removeFromRoster, sendTimeStamps, stampRestDay } from "@/data/actions";
+import { addToRoster, correctAttendance, decideOvertimeClaim, markAttendance, removeFromRoster, sendTimeStamps, stampRestDay } from "@/data/actions";
 import { useData, useDay } from "@/data/store";
-import type { Attendance, BankHoliday, Person } from "@/data/types";
+import type { Attendance, BankHoliday, OvertimeClaim, Person } from "@/data/types";
 import { bankHolidayOn, isBankHoliday, restDayKindOf as kindOf, restDaysBetween } from "@/lib/bank-holidays";
 import { addDays } from "@/lib/dates";
-import { dLong, dShort, dWeekday, plural, when } from "@/lib/format";
-import { DOUBLE_WITHOUT_HALF, doubleOf, doubleWithoutHalf, EARLY_START_NOTE, OVERTIME_RULES, overtimeTotal, rateShort, REST_DAY_RULE, restDayProblem } from "@/lib/overtime";
+import { dLong, dShort, dWeekday, plural, whenInline } from "@/lib/format";
+import { DOUBLE_WITHOUT_HALF, doubleOf, doubleWithoutHalf, EARLY_START_NOTE, OVERTIME_RULES, overtimeText, overtimeTotal, rateShort, REST_DAY_RULE, restDayProblem } from "@/lib/overtime";
+import { claimHours, suggestedSplit } from "@/lib/overtime-claims";
+import { weekExported } from "@/lib/payroll";
 import { type AttendanceChoice as Choice, attendanceChoice, attendanceShort, choiceMark as toMark, type DayMark, fullWeek, restDayMark, workWeek } from "@/lib/week";
-import { Button, cx, Dialog, Empty, Field, NumInput, PageBody, PageHead, Panel, Section } from "@/ui";
+import { Button, cx, type DeclineAsk, DeclineDialog, DeclineNote, Dialog, Empty, Field, NumInput, PageBody, PageHead, Panel, Section } from "@/ui";
 import { toast } from "@/ui/toast";
 
 /**
  * The week's attendance for one site. Today's column is filled in and sent; earlier days are
  * corrected with a reason. The grid is Monday to Friday. Work on a Saturday, a Sunday or a bank
- * holiday is the exception, so it goes in with the Weekend time stamp button and is listed under
- * the grid (Oisin, 17 Nov).
+ * holiday is the exception, so it goes in with the Overtime time stamp button (Oisin, 17 Nov).
+ *
+ * Under the grid is "Overtime" (round ten): every hour at an overtime rate on this site in the
+ * week shown, whether it was marked on a normal day, stamped for a rest day or claimed by an
+ * operative from the phone, and the claims still waiting for a yes or no.
  */
 export function Timesheet() {
   const db = useData((s) => s.db);
@@ -29,6 +34,8 @@ export function Timesheet() {
   const [adding, setAdding] = useState("");
   const [stamping, setStamping] = useState(false);
   const [fixStamp, setFixStamp] = useState<Attendance | null>(null);
+  const [approving, setApproving] = useState<OvertimeClaim | null>(null);
+  const [no, setNo] = useState<DeclineAsk | null>(null);
 
   const sites = access.scope(db.projects).filter((p) => p.status === "Live");
   const site = sites.find((p) => p.id === params.get("site")) ?? sites[0];
@@ -47,9 +54,17 @@ export function Timesheet() {
   const week = workWeek(weekOf);
   const thisWeek = week.includes(day);
   const holidays = db.bankHolidays;
-  // Weekend and bank holiday time stamps for this site in the week shown, Monday to Sunday.
+  // Overtime on this site in the week shown, Monday to Sunday (round ten): every entry with hours
+  // at an overtime rate, on a normal day or a rest day, and the operatives' claims for those days.
   const days7 = fullWeek(weekOf);
-  const stamps = db.attendance.filter((a) => a.projectId === site.id && a.status === "restday" && days7.includes(a.date)).sort((a, b) => a.date.localeCompare(b.date) || nameOf(db.people, a.personId).localeCompare(nameOf(db.people, b.personId)));
+  const byDayThenName = (a: { date: string; personId: string }, b: { date: string; personId: string }) => a.date.localeCompare(b.date) || nameOf(db.people, a.personId).localeCompare(nameOf(db.people, b.personId));
+  const overtime = db.attendance.filter((a) => a.projectId === site.id && days7.includes(a.date) && overtimeTotal(a) > 0).sort(byDayThenName);
+  const claims = db.overtimeClaims.filter((c) => c.projectId === site.id);
+  const waiting = claims.filter((c) => c.status === "Waiting" && days7.includes(c.date)).sort(byDayThenName);
+  const declined = claims.filter((c) => c.status === "Declined" && days7.includes(c.date)).sort(byDayThenName);
+  // Claims waiting for a day in another week: say so, with a way to that week's sheet.
+  const waitingElsewhere = claims.filter((c) => c.status === "Waiting" && !days7.includes(c.date)).sort((a, b) => b.date.localeCompare(a.date));
+  const claimBehind = (a: Attendance) => claims.find((c) => c.status === "Approved" && c.personId === a.personId && c.date === a.date);
   // On this week's sheet the weekend is still to come, so say where last weekend's stamps are.
   const lastWeekend = thisWeek ? db.attendance.filter((a) => a.projectId === site.id && a.status === "restday" && fullWeek(addDays(week[0]!, -7)).includes(a.date)) : [];
   const roster = db.assignments
@@ -69,7 +84,13 @@ export function Timesheet() {
   const unsent = db.attendance.filter((a) => a.projectId === site.id && a.date === day && !a.sent).length;
   const spare = db.people.filter((p) => p.active && p.kind === "Operative" && !roster.some((r) => r.id === p.id)).sort((a, b) => a.name.localeCompare(b.name));
   const canMark = access.may("markTime");
-  const canCorrect = access.may("correctTime");
+  // Once a week has gone to payroll only the office changes it: whoever checks or exports the
+  // payroll (round ten). Until then anyone who may correct a day can, site managers included.
+  const office = access.may("checkPayroll") || access.may("exportPayroll");
+  const gone = (date: string) => weekExported(db.payrollExports, date) && !office;
+  const locked = gone(week[0]!);
+  const canCorrect = access.may("correctTime") && !locked;
+  const answer = canMark;
 
   return (
     <>
@@ -79,7 +100,7 @@ export function Timesheet() {
         actions={
           canMark && (
             <>
-              <Button onClick={() => setStamping(true)}>Weekend time stamp</Button>
+              <Button onClick={() => setStamping(true)}>Overtime time stamp</Button>
               <Button
                 variant="primary"
                 disabled={unsent === 0}
@@ -119,6 +140,32 @@ export function Timesheet() {
       </PageHead>
       <PageBody className="grid max-w-6xl gap-4">
         <Panel className="overflow-x-auto">
+          {/* At the top of the week's table, where it is looked for (Oisin, round ten); it was under the grid. */}
+          {canMark && (
+            <div className="flex flex-wrap items-center gap-2 border-b border-line px-3 py-2">
+              <select aria-label="Add someone to this site" className="field w-auto max-w-full" value={adding} onChange={(e) => setAdding(e.target.value)}>
+                <option value="">Add someone to this site</option>
+                {spare.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}, {p.trade}
+                  </option>
+                ))}
+              </select>
+              <Button
+                disabled={!adding}
+                onClick={() => {
+                  addToRoster(site.id, adding);
+                  toast(`${db.people.find((p) => p.id === adding)?.name} added to ${site.code}`);
+                  setAdding("");
+                }}
+              >
+                Add to site
+              </Button>
+              <span className="text-[0.93rem] text-muted">
+                {roster.length === 1 ? "1 person" : `${roster.length} people`} on {site.code} now.
+              </span>
+            </div>
+          )}
           <table className="tbl">
             <thead>
               <tr>
@@ -137,7 +184,7 @@ export function Timesheet() {
               {roster.length === 0 && (
                 <tr>
                   <td colSpan={7}>
-                    <Empty title="Nobody is on this site's roster yet">Add people below, or plan them on from the week ahead.</Empty>
+                    <Empty title="Nobody is on this site's roster yet">Add people with the box above, or plan them on from the week ahead.</Empty>
                   </td>
                 </tr>
               )}
@@ -185,26 +232,60 @@ export function Timesheet() {
           </table>
         </Panel>
 
-        <Section title="Weekend and bank holidays" aside={`Week of ${dShort(week[0])}, to ${dWeekday(days7[6])}`}>
+        <Section title="Overtime" aside={`Week of ${dShort(week[0])}, to ${dWeekday(days7[6])}`}>
+          {waiting.length > 0 && (
+            <Panel className="mb-3">
+              <h3 className="border-b border-line px-3 py-2 text-[0.93rem] font-medium">Claimed from the phone, waiting for a yes or no</h3>
+              <ul className="divide-y divide-line" aria-label="Overtime claims to answer">
+                {waiting.map((c) => {
+                  const who = nameOf(db.people, c.personId);
+                  return (
+                    <li key={c.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2.5">
+                      <p className="min-w-0 flex-1">
+                        <span className="font-medium">{who}</span>, {dWeekday(c.date)}: {claimHours(c.hours)}
+                        {c.note && <span className="block text-[0.93rem] text-muted">"{c.note}"</span>}
+                        <span className="block text-[0.87rem] text-muted">Claimed {whenInline(c.createdAt, day)}</span>
+                      </p>
+                      {answer && !gone(c.date) ? (
+                        <span className="flex gap-2">
+                          <Button size="sm" aria-label={`Decline the overtime claim from ${who}, ${dWeekday(c.date)}`} onClick={() => setNo({ title: `Decline ${who}'s overtime claim`, about: `${claimHours(c.hours)} on ${dWeekday(c.date)}. Nothing is added to the timesheet.`, confirm: "Decline claim", run: (note) => { decideOvertimeClaim(c.id, false, { note }); toast(`Claim declined for ${who}`); } })}>
+                            Decline
+                          </Button>
+                          <Button size="sm" variant="primary" aria-label={`Approve the overtime claim from ${who}, ${dWeekday(c.date)}`} onClick={() => setApproving(c)}>
+                            Approve
+                          </Button>
+                        </span>
+                      ) : (
+                        <span className="text-[0.93rem] text-muted">{gone(c.date) ? "That week has gone to payroll: the office answers it" : "Waiting for the site manager"}</span>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </Panel>
+          )}
           <Panel className="overflow-x-auto">
-            {stamps.length === 0 ? (
+            {overtime.length === 0 ? (
               <p className="px-3 py-3 text-muted">
-                No weekend or bank holiday work on this site in this week.{canMark ? " Use Weekend time stamp, at the top right, to put someone in for a Saturday, a Sunday or a bank holiday." : ""}
+                No overtime on this site in this week.{canMark ? " Overtime after a normal day is marked in the grid (Full + overtime). Use Overtime time stamp, at the top right, for a Saturday, a Sunday or a bank holiday." : ""}
               </p>
             ) : (
-              <table className="tbl" aria-label="Weekend and bank holiday time stamps">
+              <table className="tbl" aria-label="Overtime in this week">
                 <thead>
                   <tr>
                     <th>Day</th>
                     <th>Name</th>
                     <th>Hours</th>
+                    <th>How it came in</th>
                     <th>Saved</th>
                     <th />
                   </tr>
                 </thead>
                 <tbody>
-                  {stamps.map((a) => {
+                  {overtime.map((a) => {
                     const p = db.people.find((x) => x.id === a.personId);
+                    const claim = claimBehind(a);
+                    const rest = a.status === "restday";
                     return (
                       <tr key={a.id}>
                         <td className="whitespace-nowrap">
@@ -215,13 +296,20 @@ export function Timesheet() {
                           <span className="font-medium">{p?.name}</span>
                           <span className="block text-[0.87rem] text-muted">{p?.trade}</span>
                         </td>
-                        <td className="whitespace-nowrap">{attendanceShort(a)}</td>
+                        <td className="whitespace-nowrap">
+                          {overtimeText(a)}
+                          {doubleWithoutHalf(a) && <span className="block text-[0.87rem] text-warn">Double time, no time and a half</span>}
+                        </td>
                         <td className="text-muted">
-                          {a.savedBy}, {when(a.savedAt, day).toLowerCase()}
+                          {claim ? `Claimed from the phone, approved by ${claim.decidedBy}` : rest ? "Overtime time stamp" : "Marked on the timesheet"}
+                          {!a.sent && <span className="block text-[0.87rem]">Not sent yet</span>}
+                        </td>
+                        <td className="text-muted">
+                          {a.savedBy}, {whenInline(a.savedAt, day)}
                         </td>
                         <td className="text-right">
-                          {canCorrect && (
-                            <Button size="sm" aria-label={`Change the time stamp for ${p?.name}, ${dWeekday(a.date)}`} onClick={() => setFixStamp(a)}>
+                          {canCorrect && (rest || a.sent) && p && (
+                            <Button size="sm" aria-label={`Change the ${rest ? "time stamp" : "overtime"} for ${p.name}, ${dWeekday(a.date)}`} onClick={() => (rest ? setFixStamp(a) : setFix({ person: p, date: a.date }))}>
                               Change
                             </Button>
                           )}
@@ -230,9 +318,38 @@ export function Timesheet() {
                     );
                   })}
                 </tbody>
+                <tfoot>
+                  <tr>
+                    <td className="border-t border-line-strong text-muted" colSpan={2}>
+                      {plural(overtime.length, "entry", "entries")} for {plural(new Set(overtime.map((a) => a.personId)).size, "person", "people")}
+                    </td>
+                    <td className="border-t border-line-strong whitespace-nowrap font-medium" colSpan={4}>
+                      {overtimeText({ overtimeHours: overtime.reduce((n, a) => n + a.overtimeHours, 0), doubleHours: overtime.reduce((n, a) => n + doubleOf(a), 0) })}
+                    </td>
+                  </tr>
+                </tfoot>
               </table>
             )}
           </Panel>
+          {declined.length > 0 && (
+            <ul className="mt-2 grid gap-1 text-[0.93rem] text-muted" aria-label="Overtime claims declined">
+              {declined.map((c) => (
+                <li key={c.id}>
+                  Declined: {nameOf(db.people, c.personId)}, {dWeekday(c.date)}, {claimHours(c.hours)}. {c.decidedBy}, {whenInline(c.decidedAt, day)}.
+                  <DeclineNote note={c.declineNote} />
+                </li>
+              ))}
+            </ul>
+          )}
+          {waitingElsewhere.length > 0 && (
+            <p className="mt-2 text-[0.93rem] text-muted">
+              {plural(waitingElsewhere.length, "overtime claim is", "overtime claims are")} waiting on another week's sheet:{" "}
+              <button type="button" className="font-medium text-accent-ink underline underline-offset-2" onClick={() => setWeekOf(waitingElsewhere[0]!.date)}>
+                show the week of {dShort(workWeek(waitingElsewhere[0]!.date)[0])}
+              </button>
+              .
+            </p>
+          )}
           {lastWeekend.length > 0 && (
             <p className="mt-2 text-[0.93rem] text-muted">
               Last weekend has {plural(lastWeekend.length, "time stamp")} on this site. They are on last week's sheet:{" "}
@@ -244,38 +361,19 @@ export function Timesheet() {
           )}
         </Section>
 
+        {locked && <p className="text-[0.93rem] text-muted">This week's hours have gone to payroll. Only the office, whoever checks or exports the payroll, can change them now.</p>}
         {!canMark && <p className="text-[0.93rem] text-muted">You can read this timesheet{canCorrect ? " and correct earlier days" : ""}. Marking today is for people with the "Mark the timesheet" permission.</p>}
-        <div className={cx("flex flex-wrap items-center gap-2", !canMark && "hidden")}>
-          <select aria-label="Add someone to this site" className="field w-auto max-w-full" value={adding} onChange={(e) => setAdding(e.target.value)}>
-            <option value="">Add someone to this site</option>
-            {spare.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}, {p.trade}
-              </option>
-            ))}
-          </select>
-          <Button
-            disabled={!adding}
-            onClick={() => {
-              addToRoster(site.id, adding);
-              toast(`${db.people.find((p) => p.id === adding)?.name} added to ${site.code}`);
-              setAdding("");
-            }}
-          >
-            Add to site
-          </Button>
-          <p className="text-[0.93rem] text-muted">Click any earlier day to correct it. Every correction keeps the old value, who changed it and why.</p>
-        </div>
+        {canMark && !locked && <p className="text-[0.93rem] text-muted">Click any earlier day to correct it. Every correction keeps the old value, who changed it and why.</p>}
       </PageBody>
 
-      {fix && <CorrectDialog key={`${fix.person.id}-${fix.date}`} person={fix.person} date={fix.date} a={entry(fix.person.id, fix.date)} onClose={() => setFix(null)} onSave={(mark, reason) => correctAttendance(site.id, fix.person.id, fix.date, mark, reason)} />}
+      {fix && <CorrectDialog key={`${fix.person.id}-${fix.date}`} person={fix.person} date={fix.date} bankHoliday={isBankHoliday(holidays, fix.date)} a={entry(fix.person.id, fix.date)} onClose={() => setFix(null)} onSave={(mark, reason) => correctAttendance(site.id, fix.person.id, fix.date, mark, reason)} />}
       {stamping && (
         <RestDayDialog
           site={`${site.code} ${site.name}`}
           holidays={holidays}
           // The rest days of the week shown and of the week before it, up to today, newest first.
-          days={restDaysBetween(holidays, addDays(week[0]!, -7), days7[6]! < day ? days7[6]! : day)}
-          first={restDaysBetween(holidays, week[0]!, days7[6]! < day ? days7[6]! : day)[0]}
+          days={restDaysBetween(holidays, addDays(week[0]!, -7), days7[6]! < day ? days7[6]! : day).filter((d) => !gone(d))}
+          first={restDaysBetween(holidays, week[0]!, days7[6]! < day ? days7[6]! : day).filter((d) => !gone(d))[0]}
           crew={roster}
           others={db.people.filter((p) => p.active && p.kind === "Operative" && !roster.some((r) => r.id === p.id)).sort((a, b) => a.name.localeCompare(b.name))}
           onClose={() => setStamping(false)}
@@ -296,6 +394,8 @@ export function Timesheet() {
           }}
         />
       )}
+      {approving && <ClaimDialog key={approving.id} claim={approving} person={nameOf(db.people, approving.personId)} holidays={holidays} on={db.attendance.find((a) => a.projectId === approving.projectId && a.personId === approving.personId && a.date === approving.date)} onClose={() => setApproving(null)} />}
+      <DeclineDialog ask={no} onClose={() => setNo(null)} />
       {fixStamp && <RestDayFix key={fixStamp.id} a={fixStamp} person={nameOf(db.people, fixStamp.personId)} holidays={holidays} onClose={() => setFixStamp(null)} onSave={(mark, reason) => correctAttendance(site.id, fixStamp.personId, fixStamp.date, mark, reason)} />}
     </>
   );
@@ -309,7 +409,7 @@ function Cell({ person, date, day, startDate, bankHoliday, a, onLeave, onMark, o
   if (date > day) return <span className="text-faint">{onLeave ? "Leave" : bankHoliday ? "Bank holiday" : ""}</span>;
   if (onLeave && !a) return <span className="inline-block rounded bg-warn-soft px-1.5 py-0.5 text-[0.93rem] text-warn">Leave</span>;
   if (date < startDate) return <span className="text-faint">Not started</span>;
-  // Nobody is marked a normal day on a bank holiday. Work on one goes in as a time stamp, under the grid.
+  // Nobody is marked a normal day on a bank holiday. Work on one goes in as an overtime time stamp, listed under the grid.
   if (bankHoliday && !a) return <span className="px-2 text-faint">Bank holiday</span>;
 
   // Today, until the day is sent: marked straight in the grid.
@@ -368,8 +468,13 @@ function TodayMark({ person, a, onMark }: { person: Person; a: Attendance | unde
   );
 }
 
-function CorrectDialog({ person, date, a, onClose, onSave }: { person: Person; date: string; a: Attendance | undefined; onClose: () => void; onSave: (mark: Mark, reason: string) => void }) {
-  const [choice, setChoice] = useState<Choice>(attendanceChoice(a));
+/**
+ * Correct a day that has gone to the office, with a reason. Shared with the site manager's
+ * phone, where sent days are changed the same way (round ten). A bank holiday holds an overtime
+ * time stamp or nothing, never a normal day, so on one the only correction is "Not in".
+ */
+export function CorrectDialog({ person, date, a, bankHoliday, onClose, onSave }: { person: Person; date: string; a: Attendance | undefined; bankHoliday?: boolean; onClose: () => void; onSave: (mark: Mark, reason: string) => void }) {
+  const [choice, setChoice] = useState<Choice>(bankHoliday ? "" : attendanceChoice(a));
   const [half, setHalf] = useState(a?.overtimeHours || 0);
   const [double, setDouble] = useState(a ? doubleOf(a) : 0);
   const [reason, setReason] = useState("");
@@ -416,12 +521,13 @@ function CorrectDialog({ person, date, a, onClose, onSave }: { person: Person; d
               }}
             >
               <option value="">Not in</option>
-              <option value="full">Full day</option>
-              <option value="half">Half day</option>
-              <option value="overtime">Full + overtime</option>
+              {!bankHoliday && <option value="full">Full day</option>}
+              {!bankHoliday && <option value="half">Half day</option>}
+              {!bankHoliday && <option value="overtime">Full + overtime</option>}
             </select>
           )}
         </Field>
+        {bankHoliday && <p className="text-[0.93rem] text-muted">This is a bank holiday. Nobody is marked a normal day on one: work that day goes in with Overtime time stamp, at double time.</p>}
         {choice === "overtime" && (
           <>
             <div className="grid grid-cols-2 gap-3">
@@ -457,7 +563,8 @@ function RestDayHours({ holidays, date, half, double, setHalf, setDouble }: { ho
 }
 
 /**
- * Weekend time stamp (Oisin, 17 Nov): put people in for a Saturday, a Sunday or a bank holiday.
+ * Overtime time stamp (Oisin, 17 Nov; "Weekend time stamp" until round ten): put people in for a
+ * Saturday, a Sunday or a bank holiday. Overtime after a normal day is marked in the grid.
  * Pick the day, tick who worked (this site's crew, and anyone else in the firm), and type the
  * hours at each rate. One stamp is saved for each person ticked.
  */
@@ -484,7 +591,7 @@ function RestDayDialog({ site, holidays, days, first, crew, others, onClose, onS
     <Dialog
       open
       onClose={onClose}
-      title="Weekend time stamp"
+      title="Overtime time stamp"
       footer={
         <>
           <span className="mr-auto text-[0.93rem] text-muted">{site}</span>
@@ -499,7 +606,7 @@ function RestDayDialog({ site, holidays, days, first, crew, others, onClose, onS
         <p className="text-muted">There is no Saturday, Sunday or bank holiday in this week or the week before that has already been. Come back once the weekend is over.</p>
       ) : (
         <div className="grid gap-3">
-          <Field label="Day" hint="Saturdays, Sundays and bank holidays, newest first.">
+          <Field label="Day" hint="Saturdays, Sundays and bank holidays, newest first. Overtime after a normal day is marked in the grid.">
             {(id) => (
               <select id={id} className="field" value={date} onChange={(e) => setDate(e.target.value)}>
                 {days.map((d) => (
@@ -560,7 +667,64 @@ function RestDayDialog({ site, holidays, days, first, crew, others, onClose, onS
   );
 }
 
-/** Change or remove a weekend or bank holiday time stamp. It has gone to the office, so this is a correction, with a reason. */
+/**
+ * Approve an overtime claim (round ten). The hours claimed start split by the rule for the day
+ * and whoever approves can change them. Approving adds them to that day on the timesheet.
+ */
+function ClaimDialog({ claim, person, holidays, on, onClose }: { claim: OvertimeClaim; person: string; holidays: BankHoliday[]; on: Attendance | undefined; onClose: () => void }) {
+  const kind = kindOf(holidays, claim.date);
+  const start = suggestedSplit(kind, claim.hours);
+  const [half, setHalf] = useState(start.timeAndHalf);
+  const [double, setDouble] = useState(start.double);
+  const [error, setError] = useState("");
+  const allDouble = kind === "sunday" || kind === "bank-holiday";
+  const timeAndHalf = allDouble ? 0 : half;
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      title={`Approve overtime for ${person}`}
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button
+            variant="primary"
+            onClick={() => {
+              const problem = decideOvertimeClaim(claim.id, true, { timeAndHalf, double });
+              if (problem) return setError(problem);
+              toast(`Approved: ${overtimeText({ overtimeHours: timeAndHalf, doubleHours: double })} added for ${person}, ${dWeekday(claim.date)}`);
+              onClose();
+            }}
+          >
+            Approve and add to the timesheet
+          </Button>
+        </>
+      }
+    >
+      <div className="grid gap-3">
+        <p>
+          {dayLabel(holidays, claim.date)}: <span className="font-medium">{claimHours(claim.hours)}</span> claimed.
+          {claim.note && <span className="block text-muted">"{claim.note}"</span>}
+        </p>
+        <p className="text-[0.93rem] text-muted">
+          On the timesheet that day: <span className="font-medium text-ink">{on ? attendanceShort(on) : "Not marked in"}</span>. The hours you approve are added to it.
+        </p>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Hours at time and a half">{(id) => <NumInput id={id} label="Hours at time and a half" className="h-9 w-full" value={timeAndHalf} onChange={setHalf} disabled={allDouble} />}</Field>
+          <Field label="Hours at double time">{(id) => <NumInput id={id} label="Hours at double time" className="h-9 w-full" value={double} onChange={setDouble} />}</Field>
+        </div>
+        <p className="text-[0.93rem] text-muted">{kind ? REST_DAY_RULE[kind] : `Time and a half runs from the end of a normal day's hours up to midnight. Double time is only for work that carries on past midnight. ${EARLY_START_NOTE}`}</p>
+        {error && (
+          <p role="alert" className="text-[0.93rem] text-bad">
+            {error}
+          </p>
+        )}
+      </div>
+    </Dialog>
+  );
+}
+
+/** Change or remove an overtime time stamp for a Saturday, a Sunday or a bank holiday. It has gone to the office, so this is a correction, with a reason. */
 function RestDayFix({ a, person, holidays, onClose, onSave }: { a: Attendance; person: string; holidays: BankHoliday[]; onClose: () => void; onSave: (mark: Mark, reason: string) => void }) {
   const kind = kindOf(holidays, a.date) ?? "bank-holiday";
   const [half, setHalf] = useState(a.overtimeHours);
@@ -644,7 +808,7 @@ export function OvertimeRules({ className }: { className?: string }) {
           </div>
         ))}
       </dl>
-      <p className="mt-1 text-muted">{EARLY_START_NOTE} A day can have hours at both rates. Saturday, Sunday and bank holiday work goes in with Weekend time stamp.</p>
+      <p className="mt-1 text-muted">{EARLY_START_NOTE} A day can have hours at both rates. Saturday, Sunday and bank holiday work goes in with Overtime time stamp.</p>
     </section>
   );
 }

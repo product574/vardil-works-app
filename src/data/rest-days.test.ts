@@ -26,7 +26,7 @@ describe("weekend time stamps", () => {
     const a = row("C720", "p-113", "2026-11-14")!;
     expect(a).toMatchObject({ status: "restday", overtimeHours: 4, doubleHours: 2.5, sent: true, savedBy: "Aidan King" });
     expect(attendanceShort(a)).toBe("4h x1.5 + 2.5h x2");
-    expect(lastLog()).toMatchObject({ what: "Added a weekend time stamp", department: "people" });
+    expect(lastLog()).toMatchObject({ what: "Added an overtime time stamp", department: "people" });
     expect(lastLog().target).toBe("Aoife Kinsella, C720 Ardmullen House, 2026-11-14: 4h x1.5 + 2.5h x2".replace("Aoife Kinsella", db().people.find((p) => p.id === "p-113")!.name));
   });
 
@@ -136,7 +136,7 @@ describe("planning weekend work", () => {
   it("puts one person down for a Saturday, where the week and month ahead and their phone read it", () => {
     expect(planRestDay(site("C720"), "p-113", "2026-11-21")).toBeNull();
     expect(dayRoster(db().attendance, db().plan, site("C720"), "2026-11-21", DAY)).toEqual({ from: "plan", rows: [{ personId: "p-113", note: "" }] });
-    expect(lastLog()).toMatchObject({ what: "Planned weekend work", department: "schedule" });
+    expect(lastLog()).toMatchObject({ what: "Planned overtime work", department: "schedule" });
     // Taking them off is the same as any other day.
     setPlanDay(site("C720"), "p-113", "2026-11-21", null);
     expect(db().plan.some((p) => p.personId === "p-113" && p.date === "2026-11-21")).toBe(false);
@@ -168,7 +168,7 @@ describe("bank holidays in Admin", () => {
     // Someone who was not in that day can be.
     const free = db().people.find((p) => p.kind === "Operative" && p.active && !db().attendance.some((a) => a.personId === p.id && a.date === "2026-11-13"))!;
     expect(stampRestDay(marked.projectId, free.id, "2026-11-13", 0, 4)).toBeNull();
-    expect(lastLog().what).toBe("Added a bank holiday time stamp");
+    expect(lastLog().what).toBe("Added an overtime time stamp");
   });
 
   it("refuses a day already on the list, no date and no name", () => {

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { addBankHoliday, removeBankHoliday } from "@/data/actions";
+import { addBankHoliday, removeBankHoliday, plannedOn } from "@/data/actions";
 import { useData, useDay } from "@/data/store";
 import { dWeekday, plural } from "@/lib/format";
 import { Badge, Button, Empty, Field, PageBody, PageHead, Panel, Section, Segmented } from "@/ui";
@@ -82,9 +82,11 @@ export function BankHolidays() {
               className="grid gap-3 p-3 sm:grid-cols-[11rem_minmax(0,1fr)_auto] sm:items-end"
               onSubmit={(e) => {
                 e.preventDefault();
+                // Counted before it is added: who is down for a normal day there comes off the plan.
+                const off = plannedOn(date);
                 const problem = addBankHoliday(date, name);
                 if (problem) return setError(problem);
-                toast(`${name.trim()} added as a bank holiday, ${dWeekday(date)}`);
+                toast(`${name.trim()} added as a bank holiday, ${dWeekday(date)}${off > 0 ? `. ${plural(off, "person was", "people were")} down for a normal day and ${off === 1 ? "has" : "have"} been taken off the plan` : ""}`);
                 setYear(date.slice(0, 4));
                 setDate("");
                 setName("");
@@ -104,7 +106,7 @@ export function BankHolidays() {
             </form>
           </Panel>
           <p className="mt-2 max-w-[75ch] text-[0.93rem] text-muted">
-            The public holidays are worked out for you. Add a day the firm treats as one, or take one off if the firm works it as a normal day. On the Timesheet a bank holiday shows in its column, and anyone who works it goes in with Weekend time stamp, at double
+            The public holidays are worked out for you. Add a day the firm treats as one, or take one off if the firm works it as a normal day. Nobody is planned or marked a normal day on a bank holiday, so adding one for a day still to come takes whoever was down for it off the plan; work that day is planned with Plan overtime work, under the week ahead. On the Timesheet a bank holiday shows in its column, and anyone who works it goes in with Overtime time stamp, at double
             time. Payroll does not count a bank holiday against a week's 39 hours.
           </p>
         </Section>

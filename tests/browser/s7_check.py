@@ -68,7 +68,7 @@ def steps(page, ctx):
     ch = data(page, "db.attendanceChanges[0]")
     check("Correction: the change records the hours at each rate", ch and ch["to"] == "Full +5h x1.5 +3h x2" and ch["reason"] == "Pour ran on until after midnight", ch)
 
-    go(page, "/people/history", "table")
+    go(page, "/people/history", "table"); page.get_by_role("tablist", name="Attendance layout").get_by_role("tab", name="Everyone").click(); page.wait_for_timeout(300)  # opens per site since round ten
     heads = page.locator("thead th").all_inner_texts()
     check("History: overtime in two columns, time and a half and double time", heads[-4:] == ["Basic hours", "Overtime x1.5", "Overtime x2", "Total hours"], heads)
     tot = data(page, "(() => { const m = day.slice(0,7); const rows = db.attendance.filter(a => a.date.startsWith(m) && a.date <= day); const kn = rows.filter(a => a.personId === db.people.find(p => p.name==='Krzysztof Nowicki').id); const half = (r) => r.reduce((n,a) => n + a.overtimeHours, 0); const dbl = (r) => r.reduce((n,a) => n + (a.doubleHours ?? 0), 0); return { kn15: half(kn), kn2: dbl(kn), all15: half(rows), all2: dbl(rows) } })()")

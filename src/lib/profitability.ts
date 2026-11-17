@@ -1,9 +1,11 @@
 /**
- * Profitability (Oisin, 17 Nov): what each site has cost the firm in its own people, and how that
- * sits against what the job was priced with and what it is worth. For now the outgoings are the
- * wages, at basic, time and a half and double time, and the reimbursements approved for the site.
- * The invoices that belong to each job are to be linked in later, when Invoicing is sorted out;
- * until then they stay on Job costs.
+ * Profitability (Oisin, 17 Nov): what each site has cost the firm, and what is left of what it
+ * is worth. While a site is live the page shows what it has cost in the firm's own people: the
+ * wages, at basic, time and a half and double time, and the reimbursements approved for it.
+ * Once a job is finished it also takes in the invoices that came in for it, from
+ * subcontractors and from suppliers, and shows the net profit as an amount and as a share of
+ * the contract value (round ten, 17 Nov). The labour allowed in the quote, which the first
+ * version measured wages against, was taken out everywhere at his word.
  *
  * Wages are hours from the timesheets at each person's hourly rate, on the same rule as Job
  * costs (`labourCost`), so the two screens never disagree. Pay itself is worked out in the
@@ -57,6 +59,9 @@ export function wagesOf(rows: Att[], rateOf: (personId: string) => number): Wage
 
 export type PersonWages = { personId: string; name: string; trade: string; hourlyRate: number; days: number; restDays: number; wages: Wages; reimbursements: number };
 
+/** The invoices that came in for a job and were checked: subcontractors apart from every other supplier. */
+export type JobInvoices = { subcontractors: number; suppliers: number };
+
 export type SiteProfit = {
   projectId: string;
   wages: Wages;
@@ -64,25 +69,29 @@ export type SiteProfit = {
   reimbursements: number;
   /** Wages and reimbursements: what the site has cost in the firm's own people. */
   outgoings: number;
-  /** The labour the job was priced with in its quote, or nothing where there is no quote. */
-  allowed: number | null;
-  /** Wages as a share of the labour allowed, as a whole percentage. */
-  usedPct: number | null;
-  /** Wages over the labour allowed (above nought), or still in hand (below it). */
-  over: number | null;
   value: number | null;
   /** Wages as a share of the contract value, to one decimal place. */
   shareOfValue: number | null;
-  /** The contract value less the outgoings. Supplier invoices are not in it yet. */
+  /** The contract value less the outgoings for employees. Invoices are not in it: see `netProfit`. */
   left: number | null;
+  /** Checked invoices from subcontractors for this job. */
+  subcontractors: number;
+  /** Checked invoices from every other supplier: materials, plant hire, carriage and the rest. */
+  suppliers: number;
+  /** Everything the job cost: wages, reimbursements, subcontractor invoices and supplier invoices. */
+  costs: number;
+  /** The contract value, agreed extras included, less everything the job cost. */
+  netProfit: number | null;
+  /** Net profit as a share of the contract value, to one decimal place. */
+  netPct: number | null;
   people: PersonWages[];
 };
 
 /**
- * One site: its wages by rate, its reimbursements, and both measures against them (the labour
- * allowed in the quote, and the contract value), with who the wages went to, dearest first.
+ * One site: its wages by rate, its reimbursements and the invoices that came in for it, with
+ * the net profit against the contract value and who the wages went to, dearest first.
  */
-export function siteProfit(site: Site, attendance: Att[], people: Who[], claims: Claim[], allowed: number | null): SiteProfit {
+export function siteProfit(site: Site, attendance: Att[], people: Who[], claims: Claim[], invoices: JobInvoices = { subcontractors: 0, suppliers: 0 }): SiteProfit {
   const rows = attendance.filter((a) => a.projectId === site.id);
   const who = new Map(people.map((p) => [p.id, p]));
   const rateOf = (id: string) => who.get(id)?.hourlyRate ?? 0;
@@ -90,6 +99,10 @@ export function siteProfit(site: Site, attendance: Att[], people: Who[], claims:
   const approved = claims.filter((c) => c.projectId === site.id && c.status === "Approved");
   const reimbursements = r2(approved.reduce((s, c) => s + c.amount, 0));
   const outgoings = r2(wages.total + reimbursements);
+  const subcontractors = r2(invoices.subcontractors);
+  const suppliers = r2(invoices.suppliers);
+  const costs = r2(outgoings + subcontractors + suppliers);
+  const netProfit = site.value == null ? null : r2(site.value - costs);
   const ids = [...new Set([...rows.map((a) => a.personId), ...approved.map((c) => c.personId)])];
   const list = ids
     .map((id) => {
@@ -112,12 +125,14 @@ export function siteProfit(site: Site, attendance: Att[], people: Who[], claims:
     wages,
     reimbursements,
     outgoings,
-    allowed,
-    usedPct: allowed && allowed > 0 ? Math.round((wages.total / allowed) * 100) : null,
-    over: allowed == null ? null : r2(wages.total - allowed),
     value: site.value,
     shareOfValue: site.value && site.value > 0 ? Math.round((wages.total / site.value) * 1000) / 10 : null,
     left: site.value == null ? null : r2(site.value - outgoings),
+    subcontractors,
+    suppliers,
+    costs,
+    netProfit,
+    netPct: netProfit != null && site.value && site.value > 0 ? Math.round((netProfit / site.value) * 1000) / 10 : null,
     people: list,
   };
 }
@@ -126,8 +141,8 @@ export function siteProfit(site: Site, attendance: Att[], people: Who[], claims:
 export function profitTotals(rows: SiteProfit[]) {
   const sum = (f: (r: SiteProfit) => number) => r2(rows.reduce((s, r) => s + f(r), 0));
   const wages = sum((r) => r.wages.total);
-  const allowed = sum((r) => r.allowed ?? 0);
   const value = sum((r) => r.value ?? 0);
+  const netProfit = sum((r) => r.netProfit ?? 0);
   return {
     basic: sum((r) => r.wages.basic),
     timeAndHalf: sum((r) => r.wages.timeAndHalf),
@@ -136,21 +151,24 @@ export function profitTotals(rows: SiteProfit[]) {
     wages,
     reimbursements: sum((r) => r.reimbursements),
     outgoings: sum((r) => r.outgoings),
-    allowed,
     value,
     left: sum((r) => r.left ?? 0),
+    subcontractors: sum((r) => r.subcontractors),
+    suppliers: sum((r) => r.suppliers),
+    costs: sum((r) => r.costs),
+    netProfit,
+    netPct: value > 0 ? Math.round((netProfit / value) * 1000) / 10 : null,
     /** Overtime, at both rates, as a share of the wage bill. */
     overtimeShare: wages > 0 ? Math.round((sum((r) => r.wages.timeAndHalf + r.wages.double) / wages) * 1000) / 10 : 0,
   };
 }
 
-/**
- * How a site's wages stand against the labour it was priced with, given how much of the work is
- * done: "over" once more has been spent than was allowed, "ahead" when the wages have used a
- * clearly bigger share of the allowance than the work done so far (ten points or more), else "ok".
- */
-export function labourState(usedPct: number | null, donePct: number): "none" | "ok" | "ahead" | "over" {
-  if (usedPct == null) return "none";
-  if (usedPct > 100) return "over";
-  return usedPct - donePct >= 10 ? "ahead" : "ok";
+/** Under this share of the contract value, a finished job's net profit is called thin. */
+export const THIN_PROFIT_PCT = 10;
+
+/** How a finished job came out: a loss, a thin profit (under ten per cent), or fine. Nothing where it has no contract value. */
+export function profitState(netPct: number | null): "none" | "loss" | "thin" | "ok" {
+  if (netPct == null) return "none";
+  if (netPct < 0) return "loss";
+  return netPct < THIN_PROFIT_PCT ? "thin" : "ok";
 }

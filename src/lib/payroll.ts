@@ -5,7 +5,7 @@
  *
  * Pure functions: no React, no store.
  */
-import { addDays, dayOfWeek, isWeekend } from "./dates";
+import { addDays, dayOfWeek, isWeekend, weekStartOf } from "./dates";
 import { doubleWithoutHalf, type Overtime, overtimeSplit } from "./overtime";
 import { attendanceShort, type DayStatus, fullWeek, workWeek } from "./week";
 
@@ -147,6 +147,12 @@ export function payrollStage(weekStart: string, attendance: Att[], checks: Check
   const { check, stale } = weekCheck(checks, changes, weekStart, rows);
   return check && !stale ? "to-export" : "to-check";
 }
+
+/**
+ * Has the week a day is in already gone to payroll? Until it has, a site manager can change its
+ * days, from the office or from his phone; after that only the office can (round ten, 17 Nov).
+ */
+export const weekExported = (exports: { weekStart: string }[], date: string) => exports.some((x) => x.weekStart === weekStartOf(date));
 
 /** The Monday of the week before the one a day is in: the week payroll is waiting on. */
 export const lastWeekStart = (day: string) => addDays(workWeek(day)[0]!, -7);

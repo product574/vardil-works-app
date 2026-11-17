@@ -301,7 +301,7 @@ def steps(page, ctx):
     rb, tb = rules.bounding_box(), main.locator("table").first.bounding_box()
     rt = rules.inner_text()
     check("Timesheet: the overtime rates are at the top of the tab, above the grid", rb["y"] + rb["height"] <= tb["y"] and rb["height"] < 170 and "Monday to Friday, after a normal day's hours, up to midnight. Saturday, 8am to 12 noon." in rt and "After midnight, when the work carries on from the day before. Saturday after 12 noon. Sunday. Bank holidays." in rt, (rb, rt))
-    go(page, "/people/history", "table")
+    go(page, "/people/history", "table"); page.get_by_role("tablist", name="Attendance layout").get_by_role("tab", name="Everyone").click(); page.wait_for_timeout(300)  # opens per site since round ten
     f = main.get_by_label("Overtime")
     check("History: a filter for overtime at each rate", f.locator("option").all_inner_texts() == ["All days", "Days with overtime", "Days with time and a half", "Days with double time", "Weekend and bank holiday work"])
     counts = data(page, "(() => { const m = day.slice(0,7); const r = db.attendance.filter(a => a.date.startsWith(m) && a.date <= day && a.overtimeHours + (a.doubleHours ?? 0) > 0); const dbl = r.filter(a => (a.doubleHours ?? 0) > 0); const half = r.filter(a => a.overtimeHours > 0); const h15 = (x) => x.reduce((s,a) => s + a.overtimeHours, 0); const h2 = (x) => x.reduce((s,a) => s + (a.doubleHours ?? 0), 0); return { any: r.length, dbl: dbl.length, dblHours: h2(dbl), dblHalf: h15(dbl), halfHours: h15(half), halfDbl: h2(half), dblPeople: new Set(dbl.map(a => a.personId)).size } })()")

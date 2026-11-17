@@ -18,7 +18,7 @@ import type { Db } from "../types";
 import { seedAssets, seedVehicleChecks } from "./assets";
 import { seedChat } from "./chat";
 import { quotedMargin, seedCommercial } from "./commercial";
-import { fillManagementDates, fillPurchases, seedDayInstructions, seedExpenses, seedActivity, seedFiles, seedMail, seedManagement, seedMoney, seedPayrollChecks, seedPayrollExports, seedSiteAccess } from "./office";
+import { fillManagementDates, fillPurchases, seedDayInstructions, seedExpenses, seedOvertimeClaims, seedActivity, seedFiles, seedMail, seedManagement, seedMoney, seedPayrollChecks, seedPayrollExports, seedSiteAccess } from "./office";
 import { seedPeople } from "./people";
 import { quoteTargets, seedProjects } from "./projects";
 import { seedSubscription } from "./subscription";
@@ -97,6 +97,7 @@ function buildIrishSeed(realToday: string, opts: { emailDomain?: string; vatPct?
     bankHolidays: builtInBankHolidays(day, "IE"),
     vehicleChecks: seedVehicleChecks(day, assets.vehicles),
     expenses: seedExpenses(day),
+    overtimeClaims: [],
     dayInstructions: seedDayInstructions(day),
     attendanceChanges: [],
     ...assets,
@@ -118,6 +119,7 @@ function buildIrishSeed(realToday: string, opts: { emailDomain?: string; vatPct?
   // Written last, from the finished records.
   fillManagementDates(db, day, opts.region ?? "IE");
   fillPurchases(db, day);
+  db.overtimeClaims = seedOvertimeClaims(db, day);
   db.payrollExports = seedPayrollExports(db, day);
   db.payrollChecks = seedPayrollChecks(db.payrollExports);
   db.activity = seedActivity(db, day);

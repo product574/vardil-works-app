@@ -1,5 +1,6 @@
 // Money figures for one project, worked out from the records. The Job costs screen and Ask AI
 // both use this, so the assistant can never give a different margin from the screen.
+import { r2 } from "@/lib/money";
 import { labourCost, scopePercent, supplierCostByCategory } from "@/lib/project-costs";
 import type { Db, Project } from "./types";
 
@@ -37,4 +38,16 @@ export function projectCosts(db: Db, p: Project): ProjectCosts {
   const invoiced = db.salesInvoices.filter((i) => i.projectId === p.id && (i.status === "Invoiced" || i.status === "Paid")).reduce((s, i) => s + i.net, 0);
   const waiting = db.supplierInvoices.filter((s) => s.readStatus !== "confirmed" && s.jobRef === p.code).length;
   return { labour, supplier, plant, material, other, cost, pct, earned, margin: earned > 0 ? ((earned - cost) / earned) * 100 : null, invoiced, waiting };
+}
+
+/**
+ * The checked invoices that came in for a job, as Profitability shows them (round ten):
+ * subcontractors apart from every other supplier. The two add up to everything on Job costs
+ * that is not the firm's own labour.
+ */
+export function jobInvoices(db: Db, p: Project): { subcontractors: number; suppliers: number } {
+  const { supplier } = projectCosts(db, p);
+  const subcontractors = supplier.labour ?? 0;
+  const all = Object.values(supplier).reduce((s, n) => s + (n ?? 0), 0);
+  return { subcontractors: r2(subcontractors), suppliers: r2(all - subcontractors) };
 }
