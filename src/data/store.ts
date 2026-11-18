@@ -16,13 +16,14 @@ import { createJSONStorage, persist } from "zustand/middleware";
 import { immer } from "zustand/middleware/immer";
 import { DEFAULT_BRAND, type Brand } from "@/config/brand";
 import { dublinToday } from "@/lib/dates";
+import { DEFAULT_EMAIL, defaultDesign, type EmailTemplate, type InvoiceDesign } from "@/lib/invoices";
 import { REGION } from "@/lib/money";
 import { toast } from "@/ui/toast";
 import { buildSeed, demoDay } from "./seed";
 import type { Db, ID, RoleKey } from "./types";
 
 /** Bump when the shape of Db or the sample data changes. Old saved sample data is thrown away, preferences are kept. */
-const DATA_VERSION = 11;
+const DATA_VERSION = 12;
 
 let storageFull = false;
 
@@ -71,6 +72,13 @@ type PrefsState = {
   operativeId: ID;
   /** Which client the portal is showing. */
   portalClientId: ID;
+  /** Only what has been changed on Invoicing, Invoice design. The rest follows the region's starting values. */
+  invoiceDesignEdits: Partial<InvoiceDesign>;
+  /** The wording of the email that carries an invoice. Null means the standard wording. */
+  invoiceEmail: EmailTemplate | null;
+  setInvoiceDesign: (d: Partial<InvoiceDesign>) => void;
+  resetInvoiceDesign: () => void;
+  setInvoiceEmail: (t: EmailTemplate | null) => void;
   setTheme: (t: "light" | "dark") => void;
   setBrand: (b: Partial<Brand>) => void;
   resetBrand: () => void;
@@ -90,6 +98,11 @@ export const usePrefs = create<PrefsState>()(
       asPersonId: null,
       operativeId: "p-103",
       portalClientId: "c-02",
+      invoiceDesignEdits: {},
+      invoiceEmail: null,
+      setInvoiceDesign: (d) => set((s) => ({ invoiceDesignEdits: { ...s.invoiceDesignEdits, ...d } })),
+      resetInvoiceDesign: () => set({ invoiceDesignEdits: {} }),
+      setInvoiceEmail: (invoiceEmail) => set({ invoiceEmail }),
       setTheme: (theme) => set({ theme }),
       setBrand: (b) => set((s) => ({ brandEdits: { ...s.brandEdits, ...b }, brand: { ...DEFAULT_BRAND, ...s.brandEdits, ...b } })),
       resetBrand: () => set({ brandEdits: {}, brand: DEFAULT_BRAND }),
@@ -104,7 +117,7 @@ export const usePrefs = create<PrefsState>()(
       storage: safeStorage,
       // Only live edits are saved, so changing src/config/brand.ts reaches every browser,
       // including ones that have opened an earlier version of the demo.
-      partialize: (s) => ({ theme: s.theme, brandEdits: s.brandEdits, role: s.role, asPersonId: s.asPersonId, operativeId: s.operativeId, portalClientId: s.portalClientId }),
+      partialize: (s) => ({ theme: s.theme, brandEdits: s.brandEdits, role: s.role, asPersonId: s.asPersonId, operativeId: s.operativeId, portalClientId: s.portalClientId, invoiceDesignEdits: s.invoiceDesignEdits, invoiceEmail: s.invoiceEmail }),
       // Version 1 saved the whole brand, which froze the old defaults in place. Drop it, keep the rest.
       migrate: (saved, version) => {
         const s = (saved ?? {}) as Record<string, unknown>;
@@ -135,7 +148,7 @@ type DataState = {
 
 function freshSeed() {
   const brand = usePrefs.getState().brand;
-  return buildSeed(dublinToday(), { emailDomain: brand.emailDomain, vatPct: REGION[brand.region].vatPct, region: brand.region });
+  return buildSeed(dublinToday(), { emailDomain: brand.emailDomain, vatPct: REGION[brand.region].vatPct, region: brand.region, legalName: brand.legalName });
 }
 
 export const useData = create<DataState>()(
@@ -169,5 +182,15 @@ export function useDb<T>(select: (db: Db) => T): T {
   return useData((s) => select(s.db));
 }
 export const useDay = () => useData((s) => s.day);
+
+/** How the firm's invoices look: the region's starting values with any edits on top. */
+export function useInvoiceDesign(): InvoiceDesign {
+  const region = usePrefs((s) => s.brand.region);
+  const domain = usePrefs((s) => s.brand.emailDomain);
+  const edits = usePrefs((s) => s.invoiceDesignEdits);
+  return { ...defaultDesign(region, domain), ...edits };
+}
+/** The wording of the email that carries an invoice. */
+export const useInvoiceEmail = (): EmailTemplate => usePrefs((s) => s.invoiceEmail) ?? DEFAULT_EMAIL;
 export const getDb = () => useData.getState().db;
 export const getDay = () => useData.getState().day;

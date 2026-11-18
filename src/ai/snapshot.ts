@@ -29,6 +29,7 @@ import { ASK_ACTIVITY } from "./tools";
 export const RECORD_LINKS: [pattern: string, what: string][] = [
   ["/projects/C719", "one project; add ?tab=scope, photos, files, plant, requests, extras, costs or history for a tab"],
   ["/sales/quotes/Q-2601", "one quote"],
+  ["/invoicing/client/SI-10404", "one client invoice, by the number it goes by"],
   ["/sales/clients?client=c-01", "one client"],
   ["/inbox?mail=mail-1", "one email in the Inbox"],
   ["/dashboard?open=ap-1", "one draft in Approvals, opened on the overview"],
@@ -257,7 +258,7 @@ export function buildSnapshot(db: Db, today: string, brand: Brand): string {
         const late = i.status === "Invoiced" && i.dueOn ? daysBetween(i.dueOn, today) : null;
         return [invoiceNo(i), code(i.projectId), client.get(i.clientId)?.name ?? "", i.description, i.status, n2(i.net), n2(i.net * (1 + i.vatPct / 100)), i.issuedOn ?? "", i.dueOn ?? "", late == null ? "" : late > 0 ? `${late} day${late === 1 ? "" : "s"} late` : late === 0 ? "due today" : `due in ${-late} day${late === -1 ? "" : "s"}`, i.paidOn ?? "", i.holdReason ?? "", i.exportedAt ? i.exportedAt.slice(0, 10) : i.status === "Invoiced" || i.status === "Paid" ? "not yet" : ""];
       }),
-      "Late counts days past the due date, as on Invoicing: Invoiced (aged debt). An issued invoice goes by its accounts number (SI-), the one the client has; one not issued yet by our own reference (INV-).",
+      "Late counts days past the due date, as on Invoicing: Unpaid (aged debt). An issued invoice goes by its accounts number (SI-), the one the client has; one not issued yet by our own reference (INV-).",
     ),
   );
   out.push(

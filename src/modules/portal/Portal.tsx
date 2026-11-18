@@ -2,15 +2,15 @@ import { Check, FilmStrip, Image as ImageIcon } from "@phosphor-icons/react";
 import { useState } from "react";
 import { acceptQuote, queryQuote } from "@/data/actions";
 import { co } from "@/data/place";
-import { useData, useDay, usePrefs } from "@/data/store";
-import type { Db, Project, Quote } from "@/data/types";
+import { useData, usePrefs } from "@/data/store";
+import type { Client, Db, Project, Quote } from "@/data/types";
 import { dFull, dShort, plural } from "@/lib/format";
 import { gross, money0, money2, REGION } from "@/lib/money";
 import { scopePercent } from "@/lib/project-costs";
 import { quoteTotal } from "@/lib/quotes";
-import { daysBetween } from "@/lib/status";
 import { Badge, Button, cx, Dialog, Empty, Field, PageBody, PageHead, Panel, Section } from "@/ui";
 import { toast } from "@/ui/toast";
+import { PortalInvoices, PortalSendDocument } from "./PortalInvoices";
 
 const SHARED = ["Handover", "Conservation reports", "Drawings"];
 
@@ -75,7 +75,7 @@ export function Portal() {
           </Panel>
         )}
         {projects.map((p) => (
-          <ProjectBlock key={p.id} p={p} db={db} />
+          <ProjectBlock key={p.id} p={p} db={db} client={client} />
         ))}
       </PageBody>
     </>
@@ -159,8 +159,7 @@ function QuoteCard({ q }: { q: Quote }) {
   );
 }
 
-function ProjectBlock({ p, db }: { p: Project; db: Db }) {
-  const day = useDay();
+function ProjectBlock({ p, db, client }: { p: Project; db: Db; client: Client }) {
   const region = usePrefs((s) => s.brand.region);
   const [all, setAll] = useState(false);
   const tasks = db.scopeTasks.filter((t) => t.projectId === p.id);
@@ -168,8 +167,8 @@ function ProjectBlock({ p, db }: { p: Project; db: Db }) {
   const pct = done ? 100 : scopePercent(tasks);
   const photos = db.files.filter((f) => f.projectId === p.id && f.category === "Photos and videos").sort((a, b) => b.modified.localeCompare(a.modified));
   // The handover pack is the client's once the handover email has gone, not while it waits for approval.
-  const docs = db.files.filter((f) => f.projectId === p.id && SHARED.includes(f.category) && (f.category !== "Handover" || !!p.handoverSentAt)).sort((a, b) => b.modified.localeCompare(a.modified));
-  const invoices = db.salesInvoices.filter((i) => i.projectId === p.id && (i.status === "Invoiced" || i.status === "Paid"));
+  // Also what the client has sent in themselves: a purchase order, a payment certificate.
+  const docs = db.files.filter((f) => f.projectId === p.id && (f.source === "Portal" || (SHARED.includes(f.category) && (f.category !== "Handover" || !!p.handoverSentAt)))).sort((a, b) => b.modified.localeCompare(a.modified));
   const extras = db.variations.filter((v) => v.projectId === p.id && v.status === "Approved");
   const shown = all ? tasks : tasks.slice(0, 6);
   return (
@@ -241,40 +240,19 @@ function ProjectBlock({ p, db }: { p: Project; db: Db }) {
                   <li key={f.id} className="px-3 py-1.5">
                     <span className="block truncate">{f.name}</span>
                     <span className="text-[0.87rem] text-muted">
-                      {f.category}, {dShort(f.modified)}
+                      {f.source === "Portal" ? "Sent by you" : f.category}, {dShort(f.modified)}
                     </span>
                   </li>
                 ))}
               </ul>
             )}
+            <div className="border-t border-line px-3 py-2">
+              <PortalSendDocument project={p} client={client} />
+            </div>
           </Panel>
         </Section>
         <Section title="Invoices">
-          <Panel>
-            {invoices.length === 0 ? (
-              <p className="px-3 py-2.5 text-muted">Nothing has been invoiced yet.</p>
-            ) : (
-              <ul className="divide-y divide-line">
-                {invoices.map((i) => {
-                  const late = i.dueOn ? daysBetween(i.dueOn, day) : 0;
-                  return (
-                    <li key={i.id} className="flex items-baseline gap-2 px-3 py-1.5">
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate">{i.description}</span>
-                        <span className="text-[0.87rem] text-muted">
-                          {i.accountsNo}, issued {dShort(i.issuedOn)}
-                        </span>
-                      </span>
-                      <span className="shrink-0 text-right">
-                        {money2(gross(i.net, i.vatPct), region)}
-                        <span className="block">{i.status === "Paid" ? <Badge tone="ok">Paid {dShort(i.paidOn)}</Badge> : <Badge tone={late > 0 ? "bad" : "neutral"}>{late > 0 ? `${plural(late, "day")} overdue` : `Due ${dShort(i.dueOn)}`}</Badge>}</span>
-                      </span>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </Panel>
+          <PortalInvoices project={p} client={client} />
         </Section>
       </div>
       {extras.length > 0 && (

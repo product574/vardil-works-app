@@ -29,6 +29,8 @@ const QUERY: Record<string, string[]> = {
 };
 const PROJECT = /^\/projects\/C\d{3,4}$/i;
 const QUOTE = /^\/sales\/quotes\/Q-\d{3,6}$/i;
+/** One client invoice on its own page (18 Nov), by the number it goes by. */
+const INVOICE = /^\/invoicing\/client\/(SI|INV)-\d{3,6}$/i;
 const TABS = new Set(["overview", "scope", "photos", "files", "plant", "requests", "extras", "costs", "history"]);
 
 /** The address to open inside the demo, or null when the link goes anywhere else. */
@@ -44,7 +46,7 @@ export function safeHref(href: string): string | null {
   if (u.origin !== "https://demo.invalid" || u.hash) return null;
   const path = u.pathname.length > 1 ? u.pathname.replace(/\/+$/, "") : u.pathname;
   const isProject = PROJECT.test(path);
-  if (!SCREENS.has(path) && !isProject && !QUOTE.test(path)) return null;
+  if (!SCREENS.has(path) && !isProject && !QUOTE.test(path) && !INVOICE.test(path)) return null;
   for (const [k, v] of u.searchParams) {
     if (isProject ? k !== "tab" || !TABS.has(v) : !(QUERY[path] ?? []).includes(k) || !/^[\w .-]{1,60}$/.test(v)) return null;
   }

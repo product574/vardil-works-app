@@ -79,6 +79,11 @@ export type Client = {
   accountRef: string;
   termsDays: number;
   portalEnabled: boolean;
+  /** Where invoices are addressed: street and town. The county is kept apart so each region writes it its own way. */
+  address?: string;
+  county?: string;
+  /** Where invoices are emailed. Without one they go to the contact. */
+  billingEmail?: string;
 };
 
 export type EnquiryStatus = "Logged" | "Quoted" | "Won" | "Lost" | "No bid";
@@ -397,7 +402,8 @@ export type FileItem = {
   sizeKb: number;
   modified: Day;
   addedBy: string;
-  source: "Upload" | "Email" | "Site app";
+  /** "Portal" is something a client sent in through their portal: a purchase order, a payment certificate. */
+  source: "Upload" | "Email" | "Site app" | "Portal";
   /** 0-5, picks the placeholder tone for sample photos, which have no real image behind them. */
   tone: number;
   /** A real picture added from a camera or a file during the demo, shrunk and kept in the browser. */
@@ -429,7 +435,13 @@ export type SupplierInvoice = {
   confirmedAt?: Stamp;
 };
 
+/**
+ * "To invoice" is a draft that has not gone to the client, "Invoiced" one that has. On screen
+ * they read Draft, Sent and, once past the due date, Overdue (src/lib/invoices.ts).
+ */
 export type SalesInvoiceStatus = "To invoice" | "Held" | "Invoiced" | "Paid";
+export type InvoiceLine = { id: ID; description: string; qty: number; unit: string; rate: number };
+export type SendRoute = "email" | "portal" | "post";
 export type SalesInvoice = {
   id: ID;
   ref: string;
@@ -445,6 +457,44 @@ export type SalesInvoice = {
   paidOn?: Day;
   accountsNo?: string;
   exportedAt?: Stamp;
+  /** Priced lines, on an invoice drafted by hand. Without them it is one line: the description and the net. */
+  lines?: InvoiceLine[];
+  /** Drafted by a person in Invoicing, rather than raised from a stage reached or a job completed. */
+  manual?: boolean;
+  /** The client's purchase order number, printed on the invoice. */
+  poNumber?: string;
+  /** Printed under the lines. */
+  notes?: string;
+  /** When and how it went to the client. */
+  sentAt?: Stamp;
+  sentTo?: string;
+  sentVia?: SendRoute[];
+  /** The client said in the portal that they have paid. Accounts still confirm it against the bank. */
+  clientPaidOn?: Day;
+  /** Who did what to this invoice, oldest first. */
+  history?: AuditEntry[];
+};
+
+/** A note on an invoice for the office only. Emails to and from the client are in `mails`. */
+export type InvoiceComment = { id: ID; salesInvoiceId: ID; at: Stamp; who: string; text: string };
+
+/**
+ * A client questioning or disputing an invoice, by the portal, email or phone. While one is
+ * open the invoice is not chased. Settling it records what was agreed.
+ */
+export type InvoiceQuery = {
+  id: ID;
+  salesInvoiceId: ID;
+  raisedAt: Stamp;
+  via: "Portal" | "Email" | "Phone";
+  raisedBy: string;
+  text: string;
+  status: "Open" | "Settled";
+  /** What the office told the client, oldest first. */
+  replies: { at: Stamp; who: string; text: string }[];
+  outcome?: string;
+  settledBy?: string;
+  settledAt?: Stamp;
 };
 
 // ── Inbox ─────────────────────────────────────────────────────────────────────
@@ -476,6 +526,8 @@ export type Mail = {
   clientId?: ID;
   replyDraft?: { subject: string; body: string };
   attachment?: string;
+  /** The client invoice this email is about, so it shows on the invoice's own page. */
+  salesInvoiceId?: ID;
 };
 
 // ── Management layer ──────────────────────────────────────────────────────────
@@ -590,6 +642,8 @@ export type Db = {
   files: FileItem[];
   supplierInvoices: SupplierInvoice[];
   salesInvoices: SalesInvoice[];
+  invoiceComments: InvoiceComment[];
+  invoiceQueries: InvoiceQuery[];
   mails: Mail[];
   approvals: Approval[];
   automations: Automation[];

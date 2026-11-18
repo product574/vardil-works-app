@@ -18,7 +18,7 @@ with sync_playwright() as p:
     page.wait_for_selector("#username"); page.fill("#username", "demo"); page.fill("#password", "demo"); page.keyboard.press("Enter")
     page.get_by_role("button", name="Managing director").click(); page.wait_for_selector("text=AI overview")
     seen = []
-    for path in ["/dashboard?open=ap-7", "/sales", "/projects", "/projects/C720", "/projects/C720?tab=files", "/people/timesheet", "/people/certs", "/schedule", "/plant", "/plant/vehicles", "/files", "/files/unsorted", "/invoicing/supplier", "/invoicing/export", "/inbox", "/portal", "/site", "/admin", "/admin/access", "/admin/billing", "/admin/connections", "/admin/automations", "/admin/activity", "/settings", "/settings/region", "/settings/about"]:
+    for path in ["/dashboard?open=ap-7", "/sales", "/projects", "/projects/C720", "/projects/C720?tab=files", "/people/timesheet", "/people/certs", "/schedule", "/plant", "/plant/vehicles", "/files", "/files/unsorted", "/invoicing", "/invoicing/client/SI-10404", "/invoicing/queries", "/invoicing/design", "/invoicing/email", "/invoicing/supplier", "/invoicing/export", "/inbox", "/portal", "/site", "/admin", "/admin/access", "/admin/billing", "/admin/connections", "/admin/automations", "/admin/activity", "/settings", "/settings/region", "/settings/about"]:
         page.goto(B + path); page.wait_for_timeout(450); seen.append(path)
         viol += page.evaluate("window.__v || []")
     # things the policy must still allow: a picked photo (data: image), theme colours set from script, a dialog

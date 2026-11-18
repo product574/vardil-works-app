@@ -8,6 +8,8 @@
 import { ASK_ACTIVITY } from "@/ai/tools";
 import { finalAccountNet, holdReason, invoiceNo, invoicedLine, paidLine, salesInvoiceFile } from "@/lib/billing";
 import { addDays, isWeekend } from "@/lib/dates";
+import { linesNet, nextAccountsNo, routeWords } from "@/lib/invoices";
+import { REGION } from "@/lib/money";
 import { normaliseReg } from "@/lib/fleet";
 import { quoteTotal } from "@/lib/quotes";
 import { attendanceShort } from "@/lib/week";
@@ -17,7 +19,7 @@ import { ROLES } from "./roles";
 import { costingFor, linesFor, type WorkKind } from "./seed/commercial";
 import { rng } from "./seed/util";
 import { getDay, useData, usePrefs } from "./store";
-import type { AccessKey, AccessRow, Allocation, Cert, Client, Db, DepartmentKey, Enquiry, ID, LevelKey, PermKey, Person, PhotoStage, Language, Mail, MailIntent, Proof, RequestKind, RoleKey, FileCategory, FileKind, FleetDocCategory, Project, Variation, Vehicle } from "./types";
+import type { AccessKey, AccessRow, Allocation, Cert, Client, Db, DepartmentKey, Enquiry, ID, LevelKey, PermKey, Person, PhotoStage, Language, Mail, MailIntent, Proof, RequestKind, RoleKey, FileCategory, FileKind, FleetDocCategory, InvoiceLine, InvoiceQuery, Project, SalesInvoice, SendRoute, Variation, Vehicle } from "./types";
 
 const mutate = (fn: (db: Db) => void) => useData.getState().mutate(fn);
 
@@ -158,6 +160,7 @@ export function approveApproval(id: ID) {
         intent: "General",
         routedToId: signedInPersonId(role, asPersonId, operativeId, db.people) ?? "p-md",
         clientId: project?.clientId ?? db.quotes.find((q) => q.id === a.quoteId)?.clientId ?? db.salesInvoices.find((i) => i.id === a.salesInvoiceId)?.clientId,
+        salesInvoiceId: a.salesInvoiceId,
       });
       if (a.kind === "chaser" && a.quoteId) {
         const q = db.quotes.find((x) => x.id === a.quoteId);
@@ -165,7 +168,10 @@ export function approveApproval(id: ID) {
       }
       if (a.kind === "chaser" && a.salesInvoiceId) {
         const inv = db.salesInvoices.find((x) => x.id === a.salesInvoiceId);
-        if (inv) audit(db, inv.projectId, `Payment chased: ${invoiceNo(inv)}`);
+        if (inv) {
+          audit(db, inv.projectId, `Payment chased: ${invoiceNo(inv)}`);
+          (inv.history ??= []).push({ at: nowStamp(), who, what: "Payment chased by email" });
+        }
       }
       if (a.kind === "client_update" && project) audit(db, project.id, "Progress update sent to the client");
     }
@@ -668,7 +674,7 @@ export function completeProject(projectId: ID) {
     // Stage payments already raised, issued or not, come off the final account.
     const net = finalAccountNet(p.value ?? 0, db.salesInvoices.filter((i) => i.projectId === p.id).map((i) => i.net));
     const n = nextNumber(db.salesInvoices.map((i) => i.ref), "INV-");
-    db.salesInvoices.unshift({ id: newId("inv"), ref: `INV-${n}`, projectId: p.id, clientId: p.clientId, description: "Final account", net, vatPct: db.salesInvoices[0]?.vatPct ?? 13.5, status: held ? "Held" : "To invoice", holdReason: held ? holdReason(p) : undefined });
+    db.salesInvoices.unshift({ id: newId("inv"), ref: `INV-${n}`, projectId: p.id, clientId: p.clientId, description: "Final account", net, vatPct: REGION[usePrefs.getState().brand.region].vatPct, status: held ? "Held" : "To invoice", holdReason: held ? holdReason(p) : undefined, history: [{ at: nowStamp(), who: "System", what: "Raised when the job was marked complete" }] });
     if (!held) addHandoverDraft(db, p.id);
     log(db, "Marked a project complete", `${p.code} ${p.name}`, "projects");
   });
@@ -1210,6 +1216,17 @@ export function addFile(projectId: ID, category: FileCategory, f: { name: string
   });
 }
 
+/** A client sends a document through the portal: a purchase order, a payment certificate. It lands in the project's Correspondence folder. */
+export function clientSendsDocument(projectId: ID, who: string, what: string, f: { name: string; dataUrl: string }) {
+  mutate((db) => {
+    const p = db.projects.find((x) => x.id === projectId);
+    if (!p) return;
+    const pdf = f.dataUrl.startsWith("data:application/pdf");
+    db.files.unshift({ id: newId("f"), projectId, folder: "Correspondence", category: "Correspondence", name: `${what}, ${f.name}`, kind: pdf ? "pdf" : "image", sizeKb: Math.max(1, Math.round((f.dataUrl.length * 3) / 4 / 1024)), modified: getDay(), addedBy: who, source: "Portal", tone: db.files.length % 6, dataUrl: f.dataUrl });
+    log(db, "Sent a document through the portal", `${what}, ${p.code} ${p.name}`, "portal", who);
+  });
+}
+
 /** Files a document from "To be sorted" into a project's folder. */
 export function fileIt(fileId: ID, projectId: ID, category: FileCategory) {
   mutate((db) => {
@@ -1273,20 +1290,119 @@ export function reopenSupplierInvoice(id: ID) {
   });
 }
 
-/** Raise a sales invoice: it gets a date, a due date on the client's payment terms, and the next accounts number. */
+// ── Client invoices ───────────────────────────────────────────────────────────
+
+/** A line in an invoice's own history: who did what, when. */
+function note(db: Db, i: SalesInvoice, what: string, who = actorName(db)) {
+  (i.history ??= []).push({ at: nowStamp(), who, what });
+}
+
+/** What going out does to an invoice: a date, a due date on the client's payment terms, and the next accounts number. */
+function issue(db: Db, i: SalesInvoice) {
+  i.status = "Invoiced";
+  i.issuedOn = getDay();
+  i.dueOn = addDays(getDay(), db.clients.find((c) => c.id === i.clientId)?.termsDays ?? 30);
+  i.accountsNo = nextAccountsNo(db.salesInvoices);
+  const p = db.projects.find((x) => x.id === i.projectId);
+  if (p && p.status === "Complete" && i.description === "Final account") p.status = "Invoiced";
+  audit(db, i.projectId, invoicedLine(invoiceNo(i), i.description));
+  fileInvoice(db, i.projectId, salesInvoiceFile(invoiceNo(i), i.description), getDay(), actorName(db), "Upload");
+  return p;
+}
+
+/** A copy of an email about an invoice, filed under Sent from the accounts mailbox, where the invoice's own page shows it. */
+function fileInvoiceMail(db: Db, i: SalesInvoice, m: { toName: string; to: string; subject: string; body: string; attachment?: string }) {
+  const mailbox = `accounts@${usePrefs.getState().brand.emailDomain}`;
+  const { role, operativeId, asPersonId } = usePrefs.getState();
+  db.mails.unshift({ id: newId("mail"), mailbox, folder: "Sent", fromName: actorName(db), fromAddress: mailbox, subject: m.subject, body: `To: ${m.toName} <${m.to}>\n\n${m.body}`, receivedAt: nowStamp(), read: true, intent: "General", routedToId: signedInPersonId(role, asPersonId, operativeId, db.people) ?? "p-md", clientId: i.clientId, attachment: m.attachment, salesInvoiceId: i.id });
+}
+
+/** Mark a draft as sent without emailing it from here: it went by post or by hand. */
 export function issueInvoice(id: ID) {
   mutate((db) => {
     const i = db.salesInvoices.find((x) => x.id === id);
     if (!i || i.status !== "To invoice") return;
-    i.status = "Invoiced";
-    i.issuedOn = getDay();
-    i.dueOn = addDays(getDay(), db.clients.find((c) => c.id === i.clientId)?.termsDays ?? 30);
-    i.accountsNo = `SI-${nextNumber(db.salesInvoices.map((x) => x.accountsNo ?? ""), "SI-")}`;
-    const p = db.projects.find((x) => x.id === i.projectId);
-    if (p && p.status === "Complete" && i.description === "Final account") p.status = "Invoiced";
-    audit(db, i.projectId, invoicedLine(invoiceNo(i), i.description));
-    fileInvoice(db, i.projectId, salesInvoiceFile(invoiceNo(i), i.description), getDay(), actorName(db), "Upload");
+    const p = issue(db, i);
+    i.sentAt = nowStamp();
+    i.sentVia = ["post"];
+    note(db, i, "Marked as sent, by post or by hand");
     log(db, "Issued a sales invoice", `${invoiceNo(i)} ${p?.code ?? ""}, ${i.description}`, "invoicing");
+  });
+}
+
+/**
+ * Send an invoice to the client: by email with the PDF attached, in their portal, or both. A
+ * draft is issued on the way; one already out is sent again. In the demo nothing leaves the
+ * browser: the email is filed under Sent, and a real build sends it here.
+ */
+export function sendInvoice(id: ID, how: { email: boolean; portal: boolean; to: string; subject: string; body: string; attachment: string }) {
+  mutate((db) => {
+    const i = db.salesInvoices.find((x) => x.id === id);
+    if (!i || (i.status !== "To invoice" && i.status !== "Invoiced") || (!how.email && !how.portal)) return;
+    const again = i.status === "Invoiced";
+    const p = again ? db.projects.find((x) => x.id === i.projectId) : issue(db, i);
+    const c = db.clients.find((x) => x.id === i.clientId);
+    const via: SendRoute[] = [...(how.email ? (["email"] as const) : []), ...(how.portal ? (["portal"] as const) : [])];
+    i.sentAt = nowStamp();
+    if (how.email) i.sentTo = how.to;
+    i.sentVia = [...new Set([...(again ? (i.sentVia ?? []) : []), ...via])];
+    if (how.email) fileInvoiceMail(db, i, { toName: c?.contactName ?? "", to: how.to, subject: how.subject, body: how.body, attachment: how.attachment });
+    note(db, i, `${again ? "Sent again" : "Sent"} to ${c?.name ?? "the client"} ${routeWords(via)}`);
+    log(db, again ? "Sent an invoice again" : "Sent an invoice to the client", `${invoiceNo(i)} ${p?.code ?? ""}, ${i.description}`, "invoicing");
+  });
+}
+
+/** Draft an invoice by hand against a project. Nothing goes to the client until someone sends it. */
+export function draftInvoice(d: { projectId: ID; description: string; lines: Omit<InvoiceLine, "id">[]; vatPct: number; poNumber?: string; notes?: string }): string {
+  let ref = "";
+  mutate((db) => {
+    const p = db.projects.find((x) => x.id === d.projectId);
+    if (!p) return;
+    ref = `INV-${nextNumber(db.salesInvoices.map((i) => i.ref), "INV-")}`;
+    const lines = d.lines.map((l) => ({ ...l, id: newId("il") }));
+    db.salesInvoices.unshift({ id: newId("inv"), ref, projectId: p.id, clientId: p.clientId, description: d.description, net: linesNet(lines), vatPct: d.vatPct, status: "To invoice", lines, manual: true, poNumber: d.poNumber || undefined, notes: d.notes || undefined, history: [{ at: nowStamp(), who: actorName(db), what: "Drafted by hand" }] });
+    // A final account still to go out bills whatever is left, so it comes down by this much.
+    refreshFinalAccount(db, p);
+    log(db, "Drafted an invoice", `${ref} ${p.code}, ${d.description}`, "invoicing");
+  });
+  return ref;
+}
+
+/**
+ * Change a draft before it goes. One drafted by hand can have its lines changed. One raised from
+ * a stage or a finished job follows the contract, so only what is printed around the figure
+ * (the order number, the notes) can change.
+ */
+export function saveDraftInvoice(id: ID, d: { description?: string; lines?: Omit<InvoiceLine, "id">[]; vatPct?: number; poNumber?: string; notes?: string }) {
+  mutate((db) => {
+    const i = db.salesInvoices.find((x) => x.id === id);
+    if (!i || (i.status !== "To invoice" && i.status !== "Held")) return;
+    if (d.poNumber !== undefined) i.poNumber = d.poNumber || undefined;
+    if (d.notes !== undefined) i.notes = d.notes || undefined;
+    if (i.manual) {
+      if (d.description) i.description = d.description;
+      if (d.vatPct != null) i.vatPct = d.vatPct;
+      if (d.lines) {
+        i.lines = d.lines.map((l) => ({ ...l, id: newId("il") }));
+        i.net = linesNet(i.lines);
+      }
+      const p = db.projects.find((x) => x.id === i.projectId);
+      if (p) refreshFinalAccount(db, p);
+    }
+    note(db, i, "Draft changed");
+    log(db, "Changed a draft invoice", invoiceNo(i), "invoicing");
+  });
+}
+
+/** Throw away a draft that was made by hand. One raised from the job itself cannot be deleted, only held. */
+export function deleteDraftInvoice(id: ID) {
+  mutate((db) => {
+    const i = db.salesInvoices.find((x) => x.id === id);
+    if (!i || !i.manual || i.status !== "To invoice") return;
+    db.salesInvoices = db.salesInvoices.filter((x) => x.id !== id);
+    const p = db.projects.find((x) => x.id === i.projectId);
+    if (p) refreshFinalAccount(db, p);
+    log(db, "Deleted a draft invoice", `${i.ref} ${p?.code ?? ""}`, "invoicing");
   });
 }
 
@@ -1302,15 +1418,105 @@ export function markInvoicePaid(id: ID) {
     const closing = !!p && p.status === "Invoiced" && all.some((x) => x.description === "Final account") && all.every((x) => x.status === "Paid");
     if (p && closing) p.status = "Closed";
     audit(db, i.projectId, paidLine(invoiceNo(i), closing));
+    note(db, i, "Marked paid");
     log(db, "Marked a sales invoice paid", invoiceNo(i), "invoicing");
+  });
+}
+
+/** Take back a "paid" marked by mistake: the invoice is owed again, and a job that this payment closed is open again. */
+export function unmarkInvoicePaid(id: ID) {
+  mutate((db) => {
+    const i = db.salesInvoices.find((x) => x.id === id);
+    if (!i || i.status !== "Paid") return;
+    i.status = "Invoiced";
+    delete i.paidOn;
+    const p = db.projects.find((x) => x.id === i.projectId);
+    if (p && p.status === "Closed") p.status = "Invoiced";
+    audit(db, i.projectId, `${invoiceNo(i)} is unpaid again: it was marked paid by mistake`);
+    note(db, i, "Paid taken back: it was marked by mistake");
+    log(db, "Took back a payment marked by mistake", invoiceNo(i), "invoicing");
   });
 }
 
 /** Record that these invoices went to the accounts package. The file itself is built by src/lib/accounts-export.ts. */
 export function markExported(ids: ID[], packageName: string) {
   mutate((db) => {
-    for (const i of db.salesInvoices) if (ids.includes(i.id)) i.exportedAt = nowStamp();
+    for (const i of db.salesInvoices) {
+      if (!ids.includes(i.id)) continue;
+      i.exportedAt = nowStamp();
+      note(db, i, `Exported to ${packageName}`);
+    }
     log(db, "Exported sales invoices to accounts", `${ids.length} to ${packageName}`, "invoicing");
+  });
+}
+
+/** A note on an invoice for the office only. The client never sees it. */
+export function addInvoiceComment(id: ID, text: string) {
+  mutate((db) => {
+    const i = db.salesInvoices.find((x) => x.id === id);
+    if (!i || !text.trim()) return;
+    db.invoiceComments.push({ id: newId("ic"), salesInvoiceId: id, at: nowStamp(), who: actorName(db), text: text.trim() });
+    log(db, "Commented on an invoice", invoiceNo(i), "invoicing");
+  });
+}
+
+/** Write to the client about an invoice, from the invoice's own page. Filed under Sent like any other email. */
+export function emailAboutInvoice(id: ID, m: { to: string; subject: string; body: string }) {
+  mutate((db) => {
+    const i = db.salesInvoices.find((x) => x.id === id);
+    if (!i || !m.body.trim()) return;
+    fileInvoiceMail(db, i, { toName: db.clients.find((c) => c.id === i.clientId)?.contactName ?? "", ...m });
+    note(db, i, `Emailed the client: ${m.subject}`);
+    log(db, "Emailed a client about an invoice", `${invoiceNo(i)}: ${m.subject}`, "invoicing");
+  });
+}
+
+/** A client questions an invoice, in the portal, or the office logs a call or an email. Chasing waits until it is settled. */
+export function raiseInvoiceQuery(id: ID, q: { via: InvoiceQuery["via"]; raisedBy: string; text: string }) {
+  mutate((db) => {
+    const i = db.salesInvoices.find((x) => x.id === id);
+    if (!i || !q.text.trim() || db.invoiceQueries.some((x) => x.salesInvoiceId === id && x.status === "Open")) return;
+    db.invoiceQueries.unshift({ id: newId("iq"), salesInvoiceId: id, raisedAt: nowStamp(), via: q.via, raisedBy: q.raisedBy, text: q.text.trim(), status: "Open", replies: [] });
+    note(db, i, q.via === "Portal" ? "Query raised in the portal" : `Query raised by ${q.via.toLowerCase()}`, q.raisedBy);
+    log(db, "Raised a query on an invoice", invoiceNo(i), q.via === "Portal" ? "portal" : "invoicing", q.via === "Portal" ? q.raisedBy : actorName(db));
+  });
+}
+
+/** Answer a client's query. They see the reply in their portal. */
+export function replyToInvoiceQuery(queryId: ID, text: string) {
+  mutate((db) => {
+    const q = db.invoiceQueries.find((x) => x.id === queryId);
+    const i = db.salesInvoices.find((x) => x.id === q?.salesInvoiceId);
+    if (!q || !i || q.status !== "Open" || !text.trim()) return;
+    q.replies.push({ at: nowStamp(), who: actorName(db), text: text.trim() });
+    note(db, i, "Replied to the client's query");
+    log(db, "Replied to an invoice query", invoiceNo(i), "invoicing");
+  });
+}
+
+/** Close a query with what was agreed. The invoice can be chased again. */
+export function settleInvoiceQuery(queryId: ID, outcome: string) {
+  mutate((db) => {
+    const q = db.invoiceQueries.find((x) => x.id === queryId);
+    const i = db.salesInvoices.find((x) => x.id === q?.salesInvoiceId);
+    if (!q || !i || q.status !== "Open" || !outcome.trim()) return;
+    q.status = "Settled";
+    q.outcome = outcome.trim();
+    q.settledBy = actorName(db);
+    q.settledAt = nowStamp();
+    note(db, i, `Query settled: ${q.outcome.charAt(0).toLowerCase()}${q.outcome.slice(1)}`);
+    log(db, "Settled an invoice query", invoiceNo(i), "invoicing");
+  });
+}
+
+/** The client says in the portal that they have paid. It stays unpaid until accounts match it against the bank. */
+export function clientSaysPaid(id: ID, who: string) {
+  mutate((db) => {
+    const i = db.salesInvoices.find((x) => x.id === id);
+    if (!i || i.status !== "Invoiced" || i.clientPaidOn) return;
+    i.clientPaidOn = getDay();
+    note(db, i, "Client says in the portal that it is paid", who);
+    log(db, "Said an invoice has been paid", invoiceNo(i), "portal", who);
   });
 }
 

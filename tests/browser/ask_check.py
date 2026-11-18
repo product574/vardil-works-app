@@ -92,8 +92,8 @@ try:
         check("The page sends the summary of the records", "## Sales invoices" in r["snapshot"] and re.search(r"^SI-\d{5} \| C711 \|", r["snapshot"], re.M) is not None and r["kind"] == "question")
         links.filter(has_text="SI-10404").first.click(); page.wait_for_url("**/invoicing/invoiced")
         # The Invoicing screen loads its own file the first time, a moment after the address changes.
-        page.get_by_role("heading", name="Invoiced").first.wait_for()
-        check("A link opens its screen behind the panel, and the conversation stays", page.locator("#ask-panel").get_by_text("Dunmoy is the largest").count() == 1 and page.get_by_role("heading", name="Invoiced").count() >= 1)
+        page.get_by_role("heading", name="Client invoices").first.wait_for()
+        check("A link opens its screen behind the panel, and the conversation stays", page.locator("#ask-panel").get_by_text("Dunmoy is the largest").count() == 1 and page.get_by_role("heading", name="Client invoices").count() >= 1)
 
         # 4. The question is in the activity log with who asked it, not the answer
         page.goto(B + "/admin/activity"); page.wait_for_selector("h1")

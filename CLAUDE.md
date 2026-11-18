@@ -67,6 +67,17 @@ send him a fresh zip first, or bring his changes across with care, so the two do
 5. Step 6, Invoicing in the Athboy layout, plus "Invoice design", where the look of every
    ABC invoice is edited with a live preview. Leave the Portal as it is.
 
+**On the co-founder's copy (product574/vardil-construction-demo), 18 Nov 2026.** Oisin
+directs the steps on his copy himself and took Invoicing first, ahead of steps 2 to 5. The
+first part is built on the branch `invoicing-section` (not merged into his `main`): client
+invoices end to end. See "Invoicing, rebuilt 18 Nov" further down for what was decided, what
+was built, what was tested and what comes next (supplier invoices with the Sage fields,
+subcontractor invoices with the portal and the timesheet, all invoices by site). It replaces
+step 6 as first written; "Invoice design" is built, and the Portal has been added to (not
+left as it is) at his word. 252 automated tests and 723 browser checks pass on that branch;
+one check in `review_check.py` (Week ahead) fails on a Wednesday on `main` too, so it is
+not from this work.
+
 **Loose ends, any time:** Aodhan's own round of testing on a real phone; the Ask AI key
 moved from his personal Claude account to a Vardil one (step 5 under "Where we stopped");
 a fixed address on vardil.com for the logo on the Cloudflare sign-in page; a native
@@ -167,6 +178,21 @@ Two sources were merged (November 2026):
 | 62 | Billing | In Admin (16 Nov, after step 1: "add billing to the admin section. Have it to show three months prior as past invoices"), as in the templates: the plan, the next invoice, and the invoices for the three months before this one. Per person with a sign-in (office and site management, 13 in the sample data); operatives on the site phone and clients in the portal are free. Invoices from Vardil numbered VD-yymm, issued on the first working day of the month after, taken by direct debit three working days later. The price is €59 a person a month before VAT, set by Aodhan on 16 Nov (it was a €55 placeholder until he picked it), in `PLAN` in `src/lib/subscription.ts` (changing it means bumping DATA_VERSION and the figures in `subscription.test.ts`, `snapshot.test.ts` and `s1b_check.py`). Only the managing director sees it: Billing, like Roles and access, stays his even when Admin is switched on for another level (`mdOnly` on the sidebar item in `departments.ts`, and the screen sends anyone else back to Admin) |
 | 63 | Moving sales cards | Cards move between the board's columns (16 Nov, after step 1: "have it so that jobs can be moved between sections"), by dragging or with the handle on each card's corner (a list of columns, for phones and keyboards). Every move does what that stage means, after a dialog saying what will happen: To quote to Drafting drafts the quote; Drafting back to To quote discards the draft; Drafting to Sent sends it; a quote that is out can go to Queried (with the client's question), Won (purchase order, then a project), Declined, or back to Drafting to be changed; Queried to Sent sends the revision; Declined to Drafting reopens it. Refused: anything into Opened (the client does that), anything out of Won (a project now), skipping a stage. While dragging, the columns it can go to say what a drop does and the rest dim. Only people with "Price and send quotes" can move cards. Rules in `src/lib/pipeline.ts`. The board or list switch and the richer Log enquiry are still to come in step 3 |
 
+Decisions made by Oisin on his copy, 18 Nov 2026 (asked with question buttons; he picked the
+recommended answer each time):
+
+| # | Question | Decision |
+|---|---|---|
+| 64 | Invoicing section | Built from a call with Majella Walsh of Oldstone (16 Nov: how she ran Sage payroll and Sage 50 Accounts by hand) and five of his reference apps (HVAC, Costello Doors, Bryan Lynch, distributor, dairy; layouts and features only, as decision 61). Sections for client, supplier and subcontractor invoices, and all invoices by site. Subcontractors and clients use the portal for each job. Sage stays: the demo exports to it and never does VAT returns, payroll or bank payments ("if our product touches the tax man" a CFO will not trust it). No RCT, retention or payment applications for now |
+| 65 | Opening a client invoice | A full page, not a pop-up or a side panel: the invoice as paper on the left; the client, the project, emails, comments and history on the right; the buttons along the top |
+| 66 | Changing where an invoice stands | On each row (Send, Mark paid, Undo paid, and a menu for the rest), with tabs over the list: All, Drafts, Held, Sent, Overdue, Paid. Marking paid can always be undone |
+| 67 | Send to client | Email with the PDF and the client's portal together in one press; either can be unticked each time |
+| 68 | "Client problems" | Invoice queries: a client questions or disputes an invoice by portal, email or phone; it is not chased until accounts answer and settle it. (In place of "Returns" in the Bryan Lynch app) |
+| 69 | Subcontractors in the portal | A preview inside Portal first ("What a subcontractor sees", with a viewing-as switch). No seventh sign-in role yet. Not built yet |
+| 70 | Subcontractor hours | Their own section on the site timesheet, marked by the site manager; each subcontractor invoice is matched against it and differences flagged (Majella: "your subcontractor could tell you anything"). Not built yet |
+| 71 | Clients and invoices in the portal | Open and download the PDF, ask about an invoice, say payment has been sent, and send a document (a purchase order or payment certificate). Built |
+| 72 | Supplier invoice approval | Accounts approve up to 500 before VAT; above that the managing director approves; changeable in the app. Not built yet |
+
 Standing preferences (these come from Aodhan and are not optional):
 
 - UK English. No em dashes or en dashes anywhere: code comments, interface text, notes, chat.
@@ -238,7 +264,10 @@ src/
     roles.ts            the six demo roles and which departments each may open
     kpis.ts             dashboard numbers, derived from the records
   ai/                   Ask AI (milestone 7), see "Ask AI: how it is built"
-  lib/                  pure rules with tests (no React, no store). Since 16 Nov also:
+  lib/                  pure rules with tests (no React, no store). Since 18 Nov also
+                        invoices.ts (where a client invoice stands, aged debt, what is left
+                        to bill, the email, and the one document the screen and the PDF both
+                        draw) and pdf.ts (writes the PDF, no library). Since 16 Nov also:
                         overview.ts (the AI overview, worked out from the records),
                         approvals.ts (client first), portal.ts (the overview's Portal panel),
                         requests.ts (what waits for the managing director's yes or no),
@@ -248,7 +277,11 @@ src/
                         overview plus ApprovalsPanel.tsx; admin/ (16 Nov) holds Requests,
                         Roles and access, Billing, Connections, Automations and the
                         Activity log; a project's own Files tab is projects/ProjectFiles.tsx,
-                        beside the Files section in files/Files.tsx
+                        beside the Files section in files/Files.tsx. invoicing/ (18 Nov) is
+                        ClientInvoices.tsx (the list and Draft an invoice), InvoicePage.tsx,
+                        Queries.tsx, SageExport.tsx, Templates.tsx (invoice design, email
+                        template), shared.tsx (the paper, the PDF download, the send dialog)
+                        and Invoicing.tsx (supplier invoices and job costs, as before)
 functions/              Cloudflare Pages Functions: api/ask.ts (Ask AI) and ask-log.ts (the record)
 server/                 their helpers: the Access token check, the D1 record, request checks
 ```
@@ -751,6 +784,100 @@ Small things waiting on a decision or a person:
   has not been read by a native speaker.
 - "Add vehicles to the list" (Aodhan, 13 Nov): Vehicles already had an Add vehicle button
   and Own plant now has Add plant. He has not yet confirmed that this is what he meant.
+
+## Invoicing, rebuilt 18 Nov (on the co-founder's copy)
+
+Branch `invoicing-section`. Decisions 64 to 72. What Oisin asked for: a pop-up that drafts an
+invoice from the records and makes a PDF that can be emailed; filters like Costello Doors;
+the invoice with everything linked like Bryan Lynch; "In Sage" on every invoice like the
+distributor; the Sage export laid out like the dairy app; an undo for Mark paid; an email
+template and an invoice design; emailing and commenting from inside the invoice.
+
+**Built (part one: client invoices, end to end).**
+
+- **Sidebar.** Money in: Client invoices, Unpaid, Held, Client queries. Money out: Supplier
+  invoices, Job costs (both as before). Accounts package: Accounts export. Set-up: Invoice
+  design, Email template. `/invoicing`, `/invoicing/invoiced` and `/invoicing/held` are the
+  same list opened on different tabs, so old links and Ask AI's links still land.
+- **Client invoices** (`ClientInvoices.tsx`): aged debt strip, tabs with counts, a search
+  (number, client, project, order number), each row with its client (to Sales, Clients) and
+  project, how it was sent, when it is due, whether it is in the accounts package, the next
+  step as a button and a menu for the rest. "To invoice" reads Draft and "Invoiced" reads
+  Sent or Overdue on screen (`stageOf` in `lib/invoices.ts`); the stored statuses are
+  unchanged, so the overview, the portal and Ask AI needed no change.
+- **Draft an invoice.** Type a site code, project or client; choosing the project fills in
+  who is billed, the address, where it is emailed, their terms, their order number (from the
+  accepted quote) and VAT. It starts from the next stage payment, valued from the work
+  ticked off and not yet invoiced (`doneNotBilled`), or an agreed extra, dayworks or blank.
+  Lines are edited freely. It cannot bill more than is left on the contract
+  (`leftToBill`); a final account still to go out comes down by whatever is drafted, so a
+  job is never billed twice. Nothing goes to the client until it is sent.
+- **The invoice page** (`/invoicing/client/SI-10404`, `InvoicePage.tsx`): the paper, a strip
+  (total, sent, paid, in the accounts package), linked client, project, order number and
+  other invoices on the job, every email and comment about it with a box to email the client
+  or leave a note for the office, and its history (who did what, when: `history` on the
+  invoice). A link made while it was a draft (INV-) lands on the number it went out under.
+- **Send to client** (`SendInvoiceDialog`): the email written from the template with the
+  number and due date it will carry, free to change, the PDF named, and ticks for email and
+  the portal. Sending issues the invoice (as "Issue invoice" did), files the email under
+  Email, Sent against the invoice, and files the PDF with the project. As everywhere in the
+  demo, nothing leaves the browser.
+- **The PDF** is real: `lib/pdf.ts` writes it with no library (A4, Helvetica, the logo as a
+  JPEG, more pages when the lines need them) from the same `InvoiceDoc` the screen draws.
+- **Paid and undo.** Mark paid offers Undo in its message and "Undo paid" afterwards; undoing
+  reopens a job that the payment had closed.
+- **Client queries** (`Queries.tsx`, `invoiceQueries`): raised by the client in the portal
+  or logged by the office from a call or email; reply (the client sees it in the portal);
+  settle with what was agreed. An open query marks the invoice and says not to chase.
+- **Accounts export** (`SageExport.tsx`): the rows exactly as the package imports them, as a
+  table (Type, Account, Nominal, Dept, Date, Ref, Details, Net, Tax, VAT for Sage 50), then
+  Download CSV. Dept is the project number (C720 is 720), nominal 4000 contract works or
+  4010 agreed extras, tax code by rate (T3 for 13.5%, T1 standard, T0 none; decision 16's
+  Xero and spreadsheet layouts are kept). "Export log" lists every file that went and gives
+  it again. One invoice can also be exported from its own page.
+- **Invoice design** (`/invoicing/design`): address, phone, email, VAT and company numbers,
+  bank details, terms, last line, and switches for the logo, bank details, site and the
+  coloured rule, with the paper redrawn live. Kept with the branding in preferences, so a
+  reset of the demo data does not wipe it. **Email template** (`/invoicing/email`): subject
+  and message with {words} that fill themselves in, previewed on a real invoice.
+- **Client portal** (`portal/PortalInvoices.tsx`): open and download the invoice, ask about
+  it, say it has been paid (accounts still confirm), and send a document, which lands in
+  the project's Correspondence folder marked Portal.
+- **Sample data** (`seed/invoicing.ts`, written last from the records): every sent invoice
+  has how it went, its email under Sent and its history; clients have addresses and, for
+  some, a separate address for invoices; one open query (C713), one settled (C710), one
+  comment (C711) and one invoice the client says is paid (C721). DATA_VERSION 12.
+- Ask AI can link to one invoice (`/invoicing/client/SI-10404` in `safeHref` and
+  `RECORD_LINKS`). Its instructions and tools are unchanged.
+
+**Tested.** 252 automated tests (53 new: `invoices.test.ts`, `pdf.test.ts`,
+`invoice-actions.test.ts`, and more in `accounts-export.test.ts`). The PDF was also opened in
+a real PDF reader (qpdf finds no errors; rendered with pdftoppm and read by eye). Browser:
+the new `inv_check.py` (75 checks: the list, tabs and search, drafting, the page, sending,
+the PDF's contents, paid and undo, emails and comments, queries, export from the page,
+invoice design reaching the paper and the PDF, the logo in the PDF, the email template, the
+client's four portal actions, accounts' access, dark mode, phone width); `m4_check.py`,
+`m5_check.py`, `review_check.py` and `ask_check.py` changed for the new screens; all
+fourteen suites run (723 checks pass); `csp_check.py` passes with the new screens (31
+screens, no violations). Not tested: a real phone; Safari and Firefox; `fn_check.py` (Ask
+AI's server function, not touched); the hosted build behind Cloudflare, which is Aodhan's.
+`preview_check5.py` (the retired single-file preview) still names the old screens.
+
+**Next, in this order (decisions 69, 70, 72 are waiting on this):**
+
+1. Supplier invoices as Majella keys them into Sage: nominal code and department (project)
+   per line, the firm's own file number (counting up), due date, paid or outstanding, the
+   500 approval limit, a purchase day book export (PI lines) beside the sales one, and the
+   reports she ran (by supplier, project, nominal code, month).
+2. Subcontractor invoices as their own stream: subcontractors on the site timesheet in
+   their own section, each invoice matched against the hours the site manager recorded,
+   and "What a subcontractor sees" in Portal for logging an invoice per job.
+3. All invoices by site: money in and out per project, and the monthly profitability
+   report she built by hand in Excel (valuation, wages from hours at a loaded rate,
+   materials and subcontractors, profit).
+4. Not decided yet: credit notes (a settled query can only record what was agreed);
+   whether Ask AI should refuse to chase an invoice with an open query (it does not know
+   about queries yet); a subcontractor sign-in role.
 
 ## Build status
 

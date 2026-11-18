@@ -17,6 +17,7 @@ import { ROLES } from "../roles";
 import type { Db } from "../types";
 import { seedAssets } from "./assets";
 import { quotedMargin, seedCommercial } from "./commercial";
+import { fillInvoicing } from "./invoicing";
 import { fillManagementDates, seedActivity, seedFiles, seedMail, seedManagement, seedMoney } from "./office";
 import { seedPeople } from "./people";
 import { quoteTargets, seedProjects } from "./projects";
@@ -48,12 +49,12 @@ function toUK(db: Db): Db {
   return out;
 }
 
-export function buildSeed(realToday: string, opts: { emailDomain?: string; vatPct?: number; region?: "IE" | "UK" } = {}): { day: string; db: Db } {
+export function buildSeed(realToday: string, opts: { emailDomain?: string; vatPct?: number; region?: "IE" | "UK"; legalName?: string } = {}): { day: string; db: Db } {
   const built = buildIrishSeed(realToday, opts);
   return opts.region === "UK" ? { day: built.day, db: toUK(built.db) } : built;
 }
 
-function buildIrishSeed(realToday: string, opts: { emailDomain?: string; vatPct?: number; region?: "IE" | "UK" } = {}): { day: string; db: Db } {
+function buildIrishSeed(realToday: string, opts: { emailDomain?: string; vatPct?: number; region?: "IE" | "UK"; legalName?: string } = {}): { day: string; db: Db } {
   const day = demoDay(realToday);
   const domain = opts.emailDomain ?? DEFAULT_BRAND.emailDomain;
   const vatPct = opts.vatPct ?? REGION[DEFAULT_BRAND.region].vatPct;
@@ -89,6 +90,8 @@ function buildIrishSeed(realToday: string, opts: { emailDomain?: string; vatPct?
     ...assets,
     files,
     ...money,
+    invoiceComments: [],
+    invoiceQueries: [],
     mails,
     approvals,
     automations,
@@ -102,6 +105,7 @@ function buildIrishSeed(realToday: string, opts: { emailDomain?: string; vatPct?
   };
   // Written last, from the finished records.
   fillManagementDates(db, day, opts.region ?? "IE");
+  fillInvoicing(db, day, domain, opts.legalName ?? DEFAULT_BRAND.legalName, "IE");
   db.activity = seedActivity(db, day);
   return { day, db };
 }

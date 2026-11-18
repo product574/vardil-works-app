@@ -106,15 +106,23 @@ export const DEPARTMENTS: Department[] = [
   {
     key: "invoicing", label: "Invoicing", icon: Receipt, home: "/invoicing", inBar: true,
     groups: [
-      { label: "Client invoices", items: [
-        { to: "/invoicing", label: "To invoice", end: true, count: (db) => db.salesInvoices.filter((i) => i.status === "To invoice").length },
+      // One list of client invoices, opened on all of them, on the unpaid, or on the held (18 Nov).
+      { label: "Money in", items: [
+        { to: "/invoicing", label: "Client invoices", end: true, count: (db) => db.salesInvoices.filter((i) => i.status === "To invoice").length },
+        { to: "/invoicing/invoiced", label: "Unpaid", count: (db, today) => db.salesInvoices.filter((i) => i.status === "Invoiced" && !!i.dueOn && i.dueOn < today).length, countTone: "bad" },
         { to: "/invoicing/held", label: "Held", count: (db) => db.salesInvoices.filter((i) => i.status === "Held").length, countTone: "warn" },
-        { to: "/invoicing/invoiced", label: "Invoiced" },
-        { to: "/invoicing/export", label: "Accounts export" },
+        { to: "/invoicing/queries", label: "Client queries", count: (db) => db.invoiceQueries.filter((q) => q.status === "Open").length, countTone: "warn" },
       ] },
-      { label: "Costs", items: [
+      { label: "Money out", items: [
         { to: "/invoicing/supplier", label: "Supplier invoices", count: (db) => db.supplierInvoices.filter((i) => i.readStatus !== "confirmed").length },
         { to: "/invoicing/costs", label: "Job costs" },
+      ] },
+      { label: "Accounts package", items: [
+        { to: "/invoicing/export", label: "Accounts export", count: (db) => db.salesInvoices.filter((i) => i.issuedOn && !i.exportedAt).length },
+      ] },
+      { label: "Set-up", items: [
+        { to: "/invoicing/design", label: "Invoice design" },
+        { to: "/invoicing/email", label: "Email template" },
       ] },
     ],
   },

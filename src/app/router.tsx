@@ -18,7 +18,7 @@ const people = () => import("@/modules/people");
 const schedule = () => import("@/modules/schedule/Schedule");
 const plant = () => import("@/modules/plant");
 const files = () => import("@/modules/files/Files");
-const invoicing = () => import("@/modules/invoicing/Invoicing");
+const invoicing = () => import("@/modules/invoicing");
 const inbox = () => import("@/modules/inbox/Inbox");
 const portal = () => import("@/modules/portal/Portal");
 const site = () => import("@/modules/site/SiteView");
@@ -92,10 +92,15 @@ export const router = create([
           screen("files", files, (m) => m.ProjectFiles),
           screen("files/photos", files, (m) => m.AllPhotos),
           screen("files/unsorted", files, (m) => m.ToBeSorted),
-          screen("invoicing", invoicing, (m) => m.ToInvoice),
-          screen("invoicing/held", invoicing, (m) => m.HeldInvoices),
-          screen("invoicing/invoiced", invoicing, (m) => m.Invoiced),
+          // One list of client invoices at three addresses: all of them, the unpaid, the held.
+          screen("invoicing", invoicing, (m) => m.ClientInvoices),
+          screen("invoicing/held", invoicing, (m) => m.ClientInvoices),
+          screen("invoicing/invoiced", invoicing, (m) => m.ClientInvoices),
+          screen("invoicing/client/:ref", invoicing, (m) => m.InvoicePage),
+          screen("invoicing/queries", invoicing, (m) => m.ClientQueries),
           screen("invoicing/export", invoicing, (m) => m.AccountsExport),
+          screen("invoicing/design", invoicing, (m) => m.InvoiceDesignPage),
+          screen("invoicing/email", invoicing, (m) => m.EmailTemplatePage),
           screen("invoicing/supplier", invoicing, (m) => m.SupplierInvoices),
           screen("invoicing/costs", invoicing, (m) => m.JobCosts),
           // The three folders are one screen. A separate component for each means the list filter

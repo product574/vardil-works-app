@@ -29,6 +29,11 @@ describe("the conversation sent back with each question", () => {
 describe("links in answers", () => {
   it("keeps links to the demo's own screens and records", () => {
     expect(safeHref("/invoicing/invoiced")).toBe("/invoicing/invoiced");
+    // One client invoice on its own page, by its number, and nothing else under that address.
+    expect(safeHref("/invoicing/client/SI-10404")).toBe("/invoicing/client/SI-10404");
+    expect(safeHref("/invoicing/client/INV-5207")).toBe("/invoicing/client/INV-5207");
+    expect(safeHref("/invoicing/client/SI-10404/../../admin")).toBeNull();
+    expect(safeHref("/invoicing/client/anything")).toBeNull();
     expect(safeHref("/projects/C719")).toBe("/projects/C719");
     expect(safeHref("/projects/C719?tab=costs")).toBe("/projects/C719?tab=costs");
     expect(safeHref("/sales/quotes/Q-2614")).toBe("/sales/quotes/Q-2614");
