@@ -40,6 +40,8 @@ describe("sample data", () => {
     for (const v of db.variations) expect(people.has(v.raisedById) && projects.has(v.projectId)).toBe(true);
     for (const i of db.salesInvoices) expect(projects.has(i.projectId) && clients.has(i.clientId)).toBe(true);
     for (const s of db.supplierInvoices) for (const al of s.allocations) expect(projects.has(al.projectId)).toBe(true);
+    for (const s of db.supplierInvoices) if (s.subcontractorId) expect(has(db.subcontractors).has(s.subcontractorId), s.invoiceNo).toBe(true);
+    for (const s of db.subcontractors) for (const id of s.projectIds) expect(projects.has(id), s.name).toBe(true);
     for (const m of db.mails) expect(people.has(m.routedToId)).toBe(true);
     for (const h of db.hiredPlant) expect(projects.has(h.projectId)).toBe(true);
     for (const v of db.vehicles) if (v.driverId) expect(people.has(v.driverId)).toBe(true);
@@ -109,7 +111,7 @@ describe("sample data", () => {
         ...d.salesInvoices.flatMap((i) => [i.issuedOn, i.paidOn, i.exportedAt]),
         ...d.projects.flatMap((p) => [p.startDate, p.endDate, p.handoverSentAt, ...p.audit.map((a) => a.at)]),
         ...d.scopeTasks.map((t) => t.completedAt),
-        ...d.supplierInvoices.map((s) => s.invoiceDate),
+        ...d.supplierInvoices.flatMap((s) => [s.invoiceDate, s.paidOn, s.exportedAt, s.askedAt, s.sentBack?.at]),
       ].filter((x): x is string => !!x);
       for (const e of events) expect(isWeekend(e.slice(0, 10)), `${real}: ${e}`).toBe(false);
       const past = [
@@ -118,7 +120,7 @@ describe("sample data", () => {
         ...d.scopeGroups.map((g) => g.date),
         ...d.quotes.flatMap((q) => [q.sentAt, q.openedAt, q.respondedAt, q.chasedAt]),
         ...d.salesInvoices.flatMap((i) => [i.issuedOn, i.paidOn, i.exportedAt]),
-        ...d.supplierInvoices.flatMap((s) => [s.invoiceDate, s.receivedAt, s.confirmedAt]),
+        ...d.supplierInvoices.flatMap((s) => [s.invoiceDate, s.receivedAt, s.confirmedAt, s.paidOn, s.exportedAt, s.askedAt, s.sentBack?.at]),
         ...d.files.map((f) => f.modified),
         ...d.mails.map((m) => m.receivedAt),
         ...d.activity.map((a) => a.at),

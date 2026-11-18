@@ -25,6 +25,11 @@ const QUERY: Record<string, string[]> = {
   "/plant/vehicles": ["vehicle"],
   "/files": ["project", "folder"],
   "/invoicing/supplier": ["inv"],
+  "/invoicing/subcontractor": ["inv"],
+  "/invoicing/to-pay": ["show"],
+  "/invoicing/export": ["book"],
+  "/invoicing/invoiced": ["show", "age"],
+  "/portal/subcontractors": ["sub", "site"],
   "/admin/access": ["person"],
 };
 const PROJECT = /^\/projects\/C\d{3,4}$/i;

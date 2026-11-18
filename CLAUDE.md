@@ -74,9 +74,13 @@ invoices end to end. See "Invoicing, rebuilt 18 Nov" further down for what was d
 was built, what was tested and what comes next (supplier invoices with the Sage fields,
 subcontractor invoices with the portal and the timesheet, all invoices by site). It replaces
 step 6 as first written; "Invoice design" is built, and the Portal has been added to (not
-left as it is) at his word. 252 automated tests and 723 browser checks pass on that branch;
-one check in `review_check.py` (Week ahead) fails on a Wednesday on `main` too, so it is
-not from this work.
+left as it is) at his word. A second part followed the same day (decisions 73 to 81, and
+"Invoicing, part two" further down): the aged-debt squares as filters, a Back button on
+every screen, the export for Sage only with sales and purchases, supplier invoices approved
+and then paid, subcontractors in their own section of the portal, and a confirm box on every
+approval and payment. 306 automated tests and 822 browser checks pass on that branch; one
+check in `review_check.py` (Week ahead) fails on a Wednesday on `main` too, so it is not from
+this work.
 
 **Loose ends, any time:** Aodhan's own round of testing on a real phone; the Ask AI key
 moved from his personal Claude account to a Vardil one (step 5 under "Where we stopped");
@@ -191,7 +195,22 @@ recommended answer each time):
 | 69 | Subcontractors in the portal | A preview inside Portal first ("What a subcontractor sees", with a viewing-as switch). No seventh sign-in role yet. Not built yet |
 | 70 | Subcontractor hours | Their own section on the site timesheet, marked by the site manager; each subcontractor invoice is matched against it and differences flagged (Majella: "your subcontractor could tell you anything"). Not built yet |
 | 71 | Clients and invoices in the portal | Open and download the PDF, ask about an invoice, say payment has been sent, and send a document (a purchase order or payment certificate). Built |
-| 72 | Supplier invoice approval | Accounts approve up to 500 before VAT; above that the managing director approves; changeable in the app. Not built yet |
+| 72 | Supplier invoice approval | Accounts approve up to 500 before VAT; above that the managing director approves; changeable in the app. Built in part two (decision 76) |
+
+Decisions made by Oisin on his copy, later on 18 Nov 2026, after looking at part one (asked
+with question buttons, the layout ones with sketches of each option):
+
+| # | Question | Decision |
+|---|---|---|
+| 73 | The squares over Client invoices | Each one is a filter: Owed to us, Not yet due, 1 to 30, 31 to 60, Over 60 days late. Pressed again, it lets go |
+| 74 | Back button | In the top bar at the far left, before the firm's name, on every screen of the app and on a phone (option A of three: top bar, above each page title, top of the sidebar). It goes to the screen that was open before, across departments, and is greyed out when there is none |
+| 75 | Accounts package | Sage only, and called Sage, not Sage 50. The choice of Sage 50, Xero or a spreadsheet is gone from the export page and from Settings (this undoes decision 16 on this copy). The export page is laid out like his HVAC app: a line saying what the day book is and its nominal codes, Download CSV on the right, then the rows. He picked "screenshot plus Dept" for the columns (Majella splits jobs in Sage by department) and "one list, sent ones marked" over two tabs. It carries sales and purchases |
+| 76 | Supplier invoices | Checked by accounts, then approved: by accounts up to 500 before VAT, by the managing director above (asked again, since his message said "approved by Managing Director": he kept the limit). Approved invoices go to a page of their own, To be paid, where accounts pay and then mark each one paid |
+| 77 | Subcontractor invoices | Approved by the manager of the site they are for, or the managing director, whichever comes first, any amount. Accounts never approve them ("only the site knows the work was done"). The site manager approves on a new page in Projects, since they cannot open Invoicing |
+| 78 | The portal | Two sections, Clients and Subcontractors. Several subcontractors share a site, so office staff pick whose portal they are looking at from a list on the left: every site with its subcontractors one under the other (option A of two; the other was a drop-down). Each subcontractor sees only their own. Still no subcontractor sign-in (decision 69) |
+| 79 | Confirm | Every Approve and every Mark paid opens a box that says what will happen, with Cancel and "Confirm approval" or "Confirm paid". Client invoices too. Mark paid can still be undone |
+| 80 | Telling them it is paid | The client's or subcontractor's portal says so every time, at the top and on the invoice. The confirm box also has a tick to email them (a receipt for a client, a remittance advice for a subcontractor), filed under Email, Sent. His words: "Portal notice and when marked email; an option to also send email to them". It starts ticked |
+| 81 | Subcontractor hours | Decision 70 (subcontractors on the timesheet, invoices matched against the hours) waits for the next round |
 
 Standing preferences (these come from Aodhan and are not optional):
 
@@ -250,6 +269,7 @@ src/
   config/brand.ts       THE re-branding file: name, colour, logo, region, accounts package
   app/
     router.tsx          every address in the app
+    back.ts             the Back button's memory of the screens opened (rule in lib/trail.ts)
     departments.ts      the map: departments in the bottom bar and each one's sidebar
     Shell.tsx           top bar, search, sidebar, department bar, role and login checks
     AuthPages.tsx       local-mode sign-in page, the "could not confirm your sign-in" page,
@@ -267,7 +287,10 @@ src/
   lib/                  pure rules with tests (no React, no store). Since 18 Nov also
                         invoices.ts (where a client invoice stands, aged debt, what is left
                         to bill, the email, and the one document the screen and the PDF both
-                        draw) and pdf.ts (writes the PDF, no library). Since 16 Nov also:
+                        draw), pdf.ts (writes the PDF, no library), purchases.ts (where a
+                        supplier's or subcontractor's invoice stands, who may approve it,
+                        what is to be paid, the rows Sage gets, the paid emails) and trail.ts
+                        (the screens behind the Back button). Since 16 Nov also:
                         overview.ts (the AI overview, worked out from the records),
                         approvals.ts (client first), portal.ts (the overview's Portal panel),
                         requests.ts (what waits for the managing director's yes or no),
@@ -280,8 +303,12 @@ src/
                         beside the Files section in files/Files.tsx. invoicing/ (18 Nov) is
                         ClientInvoices.tsx (the list and Draft an invoice), InvoicePage.tsx,
                         Queries.tsx, SageExport.tsx, Templates.tsx (invoice design, email
-                        template), shared.tsx (the paper, the PDF download, the send dialog)
-                        and Invoicing.tsx (supplier invoices and job costs, as before)
+                        template), shared.tsx (the paper, the PDF download, the send and
+                        paid dialogs), Purchases.tsx (supplier and subcontractor invoices,
+                        To approve, To be paid), purchase-shared.tsx (who may approve, and
+                        the approve, send back and paid boxes) and Invoicing.tsx (job costs).
+                        projects/SubInvoices.tsx is where a site manager approves a
+                        subcontractor; portal/SubPortal.tsx is what a subcontractor sees
 functions/              Cloudflare Pages Functions: api/ask.ts (Ask AI) and ask-log.ts (the record)
 server/                 their helpers: the Access token check, the D1 record, request checks
 ```
@@ -314,7 +341,17 @@ Billing (16 Nov). Admin itself can be switched on for another level, so those tw
 `mdOnly` in `departments.ts` (left out of everyone else's sidebar) and their screens send
 anyone else back to `/admin`. Without that, a level given Admin could open Roles and access
 and change its own access (possible from step 1, when it moved there from Settings, which
-cannot be switched on for anyone else, until this was added the same day). Access is worked out in two layers:
+cannot be switched on for anyone else, until this was added the same day). Two more since
+18 Nov, both about a client signed in to their portal: the subcontractors' section is left
+out of their sidebar (`staffOnly` in `departments.ts`) and its screen sends them back to
+their own.
+
+Who may approve an invoice the firm pays is `mayApprove` in `src/lib/purchases.ts`, from
+three permissions: "Handle invoices" (accounts: a supplier's invoice up to the limit in
+`db.approvalLimits`), "Approve invoices of any size" (the managing director's by default,
+who also sets the limit) and "Approve subcontractor invoices for their own sites" (site
+managers by default: a subcontractor's invoice for a site they are site manager or contracts
+manager of). Access is worked out in two layers:
 
 1. **Level.** Every office person has a level (`Person.level`: managing director, contracts
    manager, site manager, accounts). Each level's departments, money and permissions are a
@@ -389,8 +426,9 @@ day, so it looks the same on any weekday (rebuilt in the review, 16 Nov):
 
 ### Re-branding for a prospect
 
-Change `src/config/brand.ts` (name, legal name, tagline, accent, logo, region, accounts
-package, email domain) and rebuild. The same fields can be changed live in Settings.
+Change `src/config/brand.ts` (name, legal name, tagline, accent, logo, region, email domain)
+and rebuild. The same fields can be changed live in Settings. The accounts package is no
+longer one of them: on this copy it is always Sage (decision 75).
 
 ### Who can open the demo
 
@@ -863,21 +901,127 @@ screens, no violations). Not tested: a real phone; Safari and Firefox; `fn_check
 AI's server function, not touched); the hosted build behind Cloudflare, which is Aodhan's.
 `preview_check5.py` (the retired single-file preview) still names the old screens.
 
-**Next, in this order (decisions 69, 70, 72 are waiting on this):**
+**What came next is in "Invoicing, part two" below**, with what is still to do.
 
-1. Supplier invoices as Majella keys them into Sage: nominal code and department (project)
-   per line, the firm's own file number (counting up), due date, paid or outstanding, the
-   500 approval limit, a purchase day book export (PI lines) beside the sales one, and the
-   reports she ran (by supplier, project, nominal code, month).
-2. Subcontractor invoices as their own stream: subcontractors on the site timesheet in
-   their own section, each invoice matched against the hours the site manager recorded,
-   and "What a subcontractor sees" in Portal for logging an invoice per job.
+## Invoicing, part two, 18 Nov (on the co-founder's copy)
+
+Same branch, `invoicing-section`. Decisions 73 to 81. What Oisin asked for after looking at
+part one: the squares at the top clickable; a back button through the whole app; the export
+to Sage like his HVAC screenshot and for Sage only; supplier invoices approved by the
+managing director, then on a separate page to be paid, where accounts pay and mark paid; the
+portal in a client section and a subcontractor section, with several subcontractors on a site
+kept apart, their invoices going to Invoicing to be approved by the managing director or the
+site manager and paid by accounts; a confirm button whenever an invoice is marked approved or
+paid; and the portal telling the client or subcontractor by itself that it has been paid.
+
+**Built.**
+
+- **Squares** (`AgeTile` in `ClientInvoices.tsx`, `inAgeBucket` in `lib/invoices.ts`): links
+  to `/invoicing/invoiced?age=0` to `3`; "Owed to us" is the Sent tab with no band.
+- **Back** (`app/back.ts`, `lib/trail.ts`, the button in `Shell.tsx`): the app keeps its own
+  count of the screens opened since signing in, because the browser will not say whether the
+  entry before this one is a screen of the app or the sign-in page. It survives a reload
+  (kept for the tab in `cod.trail`), follows the browser's own back and forward, and starts
+  again on signing in or changing role, so it never leads into the role before. On a phone it
+  is an arrow only; the firm's name now shortens with three dots when the bar is too narrow.
+- **Sage export** (`SageExport.tsx`, `lib/accounts-export.ts`): `PACKAGE` is "Sage"
+  everywhere a screen names it. The Xero and spreadsheet layouts, `accountsPackage` in
+  `brand.ts` and the two switches are deleted, not hidden. One list per day book, laid out
+  as the file: Type, Account, Nominal, Dept, Date, Ref, Details, Net, Tax, VAT, and on screen
+  only "In Sage" (a date, or Not yet). Download CSV takes only the rows Sage does not have and
+  stamps them; "Earlier files" under the table gives any file again. Sales is one SI row per
+  client invoice. Purchases is one PI row (PC for a credit note) per line of each approved
+  invoice, since each line has its own nominal and department, with the VAT shared between
+  the lines to the cent, plus "Ex ref" for the firm's own file number. Purchase nominals are
+  in `PURCHASE_NOMINALS`: 5000 materials (the code Majella named), 5010 hired plant, 5020
+  equipment, 5100 transport, 5002 other, 6002 subcontractors. Accounts are the subcontractor's
+  own, or made from the supplier's name (`accountRefOf`: BURLIM). Dates stay dd/mm/yyyy, as
+  Sage imports them; his screenshot shows them the other way round.
+- **Supplier invoices** (`Purchases.tsx`): `readStatus` "confirmed" still means approved and
+  in job costs, so nothing that reads costs changed. Where one stands is worked out
+  (`purchaseStage`): not read, to check, sent back, waiting for approval, to be paid, paid,
+  or credit taken. Accounts check the reading as before; then "Approve to job costs" if they
+  may, or "Send for approval" if not, with the reason beside the button. The approver can
+  send it back with a reason. The limit is in `db.approvalLimits` and is changed by the
+  managing director on To approve (0 means every supplier invoice goes to them).
+- **To approve** (`/invoicing/approve`): everything waiting, who each waits for, and Approve
+  and Send back on the rows the person looking may decide.
+- **To be paid** (`/invoicing/to-pay`): approved invoices, soonest first, late ones in red;
+  Mark paid asks for the day and an optional bank reference; a Paid tab with Undo paid.
+  Paying itself stays at the bank and in Sage (decision 64).
+- **Every invoice has the firm's own file number** (`fileNo`, F-1001 up, in arrival order)
+  and a date to be paid by (30 days from its own date).
+- **Subcontractors** are records now (`db.subcontractors`: five firms, with the sites each is
+  on). Their invoices are `SupplierInvoice`s with `party: "subcontractor"`, in their own list
+  (`/invoicing/subcontractor`, grouped by site). One sent in through the portal needs no
+  reading: it is charged to its site under labour and subcontractors and goes straight to
+  whoever approves it.
+- **Projects, Subcontractor invoices** (`projects/SubInvoices.tsx`): a site manager sees the
+  sites they run, each subcontractor under their own name, with Approve and Send back.
+- **Portal** (`portal/SubPortal.tsx`, sidebar in two sections): the list by site on the left;
+  on the right what that subcontractor sees: news (paid in the last month, sent back with the
+  reason), three figures, then each of their sites with their invoices and where each stands.
+  "Send an invoice": site, their number (one already used is refused), date, what for,
+  amount, VAT rate, and a copy as a PDF or photo (optional, kept in the browser).
+- **Confirm** (`ApproveDialog`, `SendBackDialog`, `PaidDialog` in `purchase-shared.tsx`;
+  `ClientPaidDialog` in `shared.tsx`).
+- **Paid notices**: both portals show them from the records (`recently`, 30 days), so Undo
+  paid takes the notice away again. The email is `receiptEmail` or `remittanceEmail` in
+  `lib/purchases.ts`. Suppliers have no portal and no address on file, so they get neither.
+- **Sample data** (`seed/purchases.ts`, DATA_VERSION 13): seven new invoices, none approved,
+  so no job's costs or margin moved: two from suppliers waiting for the managing director,
+  four from subcontractors through the portal waiting for their site managers, one sent back
+  to a subcontractor. Every approved invoice got who approved it (by the rule above), the
+  Friday payment run that paid it, and the first Tuesday of the next month it went to Sage.
+  The two that fell due most recently are left unpaid, so something is late.
+- The overview's "Money" block counts invoices waiting for approval and approved to be
+  paid. Ask AI's summary lists where each purchase invoice stands (not tried with a model).
+
+**Tested.** 306 automated tests (54 new: `purchases.test.ts`, `purchase-actions.test.ts`,
+`trail.test.ts`, more in `accounts-export.test.ts`, `invoices.test.ts` and `seed.test.ts`).
+Browser: the new `pay_check.py` (98 checks: Back across departments, over a reload, with the
+browser's forward button and after a change of role; each square; Sage sales and purchases
+and the two files; accounts sending for approval and approving within the limit; Cancel and
+Confirm on approval; the managing director approving, sending back and changing the limit;
+To be paid, Mark paid, Undo; the subcontractor list by site and that one subcontractor never
+sees another's invoices; sending an invoice with a PDF copy, a refused file and a refused
+duplicate number; a site manager seeing and approving only his own sites; the remittance
+advice with and without the tick; the notice in both portals; a client kept out of the
+subcontractors' section; dark mode; phone width on eleven screens and the top bar).
+`m3b_check.py`, `m4_check.py`, `m5_check.py`, `review_check.py` and `inv_check.py` changed for
+the confirm boxes, the Sage page and the two new permissions. All fifteen suites run: 822
+pass, and the one Week ahead check fails as before. `csp_check.py` passes (37 screens, no
+violations). Not tested: a real phone; Safari and Firefox; `fn_check.py`; the hosted build
+behind Cloudflare; Ask AI with the changed summary. `preview_check5.py` and
+`preview_check6.py` (the retired preview) still name old screens.
+
+**Known gaps in this part.**
+
+- Subcontractor invoices carry ordinary VAT (13.5% by default). In Ireland a principal
+  contractor accounts for the VAT on construction work itself and deducts RCT; none of that
+  is here, at his word (decision 64). A CFO will notice.
+- The Sage tax code T3 for 13.5% and the purchase nominal codes other than 5000 are Sage's
+  usual ones, not Oldstone's own. Confirm with Majella.
+- The office cannot log a subcontractor's invoice that came on paper: it either arrives by
+  email and is read like a supplier's, or comes through the portal.
+- A subcontractor whose invoice is sent back sends a new one; the old one stays as it is.
+- The overview's AI overview and Portal panel say nothing of invoices to approve yet (the
+  Portal panel shows four items, and five portal invoices would push every client off it).
+- Reopen is not offered once an invoice has gone to Sage; a correction is made there.
+
+**Next, in this order:**
+
+1. Subcontractors on the site timesheet in their own section, and each invoice matched
+   against the hours the site manager recorded (decisions 70 and 81).
+2. The rest of the supplier side as Majella worked it: nominal code chosen per line (today it
+   follows the cost heading), new suppliers with Sage's mandatory fields, and the reports she
+   ran (by supplier, project, nominal code, month).
 3. All invoices by site: money in and out per project, and the monthly profitability
    report she built by hand in Excel (valuation, wages from hours at a loaded rate,
    materials and subcontractors, profit).
-4. Not decided yet: credit notes (a settled query can only record what was agreed);
-   whether Ask AI should refuse to chase an invoice with an open query (it does not know
-   about queries yet); a subcontractor sign-in role.
+4. Not decided yet: credit notes on client invoices; whether Ask AI should refuse to chase
+   an invoice with an open query; a subcontractor sign-in role; whether suppliers get a
+   remittance email.
 
 ## Build status
 

@@ -83,7 +83,8 @@ def steps(page, ctx):
     # ── Paying a final account closes the job
     go(page, "/invoicing/invoiced", "table")
     no = data(page, "db.salesInvoices.find(i=>i.projectId==='pr-C711' && i.description==='Final account').accountsNo")
-    page.locator("tbody tr", has_text=no).get_by_role("button", name="Mark paid").click(); page.wait_for_timeout(400)
+    page.locator("tbody tr", has_text=no).get_by_role("button", name="Mark paid").click(); page.wait_for_timeout(300)
+    page.get_by_role("dialog").get_by_role("button", name="Confirm paid").click(); page.wait_for_timeout(400)
     check("Marking the last unpaid invoice on C711 paid closes the project", data(page, "db.projects.find(p=>p.code==='C711').status") == "Closed")
     go(page, "/projects/C711?tab=history")
     check("and its history says so", f"{no} paid: paid in full, project closed" in main.inner_text())

@@ -17,7 +17,8 @@ import { dashboardNumbers } from "@/data/kpis";
 import type { Db, Person, Project } from "@/data/types";
 import { invoiceNo } from "@/lib/billing";
 import { addDays, fmtLong } from "@/lib/dates";
-import { hireEstimate, READ_STATUS } from "@/lib/job-costs";
+import { hireEstimate } from "@/lib/job-costs";
+import { partyOf, payBy, PURCHASE_LABEL, purchaseStage } from "@/lib/purchases";
 import { REGION, r2 } from "@/lib/money";
 import { currentPlan, invoicePaid, nextInvoice } from "@/lib/subscription";
 import { costBreakdown, marginPct, quoteTotal } from "@/lib/quotes";
@@ -123,7 +124,7 @@ export function buildSnapshot(db: Db, today: string, brand: Brand): string {
       "## Dashboard figures (as on the Dashboard overview)",
       `Sales: ${k.sales.enquiriesToQuote} enquiries to quote; ${k.sales.quotesOut} quotes out (sent or opened); ${k.sales.openedNotAnswered} opened but not answered; ${k.sales.queried} queried.`,
       `Sites: ${k.sites.live} live; ${k.sites.peopleOnSite} people marked on site today; ${k.sites.timeStampsNotSent} live sites have not sent today's time stamps; ${k.sites.notStarted} projects not started; ${k.sites.openRequests} open site requests.`,
-      `Money: ${k.money.toInvoice} ready to invoice worth ${n0(k.money.toInvoiceValue)}; ${k.money.held} held; ${k.money.overdue} invoices past their due date worth ${n0(k.money.overdueValue)} gross; ${k.money.supplierToCheck} supplier invoices to check.`,
+      `Money: ${k.money.toInvoice} ready to invoice worth ${n0(k.money.toInvoiceValue)}; ${k.money.held} held; ${k.money.overdue} invoices past their due date worth ${n0(k.money.overdueValue)} gross; ${k.money.supplierToCheck} supplier invoices for accounts to check; ${k.money.toApprove} supplier and subcontractor invoices waiting for approval; ${k.money.toPay} approved and waiting to be paid worth ${n0(k.money.toPayValue)} gross, ${k.money.toPayLate} of them past their date.`,
       `Compliance: ${k.compliance.certsExpired} training tickets expired; ${k.compliance.certsSoon} expiring within 30 days; ${k.compliance.plantOverdue} plant checks overdue; ${k.compliance.fleetOverdue} vehicle items overdue; ${k.compliance.holidaysPending} holiday requests waiting; ${k.compliance.hiredToReturn} hire returns notified.`,
       `Approvals waiting: ${k.approvalsPending}.`,
     ].join("\n"),
@@ -263,9 +264,9 @@ export function buildSnapshot(db: Db, today: string, brand: Brand): string {
   );
   out.push(
     table(
-      "Supplier invoices",
-      ["supplier", "number", "date", "type", "net", "gross", "job ref on the paper", "status", "costed to"],
-      db.supplierInvoices.map((s) => [s.supplier, s.invoiceNo, s.invoiceDate, s.docType === "credit_note" ? "credit note" : "invoice", n2(s.subtotal), n2(s.total), s.jobRef ?? "none", READ_STATUS[s.readStatus] ?? s.readStatus, s.allocations.map((a) => `${code(a.projectId)} ${a.category} ${n2(a.amount)}`).join("; ")]),
+      "Supplier and subcontractor invoices (accounts check each one; it is approved into job costs, then paid by accounts)",
+      ["from", "supplier or subcontractor", "number", "date", "type", "net", "gross", "job ref on the paper", "where it stands", "approved by", "to be paid by", "paid on", "costed to"],
+      db.supplierInvoices.map((s) => [s.supplier, partyOf(s), s.invoiceNo, s.invoiceDate, s.docType === "credit_note" ? "credit note" : "invoice", n2(s.subtotal), n2(s.total), s.jobRef ?? "none", `${PURCHASE_LABEL[purchaseStage(s)]}${s.sentBack && purchaseStage(s) === "back" ? `: ${clean(s.sentBack.reason)}` : ""}`, s.confirmedBy ?? "", s.docType === "credit_note" ? "" : payBy(s), s.paidOn ?? "", s.allocations.map((a) => `${code(a.projectId)} ${a.category} ${n2(a.amount)}`).join("; ")]),
     ),
   );
   out.push(

@@ -39,7 +39,7 @@ def steps(page, ctx):
     # ── The section and its list
     go(page, "/invoicing", "table")
     t = side.inner_text()
-    check("Sidebar: money in, money out, the accounts package and set-up", all(w in t for w in ["Money in", "Client invoices", "Unpaid", "Held", "Client queries", "Money out", "Supplier invoices", "Job costs", "Accounts package", "Accounts export", "Set-up", "Invoice design", "Email template"]), t)
+    check("Sidebar: money in, money out, Sage and set-up", all(w in t for w in ["Money in", "Client invoices", "Unpaid", "Held", "Client queries", "Money out", "Supplier invoices", "Subcontractor invoices", "To approve", "To be paid", "Job costs", "Sage export", "Set-up", "Invoice design", "Email template"]) and "Accounts package" not in t, t)
     n = data(page, "({ all: db.salesInvoices.length, draft: db.salesInvoices.filter(i=>i.status==='To invoice').length, held: db.salesInvoices.filter(i=>i.status==='Held').length, out: db.salesInvoices.filter(i=>i.status==='Invoiced').length, late: db.salesInvoices.filter(i=>i.status==='Invoiced' && i.dueOn < day).length, paid: db.salesInvoices.filter(i=>i.status==='Paid').length })")
     names = [" ".join(x.inner_text().split()) for x in tabs.get_by_role("tab").all()]
     check("List: the tabs count drafts, held, sent, overdue and paid from the records", [x.replace(" ", "") for x in names] == [f"All{n['all']}", f"Drafts{n['draft']}", f"Held{n['held']}", f"Sent{n['out']}", f"Overdue{n['late']}", f"Paid{n['paid']}"], names)
@@ -94,7 +94,7 @@ def steps(page, ctx):
     t = paper.inner_text()
     check("Invoice page: the paper shows the firm, the client and address, their order, the site, each line and the totals", all(w in t for w in ["ABC Construction Ltd", rec["client"], "For the attention of Susan Kane", "Co. Galway", rec["po"], "C720", "Dayworks: opening up at the kitchen lintel", "6.5", "€14,003.63", "DRAFT", "Bank details"]), t[:400])
     s = strip.inner_text()
-    check("Invoice page: a draft reads not sent, not due, not in the accounts package", "Not yet" in s and "Nobody outside the office has seen it" in s and "In Sage 50" in s)
+    check("Invoice page: a draft reads not sent, not due, not in the accounts package", "Not yet" in s and "Nobody outside the office has seen it" in s and "In Sage" in s and "Sage 50" not in s)
     check("Invoice page: beside it, the client and project it belongs to, and others on the same project", main.get_by_role("link", name=rec["client"]).count() >= 1 and main.get_by_role("link", name="C720 Ardmullen House").count() >= 1 and "Same project" in main.inner_text() and "Left to bill" in main.inner_text())
     page.get_by_role("button", name="Change the draft").click(); page.wait_for_timeout(300)
     dlg().get_by_label("Rate of line 2").fill("50"); dlg().get_by_label("Notes printed on the invoice").fill("Dayworks sheets signed on site are attached.")
@@ -136,11 +136,13 @@ def steps(page, ctx):
 
     # ── Paid, and undo
     page.get_by_role("button", name="Mark paid").click(); page.wait_for_timeout(300)
+    page.get_by_role("dialog").get_by_role("button", name="Confirm paid").click(); page.wait_for_timeout(300)
     check("Mark paid: the page says paid today, and the message offers Undo", "Marked paid" in main.inner_text() and data(page, f"db.salesInvoices.find(i=>i.accountsNo==='{nxt}').status") == "Paid" and page.get_by_role("button", name="Undo", exact=True).count() == 1)
     page.get_by_role("button", name="Undo", exact=True).click(); page.wait_for_timeout(300)
     st = data(page, f"(() => {{ const i = db.salesInvoices.find(i=>i.accountsNo==='{nxt}'); return [i.status, i.paidOn === undefined, i.history[i.history.length-1].what] }})()")
     check("Undo: it is owed again and the history says the payment was taken back", st == ["Invoiced", True, "Paid taken back: it was marked by mistake"] and page.get_by_role("button", name="Mark paid").count() == 1, st)
-    page.get_by_role("button", name="Mark paid").click(); page.wait_for_timeout(9300)
+    page.get_by_role("button", name="Mark paid").click(); page.wait_for_timeout(300)
+    page.get_by_role("dialog").get_by_role("button", name="Confirm paid").click(); page.wait_for_timeout(9300)
     check("Paid: once the message has gone, Undo paid stays on the page", page.get_by_role("button", name="Undo", exact=True).count() == 0 and page.get_by_role("button", name="Undo paid").count() == 1)
     page.get_by_role("button", name="Undo paid").click(); page.wait_for_timeout(300)
     check("Undo paid: unpaid again", data(page, f"db.salesInvoices.find(i=>i.accountsNo==='{nxt}').status") == "Invoiced")
@@ -148,7 +150,8 @@ def steps(page, ctx):
     # ── Emails and comments from the invoice
     main.get_by_label("Message to the client").fill("Could you confirm which cost centre this should quote?")
     main.get_by_role("button", name="Send email").click(); page.wait_for_timeout(300)
-    check("Email the client from the invoice: filed under Sent against the invoice and shown here", data(page, f"db.mails.filter(m=>m.folder==='Sent' && m.salesInvoiceId===db.salesInvoices.find(i=>i.accountsNo==='{nxt}').id).length") == 2 and main.get_by_text("Email sent", exact=True).count() == 2)
+    # Four by now: the email that carried the invoice, a receipt for each of the two times it was marked paid, and this one.
+    check("Email the client from the invoice: filed under Sent against the invoice and shown here", data(page, f"db.mails.filter(m=>m.folder==='Sent' && m.salesInvoiceId===db.salesInvoices.find(i=>i.accountsNo==='{nxt}').id).length") == 4 and main.get_by_text("Email sent", exact=True).count() == 4 and data(page, f"db.mails.filter(m=>m.subject.startsWith('Payment received') && m.salesInvoiceId===db.salesInvoices.find(i=>i.accountsNo==='{nxt}').id).length") == 2)
     main.get_by_role("tab", name="Comment for the office").click()
     main.get_by_label("Comment for the office").fill("Susan is away until Monday.")
     main.get_by_role("button", name="Add comment").click(); page.wait_for_timeout(300)
@@ -181,9 +184,9 @@ def steps(page, ctx):
     waiting = data(page, "db.salesInvoices.filter(i=>i.issuedOn && !i.exportedAt).length")
     page.get_by_role("button", name=f"More for {nxt}").click()
     with page.expect_download() as dl:
-        page.get_by_role("menuitem", name="Export to Sage 50 now").click()
+        page.get_by_role("menuitem", name="Export to Sage now").click()
     line = open(dl.value.path(), encoding="utf-8", newline="").read()
-    check("Export from the invoice: one Sage 50 line for it, and the page says it is in Sage 50", line.count("\r\n") == 1 and line.startswith("SI,ARDM01,4000,720,") and f",{nxt}," in line and ",12325.00,T3,1663.88" in line and data(page, "db.salesInvoices.filter(i=>i.issuedOn && !i.exportedAt).length") == waiting - 1 and "Not yet" not in strip.inner_text().split("In Sage 50")[1], line)
+    check("Export from the invoice: one Sage line for it, and the page says it is in Sage", line.count("\r\n") == 1 and line.startswith("SI,ARDM01,4000,720,") and f",{nxt}," in line and ",12325.00,T3,1663.88" in line and data(page, "db.salesInvoices.filter(i=>i.issuedOn && !i.exportedAt).length") == waiting - 1 and "Not yet" not in strip.inner_text().split("In Sage")[1], line)
     page.screenshot(path=f"{OUT}/203-invoice-sent.png")
 
     # ── Invoice design

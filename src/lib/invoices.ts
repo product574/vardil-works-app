@@ -43,6 +43,9 @@ export const grossOf = (i: Pick<SalesInvoice, "net" | "vatPct">) => gross(i.net,
 export const AGE_BUCKETS = ["Not yet due", "1 to 30 days late", "31 to 60 days late", "Over 60 days late"] as const;
 export const ageBucket = (late: number) => (late <= 0 ? 0 : late <= 30 ? 1 : late <= 60 ? 2 : 3);
 
+/** Is this a sent, unpaid invoice in one age band: 0 not yet due, 1 to 3 as in AGE_BUCKETS? */
+export const inAgeBucket = (i: Pick<SalesInvoice, "status" | "dueOn">, bucket: number, today: string) => i.status === "Invoiced" && ageBucket(daysLate(i, today)) === bucket;
+
 /** What clients owe, including VAT, by how late it is. */
 export function agedDebt(invoices: SalesInvoice[], today: string) {
   const unpaid = invoices.filter((i) => i.status === "Invoiced");

@@ -18,6 +18,7 @@ import type { Db } from "../types";
 import { seedAssets } from "./assets";
 import { quotedMargin, seedCommercial } from "./commercial";
 import { fillInvoicing } from "./invoicing";
+import { APPROVAL_LIMIT, fillPurchases, seedPendingPurchases, seedSubcontractors } from "./purchases";
 import { fillManagementDates, seedActivity, seedFiles, seedMail, seedManagement, seedMoney } from "./office";
 import { seedPeople } from "./people";
 import { quoteTargets, seedProjects } from "./projects";
@@ -74,6 +75,9 @@ function buildIrishSeed(realToday: string, opts: { emailDomain?: string; vatPct?
   const files = seedFiles(r, day, proj.projects, meta, names, handoverPending);
   const money = seedMoney(r, day, { projects: proj.projects, meta, attendance: proj.attendance, people, scopeTasks: proj.scopeTasks, hiredPlant: assets.hiredPlant, clients, vatPct });
   const mails = seedMail(day, domain, holidays.find((h) => h.id === "hol-1")!);
+  const subcontractors = seedSubcontractors();
+  // Invoices waiting for approval: none is in a job's costs yet, so no margin moves.
+  money.supplierInvoices.push(...seedPendingPurchases(day, people, proj.projects, subcontractors, { goods: vatPct === 20 ? 20 : 23, work: vatPct }));
 
   const db: Db = {
     people,
@@ -90,6 +94,8 @@ function buildIrishSeed(realToday: string, opts: { emailDomain?: string; vatPct?
     ...assets,
     files,
     ...money,
+    subcontractors,
+    approvalLimits: [{ id: "supplier", amount: APPROVAL_LIMIT }],
     invoiceComments: [],
     invoiceQueries: [],
     mails,
@@ -106,6 +112,7 @@ function buildIrishSeed(realToday: string, opts: { emailDomain?: string; vatPct?
   // Written last, from the finished records.
   fillManagementDates(db, day, opts.region ?? "IE");
   fillInvoicing(db, day, domain, opts.legalName ?? DEFAULT_BRAND.legalName, "IE");
+  fillPurchases(db, day, domain, opts.legalName ?? DEFAULT_BRAND.legalName, "IE", vatPct);
   db.activity = seedActivity(db, day);
   return { day, db };
 }

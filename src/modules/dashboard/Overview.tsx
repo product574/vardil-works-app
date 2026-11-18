@@ -65,6 +65,8 @@ export function Overview() {
                 ["Invoices held", k.money.held, k.money.held > 0 ? "warn" : undefined],
                 ["Overdue from clients", access.seeValues ? `${k.money.overdue} (${money0(k.money.overdueValue, region)})` : k.money.overdue, k.money.overdue > 0 ? "bad" : undefined],
                 ["Supplier invoices to check", k.money.supplierToCheck],
+                ["Invoices waiting for approval", k.money.toApprove, k.money.toApprove > 0 ? "warn" : undefined],
+                ["Approved, to be paid", access.seeValues ? `${k.money.toPay} (${money0(k.money.toPayValue, region)})` : k.money.toPay, k.money.toPayLate > 0 ? "bad" : undefined],
               ]}
             />
             <Glance

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { authMode } from "@/app/auth";
 import { DEFAULT_BRAND, DEMO_BUILT_BY, DEMO_BUILT_BY_URL } from "@/config/brand";
 import { useData, usePrefs } from "@/data/store";
-import { PACKAGE_NAME } from "@/lib/accounts-export";
+import { PACKAGE } from "@/lib/accounts-export";
 import { shrinkImage } from "@/lib/image";
 import { REGION } from "@/lib/money";
 import { Button, cx, Dialog, Fact, Field, PageBody, PageHead, Panel, Section, Segmented } from "@/ui";
@@ -36,9 +36,9 @@ export function Branding() {
           changed && (
             <Button
               onClick={() => {
-                const { region, accountsPackage } = brand;
+                const { region } = brand;
                 resetBrand();
-                setBrand({ region, accountsPackage });
+                setBrand({ region });
                 toast(`Back to ${DEFAULT_BRAND.brandName}`);
               }}
             >
@@ -111,7 +111,7 @@ export function Branding() {
   );
 }
 
-/** Ireland or the UK, and which accounts package the firm uses. */
+/** Ireland or the UK. The accounts package is always Sage (18 Nov). */
 export function RegionAccounts() {
   const brand = usePrefs((s) => s.brand);
   const setBrand = usePrefs((s) => s.setBrand);
@@ -123,7 +123,7 @@ export function RegionAccounts() {
   };
   return (
     <>
-      <PageHead title="Region and accounts" note="Set these to match the prospect before a call, so the money, the place names and the export file all look like theirs." />
+      <PageHead title="Region" note="Set this to match the prospect before a call, so the money, the VAT and the place names all look like theirs. Invoices always go to Sage, laid out as Sage imports them." />
       <PageBody className="grid max-w-3xl gap-6">
         <Section title="Region">
           <Panel className="px-4 py-4">
@@ -134,12 +134,6 @@ export function RegionAccounts() {
               ))}
             </ul>
             <p className="mt-3 text-[0.93rem] text-muted">Firm, town and people names in the sample data are invented and stay the same in both.</p>
-          </Panel>
-        </Section>
-        <Section title="Accounts package">
-          <Panel className="px-4 py-4">
-            <Segmented label="Accounts package" value={brand.accountsPackage} onChange={(v) => { setBrand({ accountsPackage: v }); toast(`Exports will be laid out for ${PACKAGE_NAME[v]}`); }} options={[{ value: "sage50", label: "Sage 50" }, { value: "xero", label: "Xero" }, { value: "sheet", label: "Spreadsheet" }]} />
-            <p className="mt-3 text-muted">Decides the layout of the file on Invoicing, Accounts export. Changing it never touches the data.</p>
           </Panel>
         </Section>
       </PageBody>
@@ -191,7 +185,7 @@ export function About() {
             <dl>
               <Fact label="Today in the demo">{new Date(day + "T12:00:00Z").toLocaleDateString("en-IE", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC" })}</Fact>
               <Fact label="Set up for">
-                {brand.region === "UK" ? "United Kingdom" : "Ireland"}, {PACKAGE_NAME[brand.accountsPackage]}
+                {brand.region === "UK" ? "United Kingdom" : "Ireland"}, exporting to {PACKAGE}
               </Fact>
               <Fact label="In it">
                 {db.projects.length} projects, {db.people.filter((p) => p.active).length} people, {db.quotes.length} quotes, {db.plant.length} items of plant, {db.vehicles.filter((v) => v.active).length} vehicles, {db.files.length} files

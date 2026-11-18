@@ -147,8 +147,8 @@ describe("sending, paying and undoing", () => {
   it("exporting stamps each invoice and says so in its history", () => {
     const waiting = db().salesInvoices.filter((x) => x.issuedOn && !x.exportedAt);
     expect(waiting.length).toBeGreaterThan(0);
-    markExported(waiting.map((x) => x.id), "Sage 50");
-    for (const w of waiting) expect([!!inv(w.id).exportedAt, inv(w.id).history?.at(-1)?.what]).toEqual([true, "Exported to Sage 50"]);
+    markExported(waiting.map((x) => x.id), "Sage");
+    for (const w of waiting) expect([!!inv(w.id).exportedAt, inv(w.id).history?.at(-1)?.what]).toEqual([true, "Exported to Sage"]);
   });
 });
 

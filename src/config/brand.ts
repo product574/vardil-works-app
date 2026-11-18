@@ -6,7 +6,6 @@
  * drop their logo into /public and set `logoUrl`. Nothing else needs touching.
  */
 export type Region = "IE" | "UK";
-export type AccountsPackage = "sage50" | "xero" | "sheet";
 
 export type Brand = {
   /** Short name shown top left and on the sign-in page. */
@@ -21,8 +20,6 @@ export type Brand = {
   logoUrl: string;
   /** Sets currency, VAT rate, certificate names and vehicle test names. */
   region: Region;
-  /** Which accounts package the invoicing export is laid out for. */
-  accountsPackage: AccountsPackage;
   /** Email domain used for the invented staff and shared mailboxes. */
   emailDomain: string;
 };
@@ -34,7 +31,6 @@ export const DEFAULT_BRAND: Brand = {
   accent: "#4682B4",
   logoUrl: "",
   region: "IE",
-  accountsPackage: "sage50",
   emailDomain: "abcconstruction.example",
 };
 

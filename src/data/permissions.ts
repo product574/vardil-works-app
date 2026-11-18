@@ -18,7 +18,9 @@ export const PERMISSIONS: { key: PermKey; group: "Projects" | "Sales" | "People"
   { key: "approveLeave", group: "People", label: "Approve leave", hint: "Approve or decline holiday requests and record leave" },
   { key: "seeRates", group: "People", label: "See hourly rates", hint: "Pay rates on the employee register" },
   { key: "managePlant", group: "Plant", label: "Manage plant and fleet", hint: "Move plant, record services and renewals, collect hired plant, add and remove vehicles and their documents" },
-  { key: "manageInvoices", group: "Invoicing", label: "Handle invoices", hint: "Confirm supplier invoices to job costs, issue sales invoices, mark them paid, export to the accounts package" },
+  { key: "manageInvoices", group: "Invoicing", label: "Handle invoices", hint: "Check supplier invoices and approve the small ones, send client invoices, mark invoices paid, export to Sage" },
+  { key: "approveInvoices", group: "Invoicing", label: "Approve invoices of any size", hint: "Supplier invoices over the limit accounts may approve, and any subcontractor's invoice. Also sets that limit" },
+  { key: "approveSubInvoices", group: "Invoicing", label: "Approve subcontractor invoices for their own sites", hint: "A subcontractor's invoice for a site they run, before accounts pay it (Projects, Subcontractor invoices)" },
 ];
 
 export const ALL_PERMS: PermKey[] = PERMISSIONS.map((p) => p.key);

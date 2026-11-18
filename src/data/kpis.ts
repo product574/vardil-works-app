@@ -2,6 +2,7 @@
 // with the screens they link to.
 import { dueState } from "@/lib/status";
 import { nextServiceDate } from "@/lib/status";
+import { needsAccounts, owedOut, purchaseStage } from "@/lib/purchases";
 import type { Db } from "./types";
 
 export function ageDays(from: string | undefined, today: string) {
@@ -10,6 +11,7 @@ export function ageDays(from: string | undefined, today: string) {
 }
 
 export function dashboardNumbers(db: Db, today: string) {
+  const owed = owedOut(db.supplierInvoices, today);
   const live = db.projects.filter((p) => p.status === "Live");
   const liveIds = new Set(live.map((p) => p.id));
   const todays = db.attendance.filter((a) => a.date === today && liveIds.has(a.projectId));
@@ -40,7 +42,12 @@ export function dashboardNumbers(db: Db, today: string) {
       held: db.salesInvoices.filter((i) => i.status === "Held").length,
       overdue: overdueInvoices.length,
       overdueValue: overdueInvoices.reduce((s, i) => s + i.net * (1 + i.vatPct / 100), 0),
-      supplierToCheck: db.supplierInvoices.filter((i) => i.readStatus !== "confirmed").length,
+      supplierToCheck: db.supplierInvoices.filter(needsAccounts).length,
+      // Supplier and subcontractor invoices: waiting for whoever approves them, then for accounts to pay.
+      toApprove: db.supplierInvoices.filter((i) => purchaseStage(i) === "approve").length,
+      toPay: owed.count,
+      toPayValue: owed.total,
+      toPayLate: owed.lateCount,
     },
     compliance: {
       certsExpired: certs.filter((c) => dueState(c.expires, today) === "overdue").length,

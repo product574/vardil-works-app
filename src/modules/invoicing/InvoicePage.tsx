@@ -1,10 +1,10 @@
 import { ArrowLeft, ChatText, EnvelopeSimple, PaperPlaneTilt, Question } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { addInvoiceComment, clearHold, deleteDraftInvoice, emailAboutInvoice, issueInvoice, markExported, markInvoicePaid, raiseInvoiceQuery, unmarkInvoicePaid } from "@/data/actions";
-import { useDay, usePrefs } from "@/data/store";
+import { addInvoiceComment, clearHold, deleteDraftInvoice, emailAboutInvoice, issueInvoice, markExported, raiseInvoiceQuery, unmarkInvoicePaid } from "@/data/actions";
+import { useDay } from "@/data/store";
 import type { InvoiceQuery, SalesInvoice } from "@/data/types";
-import { buildExport, PACKAGE_NAME } from "@/lib/accounts-export";
+import { buildSalesExport, PACKAGE } from "@/lib/accounts-export";
 import { invoiceNo } from "@/lib/billing";
 import { dFull, dShort, when } from "@/lib/format";
 import { billedSoFar, billingEmail, dueWords, exportRowOf, grossOf, leftToBill, openQuery, routeWords, stageOf, threadFor, type ThreadItem } from "@/lib/invoices";
@@ -13,7 +13,7 @@ import { Badge, Button, cx, Dialog, Empty, Fact, Field, Menu, MenuItem, PageBody
 import { ProjectBadge } from "@/ui/status";
 import { toast } from "@/ui/toast";
 import { DraftInvoiceDialog } from "./ClientInvoices";
-import { downloadInvoicePdf, InvoicePaper, saveFile, SendInvoiceDialog, StageBadge, useInv, useInvoiceDoc } from "./shared";
+import { ClientPaidDialog, downloadInvoicePdf, InvoicePaper, saveFile, SendInvoiceDialog, StageBadge, useInv, useInvoiceDoc } from "./shared";
 
 const LINK = "text-accent-ink underline-offset-2 hover:underline";
 
@@ -26,12 +26,12 @@ export function InvoicePage() {
   const { ref = "" } = useParams();
   const { db, day, region, access, canEdit, project, client } = useInv();
   const navigate = useNavigate();
-  const pkg = usePrefs((s) => s.brand.accountsPackage);
   const i = db.salesInvoices.find((x) => invoiceNo(x).toLowerCase() === ref.toLowerCase() || x.ref.toLowerCase() === ref.toLowerCase());
   const p = i ? project(i.projectId) : undefined;
   const c = i ? client(i.clientId) : undefined;
   const doc = useInvoiceDoc(i, c, p);
   const [sending, setSending] = useState(false);
+  const [paying, setPaying] = useState(false);
   const [editing, setEditing] = useState(false);
   const [asking, setAsking] = useState(false);
   const no = i ? invoiceNo(i) : "";
@@ -58,10 +58,10 @@ export function InvoicePage() {
   const stage = stageOf(i, day);
   const query = openQuery(db.invoiceQueries, i.id);
   const out = stage === "sent" || stage === "overdue";
-  const pkgName = PACKAGE_NAME[pkg];
+  const pkgName = PACKAGE;
   const pdf = () => downloadInvoicePdf(doc).then((name) => toast(`${name} downloaded`));
   const exportNow = () => {
-    const file = buildExport(pkg, [exportRowOf(i, c, p)]);
+    const file = buildSalesExport([exportRowOf(i, c, p)]);
     saveFile(file.fileName, file.text, "text/csv");
     markExported([i.id], pkgName);
     toast(`${no} exported for ${pkgName}`);
@@ -102,13 +102,7 @@ export function InvoicePage() {
               </Button>
             )}
             {canEdit && out && (
-              <Button
-                variant="primary"
-                onClick={() => {
-                  markInvoicePaid(i.id);
-                  toast(`${no} marked paid`, { label: "Undo", run: () => unmarkInvoicePaid(i.id) });
-                }}
-              >
+              <Button variant="primary" onClick={() => setPaying(true)}>
                 Mark paid
               </Button>
             )}
@@ -197,7 +191,7 @@ export function InvoicePage() {
               <dt className="text-[0.87rem] text-muted">In {pkgName}</dt>
               <dd className={cx("text-[1.15rem] font-medium", i.issuedOn && !i.exportedAt && "text-warn")}>{i.exportedAt ? dFull(i.exportedAt.slice(0, 10)) : i.issuedOn ? "Not yet" : "-"}</dd>
               <dd className="text-[0.87rem] text-muted">
-                {i.exportedAt ? "Exported. Any correction is made in the accounts package." : i.issuedOn ? (
+                {i.exportedAt ? `Exported. Any correction is made in ${PACKAGE}.` : i.issuedOn ? (
                   <>
                     Goes with the next export.{" "}
                     <Link to="/invoicing/export" className={LINK}>
@@ -317,6 +311,7 @@ export function InvoicePage() {
         </div>
       </PageBody>
       <SendInvoiceDialog invoice={sending ? i : null} onClose={() => setSending(false)} />
+      <ClientPaidDialog invoice={paying ? i : null} onClose={() => setPaying(false)} />
       <DraftInvoiceDialog open={editing} edit={i} onClose={() => setEditing(false)} onSaved={() => undefined} />
       <LogQueryDialog invoice={asking ? i : null} who={c?.contactName ?? ""} onClose={() => setAsking(false)} />
     </>

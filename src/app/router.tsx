@@ -21,6 +21,7 @@ const files = () => import("@/modules/files/Files");
 const invoicing = () => import("@/modules/invoicing");
 const inbox = () => import("@/modules/inbox/Inbox");
 const portal = () => import("@/modules/portal/Portal");
+const subPortal = () => import("@/modules/portal/SubPortal");
 const site = () => import("@/modules/site/SiteView");
 const settings = () => import("@/modules/settings");
 const admin = () => import("@/modules/admin");
@@ -73,6 +74,7 @@ export const router = create([
           screen("projects/extras", projects, (m) => m.ExtrasAndSnagging),
           screen("projects/completed", projects, (m) => m.Completed),
           screen("projects/requests", projects, (m) => m.SiteRequests),
+          screen("projects/subcontractor-invoices", projects, (m) => m.SubcontractorInvoicesForSites),
           screen("projects/:code", projects, (m) => m.ProjectPage),
           screen("people/timesheet", people, (m) => m.Timesheet),
           screen("people/history", people, (m) => m.AttendanceHistory),
@@ -102,6 +104,9 @@ export const router = create([
           screen("invoicing/design", invoicing, (m) => m.InvoiceDesignPage),
           screen("invoicing/email", invoicing, (m) => m.EmailTemplatePage),
           screen("invoicing/supplier", invoicing, (m) => m.SupplierInvoices),
+          screen("invoicing/subcontractor", invoicing, (m) => m.SubcontractorInvoices),
+          screen("invoicing/approve", invoicing, (m) => m.ToApprove),
+          screen("invoicing/to-pay", invoicing, (m) => m.ToPay),
           screen("invoicing/costs", invoicing, (m) => m.JobCosts),
           // The three folders are one screen. A separate component for each means the list filter
           // starts fresh when you change folder.
@@ -109,6 +114,7 @@ export const router = create([
           screen("inbox/sent", inbox, (m) => () => <m.Inbox folder="Sent" />),
           screen("inbox/archive", inbox, (m) => () => <m.Inbox folder="Archive" />),
           screen("portal", portal, (m) => m.Portal),
+          screen("portal/subcontractors", subPortal, (m) => m.SubPortal),
           screen("site", site, (m) => m.SiteView),
           screen("settings", settings, (m) => m.Branding),
           screen("settings/region", settings, (m) => m.RegionAccounts),

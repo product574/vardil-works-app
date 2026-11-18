@@ -68,7 +68,7 @@ def steps(page, ctx):
     # ── Client portal
     go(page, "/portal")
     check("Portal: staff see it as a chosen client, with a note that this is the client's view", main.get_by_label("Client to view the portal as").count() == 1 and "This is exactly what Susan Kane sees" in main.inner_text())
-    check("Portal: one page that scrolls, quotes first then each project", "Quotes waiting on you" in main.inner_text() and main.get_by_role("heading", name="Ardmullen House").count() == 1 and side.get_by_role("link").count() == 1)
+    check("Portal: one page that scrolls, quotes first then each project", "Quotes waiting on you" in main.inner_text() and main.get_by_role("heading", name="Ardmullen House").count() == 1 and [l.inner_text().split("\n")[0] for l in side.get_by_role("link").all()] == ["What a client sees", "What a subcontractor sees"])
     blk = page.get_by_label("C720 Ardmullen House")
     check("Portal: a project shows progress, the work, photos, documents and invoices", blk.get_by_role("progressbar").get_attribute("aria-valuenow") == data(page, "(() => { const t = db.scopeTasks.filter(t=>t.projectId==='pr-C720'); return String(Math.round(t.filter(x=>x.done).length / t.length * 100)); })()") and all(t in blk.inner_text() for t in ["The work", "Latest photos", "Documents", "Invoices"]))
     check("Portal: nothing internal is shown in the project or the quote", not re.search(r"margin|cost to date|hourly|labour cost|site manager", blk.inner_text() + main.locator("table").first.inner_text(), re.I))
@@ -178,10 +178,8 @@ def steps(page, ctx):
     check("Region: an invoice uses the UK VAT rate and pounds", "VAT at 20%" in main.inner_text() and "£" in main.inner_text() and "€" not in main.inner_text())
     page.screenshot(path=f"{OUT}/165-uk.png")
     go(page, "/settings/region")
-    page.get_by_role("tab", name="Xero").click(); page.wait_for_timeout(200)
     page.get_by_role("tab", name="Ireland").click(); page.wait_for_timeout(200); dlg().get_by_role("button", name="Switch and rebuild the sample data").click(); page.wait_for_timeout(700)
-    check("Region: switching back restores the Irish data, and the accounts package choice is kept", data(page, "db.projects.find(p=>p.code==='C720').county") == "Galway" and page.get_by_role("tab", name="Xero").get_attribute("aria-selected") == "true")
-    page.get_by_role("tab", name="Sage 50").click()
+    check("Region: switching back restores the Irish data, and there is no choice of accounts package: it is Sage", data(page, "db.projects.find(p=>p.code==='C720').county") == "Galway" and page.get_by_role("tab", name="Xero").count() == 0 and "Accounts package" not in main.inner_text() and "always go to Sage" in main.inner_text())
     go(page, "/settings/about")
     check("About: says what the demo is, what is in it and who built it", "sample data held in this browser" in main.inner_text() and "projects" in main.inner_text() and main.get_by_role("link", name="Vardil").get_attribute("target") == "_blank")
 

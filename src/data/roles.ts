@@ -43,8 +43,9 @@ export const ROLES: RoleDef[] = [
     home: "/projects",
     departments: ["dashboard", "inbox", "sales", "projects", "schedule", "people", "plant", "files", "portal", "site"],
     money: [true, true],
-    // Everything except answering requests, which waits for the managing director (16 Nov).
-    perms: ALL_PERMS.filter((k) => k !== "answerRequests"),
+    // Everything except answering requests, which waits for the managing director (16 Nov),
+    // and approving invoices: the managing director, or a site manager for a subcontractor (18 Nov).
+    perms: ALL_PERMS.filter((k) => k !== "answerRequests" && k !== "approveInvoices" && k !== "approveSubInvoices"),
   },
   {
     key: "site",
@@ -54,13 +55,13 @@ export const ROLES: RoleDef[] = [
     home: "/people/timesheet",
     departments: ["projects", "schedule", "people", "plant", "files", "site"],
     money: [true, false],
-    perms: ["markTime", "correctTime"],
+    perms: ["markTime", "correctTime", "approveSubInvoices"],
   },
   {
     key: "accounts",
     title: "Accounts",
     personId: "p-acc",
-    does: "Checks supplier invoices, raises sales invoices, exports to the accounts package.",
+    does: "Checks supplier invoices, sends client invoices, pays what is approved, exports to Sage.",
     home: "/invoicing",
     departments: ["dashboard", "inbox", "invoicing", "sales", "people", "plant", "files"],
     money: [true, true],

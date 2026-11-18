@@ -1,18 +1,18 @@
 import { DotsThree, MagnifyingGlass, Trash } from "@phosphor-icons/react";
 import { useId, useState } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { clearHold, deleteDraftInvoice, draftInvoice, issueInvoice, markInvoicePaid, saveDraftInvoice, unmarkInvoicePaid } from "@/data/actions";
+import { clearHold, deleteDraftInvoice, draftInvoice, issueInvoice, saveDraftInvoice, unmarkInvoicePaid } from "@/data/actions";
 import { co } from "@/data/place";
 import { useData, useInvoiceDesign, usePrefs } from "@/data/store";
 import type { InvoiceLine, SalesInvoice } from "@/data/types";
 import { invoiceNo } from "@/lib/billing";
 import { dShort, plural } from "@/lib/format";
-import { agedDebt, billedSoFar, billingEmail, doneNotBilled, draftStarts, dueWords, grossOf, invoiceDoc, leftToBill, linesNet, lineTotal, matches, openQuery, routeWords, type Show, shows, stageOf, VAT_RATES } from "@/lib/invoices";
+import { AGE_BUCKETS, agedDebt, billedSoFar, billingEmail, doneNotBilled, draftStarts, dueWords, grossOf, inAgeBucket, invoiceDoc, leftToBill, linesNet, lineTotal, matches, openQuery, routeWords, type Show, shows, stageOf, VAT_RATES } from "@/lib/invoices";
 import { money0, money2, r2, REGION } from "@/lib/money";
 import { scopePercent } from "@/lib/project-costs";
 import { Badge, Button, cx, Dialog, Empty, Field, Menu, MenuItem, NumInput, PageBody, PageHead, Panel, Segmented } from "@/ui";
 import { toast } from "@/ui/toast";
-import { downloadInvoicePdf, SendInvoiceDialog, StageBadge, useInv } from "./shared";
+import { ClientPaidDialog, downloadInvoicePdf, SendInvoiceDialog, StageBadge, useInv } from "./shared";
 
 const ORDER = { draft: 0, held: 1, overdue: 2, sent: 3, paid: 4 } as const;
 const TABS: { value: Show; label: string }[] = [
@@ -24,6 +24,17 @@ const TABS: { value: Show; label: string }[] = [
   { value: "paid", label: "Paid" },
 ];
 const ADDRESS: Record<Show, string> = { all: "/invoicing", draft: "/invoicing?show=draft", paid: "/invoicing?show=paid", held: "/invoicing/held", unpaid: "/invoicing/invoiced", overdue: "/invoicing/invoiced?show=overdue", sent: "/invoicing/invoiced" };
+
+/** One square of the aged debt strip. Pressing it shows those invoices in the list below; pressing it again shows all that is owed. */
+function AgeTile({ to, current, label, amount, count, tone }: { to: string; current: boolean; label: string; amount: string; count: number; tone?: "warn" | "bad" }) {
+  return (
+    <Link to={to} aria-current={current ? "true" : undefined} className={cx("press block px-3 py-2", current ? "bg-accent-soft" : "hover:bg-accent-soft/60")}>
+      <span className="block text-[0.87rem] text-muted">{label}</span>
+      <span className={cx("block text-[1.15rem] font-medium", tone === "bad" && "text-bad", tone === "warn" && "text-warn")}>{amount}</span>
+      <span className="block text-[0.87rem] text-muted">{plural(count, "invoice")}</span>
+    </Link>
+  );
+}
 
 /**
  * Every invoice to a client in one list: drafts still to go, held ones, what has been sent and
@@ -39,21 +50,21 @@ export function ClientInvoices() {
   const [text, setText] = useState("");
   const [drafting, setDrafting] = useState(false);
   const [sending, setSending] = useState<SalesInvoice | null>(null);
+  const [paying, setPaying] = useState<SalesInvoice | null>(null);
 
   const q = params.get("show");
   const show: Show = pathname.endsWith("/held") ? "held" : pathname.endsWith("/invoiced") ? (q === "overdue" ? "overdue" : "unpaid") : q === "draft" || q === "paid" ? q : "all";
+  // The squares over the list narrow "Sent" to one age band: /invoicing/invoiced?age=1 is 1 to 30 days late.
+  const band = params.get("age");
+  const age = show === "unpaid" && band !== null && /^[0-3]$/.test(band) ? Number(band) : null;
   const all = db.salesInvoices;
   const count = (s: Show) => all.filter((i) => shows(i, s, day)).length;
   const rows = all
-    .filter((i) => shows(i, show, day) && matches(i, text, client(i.clientId), project(i.projectId)))
+    .filter((i) => shows(i, show, day) && (age === null || inAgeBucket(i, age, day)) && matches(i, text, client(i.clientId), project(i.projectId)))
     .sort((a, b) => ORDER[stageOf(a, day)] - ORDER[stageOf(b, day)] || (stageOf(a, day) === "paid" ? (b.paidOn ?? "").localeCompare(a.paidOn ?? "") : (a.dueOn ?? "").localeCompare(b.dueOn ?? "")) || a.ref.localeCompare(b.ref));
   const debt = agedDebt(all, day);
   const drafts = count("draft");
   const pdf = (i: SalesInvoice) => downloadInvoicePdf(invoiceDoc({ invoice: i, client: client(i.clientId), project: project(i.projectId), design, company: brand.legalName, region, today: day })).then((name) => toast(`${name} downloaded`));
-  const pay = (i: SalesInvoice) => {
-    markInvoicePaid(i.id);
-    toast(`${invoiceNo(i)} marked paid`, { label: "Undo", run: () => unmarkInvoicePaid(i.id) });
-  };
 
   return (
     <>
@@ -71,20 +82,12 @@ export function ClientInvoices() {
       <PageBody className="grid max-w-[92rem] grid-cols-1 gap-4">
         {access.seeValues && show !== "draft" && show !== "held" && show !== "paid" && (
           <Panel className="overflow-x-auto">
-            <dl aria-label="Aged debt" className="grid min-w-[40rem] grid-cols-5 divide-x divide-line">
-              <div className="px-3 py-2">
-                <dt className="text-[0.87rem] text-muted">Owed to us, with VAT</dt>
-                <dd className="text-[1.15rem] font-medium">{money0(debt.gross, region)}</dd>
-                <dd className="text-[0.87rem] text-muted">{plural(debt.count, "invoice")}</dd>
-              </div>
+            <nav aria-label="Aged debt" className="grid min-w-[40rem] grid-cols-5 divide-x divide-line">
+              <AgeTile to="/invoicing/invoiced" current={show === "unpaid" && age === null} label="Owed to us, with VAT" amount={money0(debt.gross, region)} count={debt.count} />
               {debt.buckets.map((b, n) => (
-                <div key={b.label} className="px-3 py-2">
-                  <dt className="text-[0.87rem] text-muted">{b.label}</dt>
-                  <dd className={cx("text-[1.15rem] font-medium", b.count > 0 && n === 3 && "text-bad", b.count > 0 && n > 0 && n < 3 && "text-warn")}>{money0(b.gross, region)}</dd>
-                  <dd className="text-[0.87rem] text-muted">{plural(b.count, "invoice")}</dd>
-                </div>
+                <AgeTile key={b.label} to={age === n ? "/invoicing/invoiced" : `/invoicing/invoiced?age=${n}`} current={age === n} label={b.label} amount={money0(b.gross, region)} count={b.count} tone={b.count === 0 || n === 0 ? undefined : n === 3 ? "bad" : "warn"} />
               ))}
-            </dl>
+            </nav>
           </Panel>
         )}
         <div className="flex flex-wrap items-center gap-3">
@@ -99,7 +102,7 @@ export function ClientInvoices() {
         </div>
         <Panel className="overflow-x-auto">
           {rows.length === 0 ? (
-            <Empty title={text ? `No invoice matches "${text}"` : show === "draft" ? "No drafts waiting to go" : show === "held" ? "Nothing is held" : show === "overdue" ? "Nothing is overdue" : show === "paid" ? "Nothing paid yet" : "No invoices here yet"}>
+            <Empty title={text ? `No invoice matches "${text}"` : age !== null ? `No invoice is ${age === 0 ? "sent and not yet due" : (AGE_BUCKETS[age] ?? "").toLowerCase()}` : show === "draft" ? "No drafts waiting to go" : show === "held" ? "Nothing is held" : show === "overdue" ? "Nothing is overdue" : show === "paid" ? "Nothing paid yet" : "No invoices here yet"}>
               {text ? "Try the invoice number, the client's name, the site code or their order number." : show === "draft" ? "A stage payment appears here when its stage is reached, a final account when a project is marked complete, or draft one by hand." : show === "held" ? "A final account is held while an extra is waiting to be agreed or snagging is open." : undefined}
             </Empty>
           ) : (
@@ -177,7 +180,7 @@ export function ClientInvoices() {
                             </Button>
                           )}
                           {canEdit && (stage === "sent" || stage === "overdue") && (
-                            <Button size="sm" onClick={() => pay(i)}>
+                            <Button size="sm" onClick={() => setPaying(i)}>
                               Mark paid
                             </Button>
                           )}
@@ -277,6 +280,7 @@ export function ClientInvoices() {
       </PageBody>
       <DraftInvoiceDialog open={drafting} onClose={() => setDrafting(false)} onSaved={(ref) => navigate(`/invoicing/client/${ref}`)} />
       <SendInvoiceDialog invoice={sending} onClose={() => setSending(null)} />
+      <ClientPaidDialog invoice={paying} onClose={() => setPaying(null)} />
     </>
   );
 }

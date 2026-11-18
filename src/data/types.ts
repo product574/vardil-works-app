@@ -415,6 +415,30 @@ export type FileItem = {
 export type CostCategoryKey = "plant" | "equipment" | "material" | "labour" | "transport" | "other";
 export type Allocation = { id: ID; projectId: ID; category: CostCategoryKey; amount: number; description: string };
 
+/**
+ * A firm that works on our sites under its own name: scaffolders, carvers, electricians. In
+ * the portal each one sees its own sites and its own invoices, and nothing of anyone else's.
+ */
+export type Subcontractor = {
+  id: ID;
+  name: string;
+  trade: string;
+  contactName: string;
+  email: string;
+  phone: string;
+  /** Their account in the accounts package. */
+  accountRef: string;
+  termsDays: number;
+  /** The sites they are working on. */
+  projectIds: ID[];
+};
+
+/**
+ * An invoice the firm has to pay: from a supplier of goods or hire, or from a subcontractor.
+ * It is checked (each line given a project and a cost heading), approved into job costs, paid
+ * by accounts and marked paid. `readStatus` "confirmed" means approved: the rest of where it
+ * stands is worked out from the fields below (src/lib/purchases.ts).
+ */
 export type SupplierInvoice = {
   id: ID;
   supplier: string;
@@ -431,9 +455,34 @@ export type SupplierInvoice = {
   readStatus: "not_read" | "needs_review" | "confirmed";
   lines: { description: string; amount: number }[];
   allocations: Allocation[];
+  /** Who approved it into job costs, and when. */
   confirmedBy?: string;
   confirmedAt?: Stamp;
+  /** Missing means a supplier. */
+  party?: "supplier" | "subcontractor";
+  subcontractorId?: ID;
+  /** How it reached the office. Missing means by email. */
+  via?: "email" | "portal" | "post";
+  /** The firm's own file number, counting up: written on the paper and sent to the accounts package as the extra reference. */
+  fileNo?: string;
+  dueOn?: Day;
+  /** Checked and waiting for someone who may approve it. */
+  askedBy?: string;
+  askedAt?: Stamp;
+  /** The approver sent it back, with the reason. Cleared when it is asked for or approved again. */
+  sentBack?: { by: string; at: Stamp; reason: string };
+  paidOn?: Day;
+  paidBy?: string;
+  /** The bank reference of the payment, if accounts noted one. */
+  paidRef?: string;
+  /** Stamped when it went to the accounts package, so it is never sent twice. */
+  exportedAt?: Stamp;
+  /** The copy a subcontractor attached in the portal, or the office attached when logging it. */
+  copy?: { name: string; dataUrl: string };
 };
+
+/** A money limit somebody may approve up to. "supplier": what accounts may approve on a supplier invoice, before VAT; above it the managing director approves. */
+export type ApprovalLimit = { id: "supplier"; amount: number };
 
 /**
  * "To invoice" is a draft that has not gone to the client, "Invoiced" one that has. On screen
@@ -528,6 +577,8 @@ export type Mail = {
   attachment?: string;
   /** The client invoice this email is about, so it shows on the invoice's own page. */
   salesInvoiceId?: ID;
+  /** The supplier or subcontractor invoice this email is about: a remittance advice. */
+  purchaseInvoiceId?: ID;
 };
 
 // ── Management layer ──────────────────────────────────────────────────────────
@@ -600,7 +651,7 @@ export type AccessRow = {
 };
 
 /** Things a person may do. The list with its wording is in src/data/permissions.ts. */
-export type PermKey = "allProjects" | "manageProjects" | "priceQuotes" | "approveDrafts" | "answerRequests" | "planWeek" | "markTime" | "correctTime" | "manageStaff" | "approveLeave" | "seeRates" | "managePlant" | "manageInvoices";
+export type PermKey = "allProjects" | "manageProjects" | "priceQuotes" | "approveDrafts" | "answerRequests" | "planWeek" | "markTime" | "correctTime" | "manageStaff" | "approveLeave" | "seeRates" | "managePlant" | "manageInvoices" | "approveInvoices" | "approveSubInvoices";
 export type AccessKey = PermKey | "seeValues" | "seeMargins";
 
 /**
@@ -641,6 +692,8 @@ export type Db = {
   fleetDocs: FleetDoc[];
   files: FileItem[];
   supplierInvoices: SupplierInvoice[];
+  subcontractors: Subcontractor[];
+  approvalLimits: ApprovalLimit[];
   salesInvoices: SalesInvoice[];
   invoiceComments: InvoiceComment[];
   invoiceQueries: InvoiceQuery[];

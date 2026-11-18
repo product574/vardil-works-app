@@ -2,9 +2,12 @@ import { Check, FilmStrip, Image as ImageIcon } from "@phosphor-icons/react";
 import { useState } from "react";
 import { acceptQuote, queryQuote } from "@/data/actions";
 import { co } from "@/data/place";
-import { useData, usePrefs } from "@/data/store";
+import { useData, useDay, usePrefs } from "@/data/store";
 import type { Client, Db, Project, Quote } from "@/data/types";
+import { invoiceNo } from "@/lib/billing";
 import { dFull, dShort, plural } from "@/lib/format";
+import { grossOf } from "@/lib/invoices";
+import { recently } from "@/lib/purchases";
 import { gross, money0, money2, REGION } from "@/lib/money";
 import { scopePercent } from "@/lib/project-costs";
 import { quoteTotal } from "@/lib/quotes";
@@ -21,6 +24,7 @@ const SHARED = ["Handover", "Conservation reports", "Drawings"];
  */
 export function Portal() {
   const db = useData((s) => s.db);
+  const day = useDay();
   const role = usePrefs((s) => s.role);
   const brand = usePrefs((s) => s.brand);
   const clientId = usePrefs((s) => s.portalClientId);
@@ -37,6 +41,8 @@ export function Portal() {
     );
   const quotes = db.quotes.filter((q) => q.clientId === client.id && ["Sent", "Opened", "Queried"].includes(q.status));
   const order = { Live: 0, "Not started": 1, Complete: 2, Invoiced: 3, Closed: 4 } as Record<string, number>;
+  // A payment accounts have marked as received is news for the client, for a month.
+  const paid = db.salesInvoices.filter((i) => i.clientId === client.id && i.status === "Paid" && recently(i.paidOn, day)).sort((a, b) => (b.paidOn ?? "").localeCompare(a.paidOn ?? ""));
   const projects = db.projects.filter((p) => p.clientId === client.id).sort((a, b) => (order[a.status] ?? 9) - (order[b.status] ?? 9) || b.code.localeCompare(a.code));
   return (
     <>
@@ -60,6 +66,18 @@ export function Portal() {
       />
       <PageBody className="grid max-w-4xl gap-7">
         {role !== "client" && <p className="rounded-md bg-accent-soft px-3 py-2 text-accent-ink">This is exactly what {client.contactName} sees. Costs, margins and internal notes never appear here.</p>}
+        {paid.length > 0 && (
+          <ul className="grid gap-2" aria-label="News on your invoices">
+            {paid.map((i) => {
+              const p = db.projects.find((x) => x.id === i.projectId);
+              return (
+                <li key={i.id} className="rounded-md bg-ok-soft px-3 py-2 text-ok">
+                  <span className="font-medium">Payment received: invoice {invoiceNo(i)}{p ? ` for ${p.name}` : ""}.</span> {money2(grossOf(i), brand.region)} reached us on {dFull(i.paidOn)}. Thank you, nothing more is owed on it.
+                </li>
+              );
+            })}
+          </ul>
+        )}
         {quotes.length > 0 && (
           <Section title="Quotes waiting on you">
             <div className="grid gap-3">

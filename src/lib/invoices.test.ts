@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Client, InvoiceQuery, Project, SalesInvoice } from "@/data/types";
-import { agedDebt, billedSoFar, billingEmail, DEFAULT_EMAIL, defaultDesign, doneNotBilled, draftStarts, dueWords, emailFor, exportRowOf, fill, firstName, invoiceDoc, leftToBill, linesNet, matches, nextAccountsNo, openQuery, pdfName, printedLines, routeWords, salesNominal, shows, stageOf, threadFor } from "./invoices";
+import { agedDebt, billedSoFar, billingEmail, DEFAULT_EMAIL, defaultDesign, doneNotBilled, draftStarts, dueWords, emailFor, exportRowOf, fill, firstName, invoiceDoc, leftToBill, linesNet, matches, nextAccountsNo, openQuery, pdfName, printedLines, routeWords, salesNominal, shows, stageOf, threadFor, inAgeBucket } from "./invoices";
 
 const today = "2026-11-18";
 const inv = (over: Partial<SalesInvoice>): SalesInvoice => ({ id: "inv-1", ref: "INV-5201", projectId: "pr-C720", clientId: "c-02", description: "Stage payment 1: render removal and first coats", net: 1000, vatPct: 13.5, status: "To invoice", ...over });
@@ -180,5 +180,20 @@ describe("what has been said about an invoice", () => {
   it("knows when a query is still open", () => {
     expect(openQuery([q], "inv-1")).toBeUndefined();
     expect(openQuery([{ ...q, status: "Open" }], "inv-1")?.id).toBe("q1");
+  });
+});
+
+describe("the squares over the list", () => {
+  it("each picks out the sent, unpaid invoices in its own age band", () => {
+    const sent = (dueOn: string) => ({ status: "Invoiced" as const, dueOn });
+    const today = "2026-11-18";
+    expect([0, 1, 2, 3].map((b) => inAgeBucket(sent("2026-11-18"), b, today))).toEqual([true, false, false, false]);
+    expect([0, 1, 2, 3].map((b) => inAgeBucket(sent("2026-11-17"), b, today))).toEqual([false, true, false, false]);
+    expect([0, 1, 2, 3].map((b) => inAgeBucket(sent("2026-10-19"), b, today))).toEqual([false, true, false, false]);
+    expect([0, 1, 2, 3].map((b) => inAgeBucket(sent("2026-10-18"), b, today))).toEqual([false, false, true, false]);
+    expect([0, 1, 2, 3].map((b) => inAgeBucket(sent("2026-09-01"), b, today))).toEqual([false, false, false, true]);
+  });
+  it("a draft, a held or a paid invoice is in none of them", () => {
+    for (const status of ["To invoice", "Held", "Paid"] as const) expect([0, 1, 2, 3].some((b) => inAgeBucket({ status, dueOn: "2026-10-01" }, b, "2026-11-18"))).toBe(false);
   });
 });

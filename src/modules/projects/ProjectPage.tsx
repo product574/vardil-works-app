@@ -740,7 +740,7 @@ function CostsTab({ p, db, pct }: TabProps & { pct: number }) {
             </tfoot>
           </table>
         </Panel>
-        {unconfirmed > 0 && <p className="mt-2 text-[0.93rem] text-warn">{plural(unconfirmed, "supplier invoice")} for this project {unconfirmed === 1 ? "is" : "are"} waiting to be checked and {unconfirmed === 1 ? "is" : "are"} not counted yet.</p>}
+        {unconfirmed > 0 && <p className="mt-2 text-[0.93rem] text-warn">{plural(unconfirmed, "invoice")} for this project {unconfirmed === 1 ? "is" : "are"} waiting to be checked or approved and {unconfirmed === 1 ? "is" : "are"} not counted yet.</p>}
       </Section>
       <Section title="Against the contract">
         <Panel>

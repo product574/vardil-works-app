@@ -8,8 +8,9 @@
 import { ASK_ACTIVITY } from "@/ai/tools";
 import { finalAccountNet, holdReason, invoiceNo, invoicedLine, paidLine, salesInvoiceFile } from "@/lib/billing";
 import { addDays, isWeekend } from "@/lib/dates";
-import { linesNet, nextAccountsNo, routeWords } from "@/lib/invoices";
-import { REGION } from "@/lib/money";
+import { billingEmail, grossOf, linesNet, nextAccountsNo, routeWords } from "@/lib/invoices";
+import { nextFileNo, partyOf, purchaseStage, receiptEmail, remittanceEmail } from "@/lib/purchases";
+import { r2, REGION } from "@/lib/money";
 import { normaliseReg } from "@/lib/fleet";
 import { quoteTotal } from "@/lib/quotes";
 import { attendanceShort } from "@/lib/week";
@@ -1263,30 +1264,183 @@ function readOne(db: Db, s: Db["supplierInvoices"][number]) {
   return true;
 }
 
-/** Confirm what was read and post each line to a project's job costs. */
-export function confirmSupplierInvoice(id: ID, allocations: Omit<Allocation, "id">[]) {
+const purchaseName = (s: Db["supplierInvoices"][number]) => `${s.supplier} ${s.invoiceNo}`;
+const whose = (s: Db["supplierInvoices"][number]) => (partyOf(s) === "subcontractor" ? "subcontractor" : "supplier");
+
+/**
+ * Approve an invoice into job costs: each line is posted to its project, and the invoice
+ * goes on to accounts to be paid. `allocations` are the lines as just checked on screen; left
+ * out, the ones already on the invoice stand (it was checked before it was sent for approval).
+ * Who may approve which invoice is decided by `mayApprove` in src/lib/purchases.ts.
+ */
+export function approvePurchase(id: ID, allocations?: Omit<Allocation, "id">[]) {
   mutate((db) => {
     const s = db.supplierInvoices.find((x) => x.id === id);
-    if (!s) return;
-    s.allocations = allocations.map((a) => ({ ...a, id: newId("al") }));
+    if (!s || s.readStatus !== "needs_review") return;
+    if (allocations) s.allocations = allocations.map((a) => ({ ...a, id: newId("al") }));
+    if (s.allocations.length === 0) return;
     s.readStatus = "confirmed";
     s.confirmedBy = actorName(db);
     s.confirmedAt = nowStamp();
+    delete s.sentBack;
     // The paper is filed with each project it was charged to.
     for (const projectId of new Set(s.allocations.map((a) => a.projectId))) fileInvoice(db, projectId, s.fileName, s.receivedAt.slice(0, 10), s.supplier, "Email");
-    log(db, "Confirmed a supplier invoice to job costs", `${s.supplier} ${s.invoiceNo}`, "invoicing");
+    log(db, `Approved a ${whose(s)} invoice into job costs`, purchaseName(s), "invoicing");
   });
 }
 
+/** The name this had before approval and payment were separate steps (18 Nov). */
+export const confirmSupplierInvoice = approvePurchase;
+
+/** Accounts have checked an invoice they may not approve themselves: it waits for someone who may. */
+export function sendForApproval(id: ID, allocations: Omit<Allocation, "id">[]) {
+  mutate((db) => {
+    const s = db.supplierInvoices.find((x) => x.id === id);
+    if (!s || s.readStatus !== "needs_review" || allocations.length === 0) return;
+    s.allocations = allocations.map((a) => ({ ...a, id: newId("al") }));
+    s.askedBy = actorName(db);
+    s.askedAt = nowStamp();
+    delete s.sentBack;
+    log(db, `Sent a ${whose(s)} invoice for approval`, purchaseName(s), "invoicing");
+  });
+}
+
+/** Whoever was asked to approve it says no for now, and why. A subcontractor reads the reason in their portal. */
+export function sendBackPurchase(id: ID, reason: string) {
+  mutate((db) => {
+    const s = db.supplierInvoices.find((x) => x.id === id);
+    if (!s || purchaseStage(s) !== "approve" || !reason.trim()) return;
+    s.sentBack = { by: actorName(db), at: nowStamp(), reason: reason.trim() };
+    delete s.askedBy;
+    delete s.askedAt;
+    log(db, `Sent a ${whose(s)} invoice back`, `${purchaseName(s)}: ${reason.trim()}`, "invoicing");
+  });
+}
+
+/** Accounts take back an invoice they sent for approval, to change it. */
+export function takeBackPurchase(id: ID) {
+  mutate((db) => {
+    const s = db.supplierInvoices.find((x) => x.id === id);
+    if (!s || purchaseStage(s) !== "approve") return;
+    delete s.askedBy;
+    delete s.askedAt;
+    log(db, `Took a ${whose(s)} invoice back from approval`, purchaseName(s), "invoicing");
+  });
+}
+
+/** Undo an approval: the invoice comes out of job costs until it is approved again. Not once it has been paid. */
 export function reopenSupplierInvoice(id: ID) {
   mutate((db) => {
     const s = db.supplierInvoices.find((x) => x.id === id);
-    if (!s || s.readStatus !== "confirmed") return;
+    if (!s || s.readStatus !== "confirmed" || s.paidOn) return;
     db.files = db.files.filter((f) => !(f.category === "Invoices" && f.name === s.fileName));
     s.readStatus = "needs_review";
     delete s.confirmedBy;
     delete s.confirmedAt;
-    log(db, "Reopened a supplier invoice", `${s.supplier} ${s.invoiceNo}`, "invoicing");
+    delete s.askedBy;
+    delete s.askedAt;
+    log(db, `Reopened a ${whose(s)} invoice`, purchaseName(s), "invoicing");
+  });
+}
+
+/**
+ * Accounts have paid an approved invoice through the bank and say so here. A subcontractor
+ * sees it as paid in their portal straight away; with `email` they are also sent a remittance
+ * advice, filed under Email, Sent. In the demo nothing leaves the browser.
+ */
+export function markPurchasePaid(id: ID, opts: { paidOn?: string; ref?: string; email?: boolean } = {}) {
+  mutate((db) => {
+    const s = db.supplierInvoices.find((x) => x.id === id);
+    if (!s || purchaseStage(s) !== "pay") return;
+    s.paidOn = opts.paidOn && opts.paidOn <= getDay() ? opts.paidOn : getDay();
+    s.paidBy = actorName(db);
+    if (opts.ref?.trim()) s.paidRef = opts.ref.trim();
+    const sub = db.subcontractors.find((x) => x.id === s.subcontractorId);
+    if (sub && opts.email) {
+      const { brand, role, operativeId, asPersonId } = usePrefs.getState();
+      const site = db.projects.find((p) => p.id === s.allocations[0]?.projectId);
+      const email = remittanceEmail({ invoiceNo: s.invoiceNo, total: s.total, paidOn: s.paidOn, paidRef: s.paidRef, contactName: sub.contactName, project: site ? `${site.code} ${site.name}` : "", sender: actorName(db), company: brand.legalName, region: brand.region });
+      const mailbox = `accounts@${brand.emailDomain}`;
+      db.mails.unshift({ id: newId("mail"), mailbox, folder: "Sent", fromName: actorName(db), fromAddress: mailbox, subject: email.subject, body: `To: ${sub.contactName} <${sub.email}>\n\n${email.body}`, receivedAt: nowStamp(), read: true, intent: "General", routedToId: signedInPersonId(role, asPersonId, operativeId, db.people) ?? "p-md", purchaseInvoiceId: s.id });
+    }
+    log(db, `Marked a ${whose(s)} invoice paid`, `${purchaseName(s)}${sub ? (opts.email ? ", told in the portal and by email" : ", told in the portal") : ""}`, "invoicing");
+  });
+}
+
+/** Take back a "paid" marked by mistake: the invoice is waiting to be paid again, and the portal no longer says it is paid. */
+export function unmarkPurchasePaid(id: ID) {
+  mutate((db) => {
+    const s = db.supplierInvoices.find((x) => x.id === id);
+    if (!s || !s.paidOn) return;
+    delete s.paidOn;
+    delete s.paidBy;
+    delete s.paidRef;
+    log(db, "Took back a payment marked by mistake", purchaseName(s), "invoicing");
+  });
+}
+
+/** Record that these supplier and subcontractor invoices went to Sage. The file is built by src/lib/accounts-export.ts. */
+export function markPurchasesExported(ids: ID[], packageName: string) {
+  mutate((db) => {
+    const at = nowStamp();
+    for (const s of db.supplierInvoices) if (ids.includes(s.id)) s.exportedAt = at;
+    log(db, "Exported purchase invoices to accounts", `${ids.length} to ${packageName}`, "invoicing");
+  });
+}
+
+/**
+ * A subcontractor sends an invoice in through the portal, for one of their sites. It is theirs
+ * to describe, so nothing needs reading: it is charged to that site under labour and
+ * subcontractors and goes straight to whoever may approve it (the site's manager or the
+ * managing director). `who` is the subcontractor's contact, for the record.
+ */
+export function subcontractorSendsInvoice(subcontractorId: ID, f: { projectId: ID; invoiceNo: string; invoiceDate: string; description: string; net: number; vatPct: number; copy?: { name: string; dataUrl: string } }): ID | null {
+  let id: ID | null = null;
+  mutate((db) => {
+    const sub = db.subcontractors.find((x) => x.id === subcontractorId);
+    const p = db.projects.find((x) => x.id === f.projectId);
+    if (!sub || !p || !f.invoiceNo.trim() || !(f.net > 0)) return;
+    const subtotal = r2(f.net);
+    const vat = r2((subtotal * f.vatPct) / 100);
+    const description = f.description.trim() || `Work at ${p.name}`;
+    id = newId("si");
+    db.supplierInvoices.unshift({
+      id,
+      supplier: sub.name,
+      invoiceNo: f.invoiceNo.trim(),
+      invoiceDate: f.invoiceDate,
+      docType: "invoice",
+      subtotal,
+      vat,
+      total: r2(subtotal + vat),
+      jobRef: p.code,
+      fileName: f.copy?.name ?? `${sub.name} ${f.invoiceNo.trim()}.pdf`,
+      receivedAt: nowStamp(),
+      readStatus: "needs_review",
+      lines: [{ description, amount: subtotal }],
+      allocations: [{ id: newId("al"), projectId: p.id, category: "labour", amount: subtotal, description }],
+      party: "subcontractor",
+      subcontractorId: sub.id,
+      via: "portal",
+      fileNo: nextFileNo(db.supplierInvoices),
+      dueOn: addDays(f.invoiceDate, sub.termsDays),
+      askedBy: sub.contactName,
+      askedAt: nowStamp(),
+      ...(f.copy ? { copy: f.copy } : {}),
+    });
+    log(db, "Sent an invoice through the portal", `${sub.name} ${f.invoiceNo.trim()}, ${p.code} ${p.name}`, "portal", sub.contactName);
+  });
+  return id;
+}
+
+/** Change what accounts may approve on a supplier's invoice, before VAT. Above it the managing director approves. */
+export function setApprovalLimit(amount: number) {
+  mutate((db) => {
+    const row = db.approvalLimits.find((x) => x.id === "supplier");
+    const to = Math.max(0, Math.round(amount));
+    if (!row || row.amount === to) return;
+    row.amount = to;
+    log(db, "Changed what accounts may approve", `Supplier invoices up to ${to} before VAT`, "invoicing");
   });
 }
 
@@ -1406,19 +1560,27 @@ export function deleteDraftInvoice(id: ID) {
   });
 }
 
-export function markInvoicePaid(id: ID) {
+export function markInvoicePaid(id: ID, opts: { paidOn?: string; email?: boolean } = {}) {
   mutate((db) => {
     const i = db.salesInvoices.find((x) => x.id === id);
     if (!i || i.status !== "Invoiced") return;
     i.status = "Paid";
-    i.paidOn = getDay();
+    i.paidOn = opts.paidOn && opts.paidOn <= getDay() ? opts.paidOn : getDay();
     // Once the final account and everything else billed on the job is paid, the job is closed.
     const p = db.projects.find((x) => x.id === i.projectId);
     const all = db.salesInvoices.filter((x) => x.projectId === i.projectId);
     const closing = !!p && p.status === "Invoiced" && all.some((x) => x.description === "Final account") && all.every((x) => x.status === "Paid");
     if (p && closing) p.status = "Closed";
     audit(db, i.projectId, paidLine(invoiceNo(i), closing));
-    note(db, i, "Marked paid");
+    // The client's portal shows it as paid from now on. With `email` they also get a receipt.
+    const c = db.clients.find((x) => x.id === i.clientId);
+    const to = billingEmail(c);
+    if (opts.email && c && to) {
+      const { brand } = usePrefs.getState();
+      const email = receiptEmail({ number: invoiceNo(i), gross: grossOf(i), paidOn: i.paidOn, contactName: c.contactName, project: p ? `${p.code} ${p.name}` : "", sender: actorName(db), company: brand.legalName, region: brand.region });
+      fileInvoiceMail(db, i, { toName: c.contactName, to, subject: email.subject, body: email.body });
+      note(db, i, `Marked paid. Receipt emailed to ${to}`);
+    } else note(db, i, "Marked paid");
     log(db, "Marked a sales invoice paid", invoiceNo(i), "invoicing");
   });
 }

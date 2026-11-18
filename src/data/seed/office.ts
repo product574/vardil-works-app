@@ -531,7 +531,8 @@ export function weeklySummary(db: Db, demoToday: string, region: "IE" | "UK" = "
   const overdue = db.salesInvoices.filter((i) => i.status === "Invoiced" && i.dueOn && i.dueOn < today).sort((a, b) => (a.dueOn ?? "").localeCompare(b.dueOn ?? ""));
   const daysLate = (d: string) => Math.round((Date.parse(today) - Date.parse(d)) / 864e5);
   const oldest = overdue[0];
-  const waitingSupplier = db.supplierInvoices.filter((s) => s.receivedAt < asOf && !(s.readStatus === "confirmed" && (s.confirmedAt ?? "") < asOf));
+  // What accounts still had to check: not the ones already with an approver, or sent back to a subcontractor.
+  const waitingSupplier = db.supplierInvoices.filter((s) => s.receivedAt < asOf && !(s.readStatus === "confirmed" && (s.confirmedAt ?? "") < asOf) && !(s.readStatus !== "confirmed" && (s.askedAt || s.sentBack)));
   const unread = waitingSupplier.filter((s) => s.readStatus === "not_read").length;
   const toInvoice = db.salesInvoices.filter((i) => i.status === "To invoice" || (i.issuedOn != null && i.issuedOn >= today));
   const hoist = db.plant.find((p) => p.assetRef === "HS2");

@@ -3,12 +3,16 @@
  * one shows. Adding a screen means adding a line here and a route in router.tsx.
  */
 import { Browsers, CalendarDots, DeviceMobile, EnvelopeSimple, FolderOpen, Gauge, GearSix, Handshake, HardHat, type Icon, Receipt, Truck, UserGear, UsersThree } from "@phosphor-icons/react";
+import { needsAccounts, partyOf, purchaseStage } from "@/lib/purchases";
 import { waitingOnDirector } from "@/lib/requests";
 import { dueState } from "@/lib/status";
 import type { Db, DepartmentKey } from "@/data/types";
 
-/** `mdOnly`: shown to the managing director only, even when the department is switched on for another level. */
-export type NavItem = { to: string; label: string; count?: (db: Db, today: string) => number; countTone?: "accent" | "warn" | "bad"; end?: boolean; mdOnly?: boolean };
+/**
+ * `mdOnly`: shown to the managing director only, even when the department is switched on for another level.
+ * `staffOnly`: not shown to a client signed in to their portal.
+ */
+export type NavItem = { to: string; label: string; count?: (db: Db, today: string) => number; countTone?: "accent" | "warn" | "bad"; end?: boolean; mdOnly?: boolean; staffOnly?: boolean };
 export type NavGroup = { label: string; items: NavItem[] };
 export type Department = { key: DepartmentKey; /** Name in the bottom bar. */ label: string; /** Longer name for the sidebar heading, when it differs. */ title?: string; icon: Icon; home: string; groups: NavGroup[]; inBar: boolean };
 
@@ -48,7 +52,11 @@ export const DEPARTMENTS: Department[] = [
         { to: "/projects/extras", label: "Extras and snagging", count: (db) => db.projects.filter((p) => p.invoiceHold).length, countTone: "warn" },
         { to: "/projects/completed", label: "Completed" },
       ] },
-      { label: "Site", items: [{ to: "/projects/requests", label: "Requests", count: (db) => db.requests.filter((r) => r.status === "Open").length }] },
+      { label: "Site", items: [
+        { to: "/projects/requests", label: "Requests", count: (db) => db.requests.filter((r) => r.status === "Open").length },
+        // Where a site manager approves what the subcontractors on their sites have invoiced (18 Nov).
+        { to: "/projects/subcontractor-invoices", label: "Subcontractor invoices" },
+      ] },
     ],
   },
   {
@@ -113,12 +121,17 @@ export const DEPARTMENTS: Department[] = [
         { to: "/invoicing/held", label: "Held", count: (db) => db.salesInvoices.filter((i) => i.status === "Held").length, countTone: "warn" },
         { to: "/invoicing/queries", label: "Client queries", count: (db) => db.invoiceQueries.filter((q) => q.status === "Open").length, countTone: "warn" },
       ] },
+      // Supplier and subcontractor invoices are checked, approved, then paid (18 Nov). The counts
+      // are what is waiting at each step.
       { label: "Money out", items: [
-        { to: "/invoicing/supplier", label: "Supplier invoices", count: (db) => db.supplierInvoices.filter((i) => i.readStatus !== "confirmed").length },
+        { to: "/invoicing/supplier", label: "Supplier invoices", count: (db) => db.supplierInvoices.filter((i) => partyOf(i) === "supplier" && needsAccounts(i)).length },
+        { to: "/invoicing/subcontractor", label: "Subcontractor invoices", count: (db) => db.supplierInvoices.filter((i) => partyOf(i) === "subcontractor" && needsAccounts(i)).length },
+        { to: "/invoicing/approve", label: "To approve", count: (db) => db.supplierInvoices.filter((i) => purchaseStage(i) === "approve").length, countTone: "warn" },
+        { to: "/invoicing/to-pay", label: "To be paid", count: (db) => db.supplierInvoices.filter((i) => purchaseStage(i) === "pay").length },
         { to: "/invoicing/costs", label: "Job costs" },
       ] },
-      { label: "Accounts package", items: [
-        { to: "/invoicing/export", label: "Accounts export", count: (db) => db.salesInvoices.filter((i) => i.issuedOn && !i.exportedAt).length },
+      { label: "Sage", items: [
+        { to: "/invoicing/export", label: "Sage export", count: (db) => db.salesInvoices.filter((i) => i.issuedOn && !i.exportedAt).length + db.supplierInvoices.filter((i) => i.readStatus === "confirmed" && !i.exportedAt).length },
       ] },
       { label: "Set-up", items: [
         { to: "/invoicing/design", label: "Invoice design" },
@@ -127,10 +140,14 @@ export const DEPARTMENTS: Department[] = [
     ],
   },
   {
-    key: "portal", label: "Portal", title: "Client portal", icon: Browsers, home: "/portal", inBar: true,
+    // Two portals (18 Nov): a client's, and a subcontractor's. Each sees only their own.
+    key: "portal", label: "Portal", title: "Portal", icon: Browsers, home: "/portal", inBar: true,
     groups: [
-      { label: "Client view", items: [
-        { to: "/portal", label: "What the client sees", end: true },
+      { label: "Clients", items: [
+        { to: "/portal", label: "What a client sees", end: true },
+      ] },
+      { label: "Subcontractors", items: [
+        { to: "/portal/subcontractors", label: "What a subcontractor sees", staffOnly: true, count: (db) => db.supplierInvoices.filter((i) => i.via === "portal" && purchaseStage(i) === "approve").length },
       ] },
     ],
   },
@@ -157,7 +174,7 @@ export const DEPARTMENTS: Department[] = [
     groups: [
       { label: "This demo", items: [
         { to: "/settings", label: "Branding", end: true },
-        { to: "/settings/region", label: "Region and accounts" },
+        { to: "/settings/region", label: "Region" },
         { to: "/settings/about", label: "About this demo" },
       ] },
     ],

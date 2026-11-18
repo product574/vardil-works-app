@@ -5,13 +5,14 @@
 import { Paperclip } from "@phosphor-icons/react";
 import { useId, useState } from "react";
 import { useAccess } from "@/data/access";
-import { actorName, sendInvoice } from "@/data/actions";
+import { actorName, markInvoicePaid, sendInvoice, unmarkInvoicePaid } from "@/data/actions";
 import { useData, useDay, useInvoiceDesign, useInvoiceEmail, usePrefs } from "@/data/store";
 import type { Client, Project, SalesInvoice } from "@/data/types";
 import { invoiceNo } from "@/lib/billing";
 import { addDays } from "@/lib/dates";
 import { dFull } from "@/lib/format";
-import { billingEmail, emailFor, type InvoiceDoc, invoiceDoc, nextAccountsNo, pdfName, STAGE_LABEL, STAGE_TONE, stageOf } from "@/lib/invoices";
+import { money2 } from "@/lib/money";
+import { billingEmail, emailFor, grossOf, type InvoiceDoc, invoiceDoc, nextAccountsNo, pdfName, STAGE_LABEL, STAGE_TONE, stageOf } from "@/lib/invoices";
 import { invoicePdf, type PdfLogo } from "@/lib/pdf";
 import { Badge, Button, cx, Dialog, Field } from "@/ui";
 import { toast } from "@/ui/toast";
@@ -272,6 +273,80 @@ function SendForm({ i, onClose }: { i: SalesInvoice; onClose: (sentAs?: string) 
       )}
       {blocked && <p className="text-[0.93rem] text-warn">{!email && !portal ? "Tick at least one way of sending it." : !okTo ? "The address it goes to is not a full email address." : "The email needs a subject and a message."}</p>}
     </form>
+    </Dialog>
+  );
+}
+
+/**
+ * "Mark this invoice as paid?" Nothing changes until Confirm paid is pressed. The client sees
+ * it as paid in their portal straight away; the tick also emails them a receipt. Paid can be
+ * undone afterwards, from the message or from the invoice.
+ */
+export function ClientPaidDialog({ invoice, onClose }: { invoice: SalesInvoice | null; onClose: () => void }) {
+  if (!invoice) return null;
+  return <PaidForm key={invoice.id} i={invoice} onClose={onClose} />;
+}
+
+function PaidForm({ i, onClose }: { i: SalesInvoice; onClose: () => void }) {
+  const { day, region, client, project } = useInv();
+  const formId = useId();
+  const c = client(i.clientId);
+  const p = project(i.projectId);
+  const no = invoiceNo(i);
+  const to = billingEmail(c);
+  const [paidOn, setPaidOn] = useState(day);
+  const [email, setEmail] = useState(!!to);
+  const bad = !paidOn || paidOn > day || (!!i.issuedOn && paidOn < i.issuedOn);
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      title="Mark this invoice as paid?"
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button variant="primary" type="submit" form={formId} disabled={bad}>
+            Confirm paid
+          </Button>
+        </>
+      }
+    >
+      <form
+        id={formId}
+        className="grid grid-cols-1 gap-3"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (bad) return;
+          markInvoicePaid(i.id, { paidOn, email: email && !!to });
+          toast(`${no} marked paid${c?.portalEnabled ? `. ${c.contactName} is told in the portal${email && to ? " and by email" : ""}` : email && to ? `. Receipt emailed to ${to}` : ""}`, { label: "Undo", run: () => unmarkInvoicePaid(i.id) });
+          onClose();
+        }}
+      >
+        <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1">
+          <dt className="text-muted">Invoice</dt>
+          <dd className="font-medium">
+            {no}, {i.description}
+          </dd>
+          <dt className="text-muted">Client</dt>
+          <dd>
+            {c?.name}, {p?.code} {p?.name}
+          </dd>
+          <dt className="text-muted">Amount</dt>
+          <dd>
+            <span className="font-medium">{money2(grossOf(i), region)}</span> with VAT
+          </dd>
+        </dl>
+        <Field label="Paid on" className="max-w-[12rem]">
+          {(id) => <input id={id} type="date" className="field" max={day} min={i.issuedOn} value={paidOn} onChange={(e) => setPaidOn(e.target.value)} />}
+        </Field>
+        <div className="grid gap-1">
+          <p className="text-muted">{c?.portalEnabled ? `${c.name} sees it as paid in their portal as soon as you confirm.` : `The portal is switched off for ${c?.name ?? "this client"}, so they are only told if you email them.`}</p>
+          <label className={cx("flex items-center gap-2", !to && "text-muted")}>
+            <input type="checkbox" checked={email && !!to} disabled={!to} onChange={(e) => setEmail(e.target.checked)} /> Also email a receipt to {to || "the client (no address on file)"}
+          </label>
+        </div>
+        {bad && <p className="text-[0.93rem] text-warn">The date paid cannot be before the invoice was sent or after today.</p>}
+      </form>
     </Dialog>
   );
 }

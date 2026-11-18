@@ -190,7 +190,7 @@ def steps(page, ctx):
     # 16 Nov: Roles and access moved from Settings to Admin.
     page.locator("nav[aria-label=Departments]").get_by_role("link", name="Admin").click(); page.wait_for_selector("text=Requests")
     page.get_by_role("link", name="Roles and access").click(); page.wait_for_selector("text=What they can do")
-    check("Access: by role lists thirteen permissions for three levels", page.locator("section", has_text="What they can do").locator("tbody tr").count() == 13 and page.get_by_role("switch", name="Site manager: Plan the week ahead").get_attribute("aria-checked") == "false")
+    check("Access: by role lists fifteen permissions for three levels", page.locator("section", has_text="What they can do").locator("tbody tr").count() == 15 and page.get_by_role("switch", name="Site manager: Plan the week ahead").get_attribute("aria-checked") == "false")
     page.screenshot(path=f"{OUT}/88-access-by-role.png", full_page=True)
     page.get_by_role("tab", name="By person").click(); page.wait_for_timeout(300)
     lst = page.get_by_role("list", name="Office and management staff")

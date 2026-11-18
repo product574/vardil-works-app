@@ -1,4 +1,4 @@
-import { ArrowCounterClockwise, GearSix, MagnifyingGlass, Moon, SignOut, Sparkle, Sun, UserSwitch } from "@phosphor-icons/react";
+import { ArrowCounterClockwise, ArrowLeft, GearSix, MagnifyingGlass, Moon, SignOut, Sparkle, Sun, UserSwitch } from "@phosphor-icons/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, NavLink, Outlet, useLocation, useNavigate, useRouteError } from "react-router-dom";
 import { useAccess } from "@/data/access";
@@ -11,6 +11,7 @@ import { AskButton, AskPanel, askFromSearch } from "@/ai/AskPanel";
 import { useAsk } from "@/ai/state";
 import { useGate } from "./AuthPages";
 import { signOut } from "./auth";
+import { useCanGoBack } from "./back";
 import { DEPARTMENTS, departmentFor } from "./departments";
 
 export function Shell() {
@@ -19,6 +20,8 @@ export function Shell() {
   const location = useLocation();
   const dept = departmentFor(location.pathname);
   const askOpen = useAsk((s) => s.open);
+  const asPersonId = usePrefs((s) => s.asPersonId);
+  const canGoBack = useCanGoBack(`${access.role ?? ""}|${asPersonId ?? ""}`);
 
   if (gate === null) return null;
   if (gate === false) return <Navigate to="/sign-in" replace />;
@@ -34,7 +37,7 @@ export function Shell() {
 
   return (
     <div className="flex h-dvh flex-col bg-canvas">
-      <TopBar />
+      <TopBar canGoBack={canGoBack} />
       <div className="flex min-h-0 flex-1">
         {dept.key !== "site" && <Sidebar />}
         <main id="main" className={cx("min-w-0 flex-1 overflow-y-auto", showBar && "pb-24")}>
@@ -51,7 +54,7 @@ export function Shell() {
 
 // ── Top bar ───────────────────────────────────────────────────────────────────
 
-function TopBar() {
+function TopBar({ canGoBack }: { canGoBack: boolean }) {
   const navigate = useNavigate();
   const brand = usePrefs((s) => s.brand);
   const theme = usePrefs((s) => s.theme);
@@ -73,13 +76,25 @@ function TopBar() {
   const who = role === "client" ? (clients.find((c) => c.id === portalClientId)?.contactName ?? "Client") : (people.find((p) => p.id === access.personId)?.name ?? def.title);
 
   return (
-    <header className="z-20 flex h-13 shrink-0 items-center gap-3 border-b border-line bg-surface px-4">
-      <NavLink to={access.home} className={cx("flex items-center gap-2", away)} aria-label={`${brand.brandName}, home`}>
-        {brand.logoUrl ? <img src={brand.logoUrl} alt="" className="h-7 w-auto" /> : <span className="font-display text-[1.3rem] leading-none font-semibold text-accent-ink">{brand.brandName}</span>}
+    <header className="z-20 flex h-13 shrink-0 items-center gap-2 border-b border-line bg-surface px-3 sm:gap-3 sm:px-4">
+      {/* Back, in the same place on every screen: to the screen that was open before this one. */}
+      <button
+        type="button"
+        onClick={() => navigate(-1)}
+        disabled={!canGoBack}
+        aria-label="Back"
+        title={canGoBack ? "Back to the screen you were on before" : "There is no screen to go back to yet"}
+        className={cx("press -ml-1 flex h-9 shrink-0 items-center gap-1.5 rounded-md border border-line-strong bg-surface px-2.5 text-[0.93rem] font-medium text-ink hover:border-accent hover:text-accent-ink disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-line-strong disabled:hover:text-ink max-sm:-ml-0.5 max-sm:w-9 max-sm:justify-center max-sm:px-0", away)}
+      >
+        <ArrowLeft size={18} />
+        <span className="max-sm:hidden">Back</span>
+      </button>
+      <NavLink to={access.home} className={cx("flex min-w-0 items-center gap-2", away)} aria-label={`${brand.brandName}, home`}>
+        {brand.logoUrl ? <img src={brand.logoUrl} alt="" className="h-7 w-auto max-w-full" /> : <span className="truncate py-1 font-display text-[1.15rem] leading-none font-semibold text-accent-ink sm:text-[1.3rem]">{brand.brandName}</span>}
       </NavLink>
 
       {access.departments.length > 1 ? (
-        <div className={cx("mx-auto flex w-full min-w-0 flex-1 items-center justify-end gap-2 sm:justify-start", access.role === "md" ? "max-w-[33rem]" : "max-w-md", searching && "max-sm:max-w-none")}>
+        <div className={cx("mx-auto flex w-full flex-1 items-center justify-end gap-2 sm:min-w-0 sm:justify-start", access.role === "md" ? "max-w-[33rem]" : "max-w-md", searching ? "min-w-0 max-sm:max-w-none" : "max-sm:w-auto max-sm:shrink-0")}>
           <div className={cx("min-w-0 flex-1 items-center gap-2", searching ? "flex" : "hidden sm:flex")}>
             <Search autoFocus={searching} onDone={() => setSearching(false)} />
             {searching && (
@@ -318,11 +333,12 @@ function useNavCounts() {
   return (count: ((d: typeof db, today: string) => number) | undefined) => (count ? count(db, day) : 0);
 }
 
-/** A department's sidebar groups, without the managing director's own screens for anyone else. */
+/** A department's sidebar groups, without the managing director's own screens for anyone else, or the staff's own for a client. */
 function useGroups(pathname: string) {
-  const md = useAccess().role === "md";
+  const role = useAccess().role;
+  const md = role === "md";
   return departmentFor(pathname)
-    .groups.map((g) => ({ ...g, items: g.items.filter((it) => md || !it.mdOnly) }))
+    .groups.map((g) => ({ ...g, items: g.items.filter((it) => (md || !it.mdOnly) && !(it.staffOnly && role === "client")) }))
     .filter((g) => g.items.length > 0);
 }
 
@@ -340,8 +356,8 @@ function Sidebar() {
           <ul>
             {g.items.map((it) => (
               <li key={it.to}>
-                <NavLink to={it.to} end={it.end} className={({ isActive }) => cx("flex h-9 items-center gap-2 rounded-md px-2", isActive ? "bg-surface font-medium text-accent-ink shadow-[inset_0_0_0_1px_var(--line)]" : "hover:bg-surface/70")}>
-                  {it.label}
+                <NavLink to={it.to} end={it.end} className={({ isActive }) => cx("flex min-h-9 items-center gap-2 rounded-md px-2 py-1.5 leading-tight", isActive ? "bg-surface font-medium text-accent-ink shadow-[inset_0_0_0_1px_var(--line)]" : "hover:bg-surface/70")}>
+                  <span className="min-w-0">{it.label}</span>
                   <Count n={n(it.count)} tone={it.countTone ?? "accent"} />
                 </NavLink>
               </li>

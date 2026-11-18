@@ -1,0 +1,190 @@
+// Rules for the invoices the firm pays, from suppliers and from subcontractors: where one
+// stands, who may approve it, what is waiting to be paid, the rows the accounts package gets,
+// and the words that tell a client or a subcontractor that an invoice has been paid.
+import type { Region } from "@/config/brand";
+import type { CostCategoryKey, Project, Subcontractor, SupplierInvoice } from "@/data/types";
+import { addDays } from "./dates";
+import { dFull } from "./format";
+import { firstName } from "./invoices";
+import { money0, money2, r2 } from "./money";
+import { daysBetween } from "./status";
+
+// ── Where an invoice stands ───────────────────────────────────────────────────
+
+/**
+ * Not read yet, to be checked by accounts, sent back by whoever was asked to approve it,
+ * waiting for approval, approved and waiting to be paid, or paid. A credit note is never paid:
+ * once approved it is taken off the job's costs and that is the end of it.
+ */
+export type PurchaseStage = "unread" | "check" | "back" | "approve" | "pay" | "paid" | "credit";
+export const PURCHASE_LABEL: Record<PurchaseStage, string> = { unread: "Not read yet", check: "To check", back: "Sent back", approve: "Waiting for approval", pay: "To be paid", paid: "Paid", credit: "Credit taken" };
+export const PURCHASE_TONE: Record<PurchaseStage, "neutral" | "accent" | "ok" | "warn" | "bad"> = { unread: "neutral", check: "warn", back: "bad", approve: "warn", pay: "accent", paid: "ok", credit: "ok" };
+
+type Standing = Pick<SupplierInvoice, "readStatus" | "docType" | "askedAt" | "paidOn" | "sentBack">;
+
+export function purchaseStage(s: Standing): PurchaseStage {
+  if (s.readStatus === "not_read") return "unread";
+  if (s.readStatus !== "confirmed") return s.askedAt ? "approve" : s.sentBack ? "back" : "check";
+  if (s.docType === "credit_note") return "credit";
+  return s.paidOn ? "paid" : "pay";
+}
+
+export const partyOf = (s: Pick<SupplierInvoice, "party">) => s.party ?? "supplier";
+/**
+ * Is this one waiting on accounts: to be read, checked, or put right after a supplier's invoice
+ * was sent back? A subcontractor's invoice that was sent back waits on the subcontractor.
+ */
+export function needsAccounts(s: Standing & Pick<SupplierInvoice, "party">) {
+  const stage = purchaseStage(s);
+  return stage === "unread" || stage === "check" || (stage === "back" && partyOf(s) === "supplier");
+}
+
+export const viaWords = (s: Pick<SupplierInvoice, "via">) => (s.via === "portal" ? "through the portal" : s.via === "post" ? "by post" : "by email");
+
+/** The projects an invoice's lines are charged to. */
+export const sitesOf = (s: Pick<SupplierInvoice, "allocations">) => [...new Set(s.allocations.map((a) => a.projectId))];
+
+// ── Who may approve ───────────────────────────────────────────────────────────
+
+/** What the person looking may do, from their access (src/data/access.ts). */
+export type Approver = {
+  personId: string | null;
+  /** "Handle invoices": accounts. */
+  handles: boolean;
+  /** "Approve invoices of any size": the managing director. */
+  approvesAll: boolean;
+  /** "Approve subcontractor invoices for the sites they run". */
+  approvesOwnSites: boolean;
+};
+
+type Site = Pick<Project, "id" | "siteManagerId" | "contractsManagerId">;
+/** Someone runs a site when they are its site manager or its contracts manager. */
+export const runsSite = (p: Pick<Site, "siteManagerId" | "contractsManagerId">, personId: string | null) => !!personId && (p.siteManagerId === personId || p.contractsManagerId === personId);
+
+/**
+ * May this person approve this invoice into job costs?
+ *
+ * A supplier's invoice: accounts, up to the limit before VAT; above it, only someone who may
+ * approve any invoice. A subcontractor's invoice: whoever runs the site it is for, since only
+ * the site knows the work was done, or someone who may approve any invoice. Accounts never.
+ */
+export function mayApprove(s: Pick<SupplierInvoice, "party" | "subtotal" | "allocations">, who: Approver, limit: number, projects: Site[]) {
+  if (who.approvesAll) return true;
+  if (partyOf(s) === "subcontractor") {
+    const sites = sitesOf(s).map((id) => projects.find((p) => p.id === id));
+    return who.approvesOwnSites && sites.length > 0 && sites.every((p) => !!p && runsSite(p, who.personId));
+  }
+  return who.handles && s.subtotal <= limit;
+}
+
+/** Who an invoice is waiting for, in words: "the managing director", "Eoin Brosnan or the managing director". */
+export function approverWords(s: Pick<SupplierInvoice, "party" | "subtotal" | "allocations">, limit: number, projects: Site[], nameOf: (personId: string) => string | undefined) {
+  if (partyOf(s) === "subcontractor") {
+    const managers = [...new Set(sitesOf(s).map((id) => projects.find((p) => p.id === id)?.siteManagerId).filter((x): x is string => !!x))].map(nameOf).filter((n): n is string => !!n);
+    return managers.length ? `${managers.join(" and ")} or the managing director` : "the managing director";
+  }
+  return s.subtotal <= limit ? "accounts" : "the managing director";
+}
+
+/** Why a supplier's invoice goes where it goes, for the line beside the button. */
+export function limitWords(s: Pick<SupplierInvoice, "subtotal">, limit: number, region: Region) {
+  return s.subtotal <= limit ? `${money2(s.subtotal, region)} before VAT is within the ${money0(limit, region)} that accounts may approve.` : `${money2(s.subtotal, region)} before VAT is over the ${money0(limit, region)} that accounts may approve, so the managing director approves it.`;
+}
+
+// ── Paying ────────────────────────────────────────────────────────────────────
+
+/** When it should be paid by: the date on record, or 30 days from the invoice date. */
+export const payBy = (s: Pick<SupplierInvoice, "dueOn" | "invoiceDate">) => s.dueOn ?? addDays(s.invoiceDate, 30);
+
+/** "12 days late", "Due today", "Due in 3 days", for an invoice waiting to be paid. */
+export function payWords(s: Pick<SupplierInvoice, "dueOn" | "invoiceDate">, today: string) {
+  const late = daysBetween(payBy(s), today);
+  if (late > 0) return `${late} ${late === 1 ? "day" : "days"} late`;
+  return late === 0 ? "Due today" : `Due in ${-late} ${late === -1 ? "day" : "days"}`;
+}
+
+/** What the firm owes on approved invoices, including VAT, and how much of it is past its date. */
+export function owedOut(invoices: SupplierInvoice[], today: string) {
+  const list = invoices.filter((s) => purchaseStage(s) === "pay");
+  const late = list.filter((s) => payBy(s) < today);
+  const sum = (l: SupplierInvoice[]) => r2(l.reduce((t, s) => t + s.total, 0));
+  return { count: list.length, total: sum(list), lateCount: late.length, lateTotal: sum(late) };
+}
+
+/** The next file number: one more than the highest so far. The firm numbers every invoice it files. */
+export function nextFileNo(invoices: Pick<SupplierInvoice, "fileNo">[]) {
+  return `F-${Math.max(1000, ...invoices.map((s) => Number((s.fileNo ?? "").replace(/\D/g, "")) || 0)) + 1}`;
+}
+
+/** Was this date inside the last `days` days? For the "paid" notices at the top of a portal. */
+export const recently = (date: string | undefined, today: string, days = 30) => !!date && date <= today && daysBetween(date, today) <= days;
+
+// ── The accounts package ──────────────────────────────────────────────────────
+
+/** A supplier's account reference when none is on file: "Burren Lime and Stone Supplies" is BURLIM. */
+export function accountRefOf(name: string) {
+  const words = name.toUpperCase().replace(/[^A-Z ]/g, "").split(/\s+/).filter((w) => w && w !== "AND" && w !== "THE");
+  return `${(words[0] ?? "").slice(0, 3)}${(words[1] ?? words[0] ?? "").slice(0, 3)}`;
+}
+
+/**
+ * Purchase nominal codes by cost heading. 5000 for materials is the code Oldstone's office
+ * keys; the rest follow Sage's usual chart. A firm that codes differently changes them here.
+ */
+export const PURCHASE_NOMINALS: Record<CostCategoryKey, [code: string, what: string]> = {
+  material: ["5000", "Materials"],
+  plant: ["5010", "Hired plant"],
+  equipment: ["5020", "Equipment and small tools"],
+  transport: ["5100", "Transport"],
+  other: ["5002", "Other site costs"],
+  labour: ["6002", "Subcontractors"],
+};
+
+/** One line the accounts package takes in for a purchase: an invoice (PI) or a credit note (PC). */
+export type PurchaseRow = { type: "PI" | "PC"; account: string; nominal: string; siteCode: string; date: string; ref: string; details: string; net: number; vatPct: number; vat: number; fileNo: string };
+
+/** The VAT rate an invoice was charged at, worked back from its figures. */
+export const vatPctOf = (s: Pick<SupplierInvoice, "subtotal" | "vat">) => (s.subtotal ? Math.round((s.vat / s.subtotal) * 1000) / 10 : 0);
+
+/**
+ * The rows for one approved invoice: a row for each line, because each line has its own
+ * nominal code and its own department (the project). The VAT is shared between the lines in
+ * proportion, the last line taking the odd cent, so the rows add up to the invoice exactly.
+ */
+export function purchaseRows(s: SupplierInvoice, projects: Pick<Project, "id" | "code">[], subcontractors: Pick<Subcontractor, "id" | "accountRef">[]): PurchaseRow[] {
+  const account = subcontractors.find((x) => x.id === s.subcontractorId)?.accountRef ?? accountRefOf(s.supplier);
+  const vatPct = vatPctOf(s);
+  let vatLeft = s.vat;
+  return s.allocations.map((a, n) => {
+    const vat = n === s.allocations.length - 1 ? r2(vatLeft) : r2(s.subtotal ? (s.vat * a.amount) / s.subtotal : 0);
+    vatLeft -= vat;
+    return { type: s.docType === "credit_note" ? "PC" : "PI", account, nominal: PURCHASE_NOMINALS[a.category][0], siteCode: projects.find((p) => p.id === a.projectId)?.code ?? "", date: s.invoiceDate, ref: s.invoiceNo, details: a.description, net: a.amount, vatPct, vat, fileNo: s.fileNo ?? "" };
+  });
+}
+
+// ── Telling people they have been paid ────────────────────────────────────────
+
+/** The receipt a client gets when their payment is marked as received. */
+export function receiptEmail(a: { number: string; gross: number; paidOn: string; contactName: string; project: string; sender: string; company: string; region: Region }) {
+  return {
+    subject: `Payment received: invoice ${a.number}, ${a.project}`,
+    body: `Dear ${firstName(a.contactName)},\n\nThank you. We have received your payment of ${money2(a.gross, a.region)} for invoice ${a.number} (${a.project}) on ${dFull(a.paidOn)}. Nothing more is owed on this invoice.\n\nThe invoice is marked as paid in your portal, where you can open it at any time.\n\nKind regards,\n${a.sender}\n${a.company}`,
+  };
+}
+
+/** The remittance advice a subcontractor gets when accounts mark their invoice as paid. */
+export function remittanceEmail(a: { invoiceNo: string; total: number; paidOn: string; paidRef?: string; contactName: string; project: string; sender: string; company: string; region: Region }) {
+  return {
+    subject: `Remittance advice: your invoice ${a.invoiceNo}, ${a.project}`,
+    body: `Dear ${firstName(a.contactName)},\n\nWe have paid your invoice ${a.invoiceNo} for ${a.project}: ${money2(a.total, a.region)} on ${dFull(a.paidOn)}, by bank transfer${a.paidRef ? `, reference ${a.paidRef}` : ""}.\n\nIt is marked as paid in your portal.\n\nKind regards,\n${a.sender}\n${a.company}`,
+  };
+}
+
+/** What a subcontractor reads beside each of their invoices in the portal. */
+export function portalStanding(s: Pick<SupplierInvoice, "readStatus" | "docType" | "askedAt" | "paidOn" | "sentBack" | "dueOn" | "invoiceDate">): { label: string; tone: "neutral" | "accent" | "ok" | "warn" | "bad"; detail: string } {
+  const stage = purchaseStage(s);
+  if (stage === "paid") return { label: "Paid", tone: "ok", detail: `Paid on ${dFull(s.paidOn)}` };
+  if (stage === "pay") return { label: "Approved", tone: "accent", detail: `To be paid by ${dFull(payBy(s))}` };
+  if (stage === "back") return { label: "Sent back", tone: "bad", detail: s.sentBack?.reason ?? "" };
+  return { label: "Received", tone: "neutral", detail: "Waiting for approval" };
+}

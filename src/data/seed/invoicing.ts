@@ -33,7 +33,7 @@ export function fillInvoicing(db: Db, today: string, domain: string, company: st
     i.sentTo = billingEmail(c);
     i.sentVia = via;
     i.history.push({ at: i.sentAt, who, what: `Sent to ${c?.name ?? "the client"} ${routeWords(via)}` });
-    if (i.exportedAt) i.history.push({ at: i.exportedAt, who, what: "Exported to the accounts package" });
+    if (i.exportedAt) i.history.push({ at: i.exportedAt, who, what: "Exported to Sage" });
     if (i.paidOn) i.history.push({ at: at(i.paidOn, "11:15"), who, what: "Marked paid" });
 
     const email = emailFor(DEFAULT_EMAIL, { invoice: i, number: invoiceNo(i), dueOn: i.dueOn ?? i.issuedOn, client: c, project: p, sender: who, company, region });
