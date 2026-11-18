@@ -4,7 +4,7 @@ import { money0, r2 } from "@/lib/money";
 import { labourCost, scopePercent } from "@/lib/project-costs";
 import { dashboardNumbers } from "../kpis";
 import type { Activity, Approval, Attendance, Automation, Client, Db, FileItem, HiredPlant, Mail, Person, Project, SalesInvoice, ScopeTask, SupplierInvoice } from "../types";
-import type { Craft, ProjectMeta } from "./projects";
+import { type Craft, isPastCode, type ProjectMeta } from "./projects";
 import { type Rng, at, lastWeekday, weekday, workdays } from "./util";
 
 // ── Files ─────────────────────────────────────────────────────────────────────
@@ -27,7 +27,7 @@ function span(from: string, to: string) {
   return n;
 }
 
-export function seedFiles(r: Rng, today: string, projects: Project[], meta: Map<string, ProjectMeta>, names: Map<string, string>, handoverPending: Set<string>) {
+export function seedFiles(r: Rng, today: string, projects: Project[], meta: Map<string, ProjectMeta>, names: Map<string, string>, handoverPending: Set<string>, withLoose = true) {
   const files: FileItem[] = [];
   let n = 0;
   const add = (f: Omit<FileItem, "id" | "tone">) => files.push({ ...f, id: `f-${++n}`, tone: n % 6 });
@@ -78,7 +78,7 @@ export function seedFiles(r: Rng, today: string, projects: Project[], meta: Map<
     ["Photo from site, no caption.jpg", "image", -2, "Thiago Barbosa"],
     ["Scanned document 0042.pdf", "pdf", -4, "Office scanner"],
   ];
-  for (const [name, kind, d, by] of loose) add({ projectId: null, folder: "General to be sorted", name, kind, category: "Unclassified", sizeKb: r.int(80, 2400), modified: workdays(today, d), addedBy: by, source: "Email" });
+  if (withLoose) for (const [name, kind, d, by] of loose) add({ projectId: null, folder: "General to be sorted", name, kind, category: "Unclassified", sizeKb: r.int(80, 2400), modified: workdays(today, d), addedBy: by, source: "Email" });
 
   return files;
 }
@@ -148,21 +148,23 @@ const NUMBERS: Record<string, [prefix: string, newest: number]> = {
   "Ardfert Structural Supplies": ["ASS-", 3302],
 };
 
-type Ctx = { projects: Project[]; meta: Map<string, ProjectMeta>; attendance: Attendance[]; people: Person[]; scopeTasks: ScopeTask[]; hiredPlant: HiredPlant[]; clients: Client[]; vatPct: number };
+type Ctx = { projects: Project[]; meta: Map<string, ProjectMeta>; attendance: Attendance[]; people: Person[]; scopeTasks: ScopeTask[]; hiredPlant: HiredPlant[]; clients: Client[]; vatPct: number; /** The year before's own random sequence (projects.ts, PAST_PROJECTS). */ rPast: Rng };
 
 export function seedMoney(r: Rng, today: string, ctx: Ctx) {
+  const rToday = r;
   const pid = (code: string) => `pr-${code}`;
   const day = (n: number) => workdays(today, n);
   const supplierVat = ctx.vatPct === 20 ? 20 : 23;
   const proj = new Map(ctx.projects.map((p) => [p.code, p]));
-  type Draft = Omit<SupplierInvoice, "id" | "invoiceNo" | "vat" | "total" | "fileName"> & { invoiceNo?: string };
+  type Draft = Omit<SupplierInvoice, "id" | "invoiceNo" | "vat" | "total" | "fileName"> & { invoiceNo?: string; past?: boolean };
   const drafts: Draft[] = [];
 
-  const add = (d: { supplier: string; no?: string; date: string; job: string | null; status: SupplierInvoice["readStatus"]; lines: [string, number][]; alloc?: [code: string, category: SupplierInvoice["allocations"][number]["category"], amount: number][]; credit?: boolean; subtotal?: number; time?: string }) => {
+  const add = (d: { supplier: string; no?: string; date: string; job: string | null; status: SupplierInvoice["readStatus"]; lines: [string, number][]; alloc?: [code: string, category: SupplierInvoice["allocations"][number]["category"], amount: number][]; credit?: boolean; subtotal?: number; time?: string; past?: boolean }) => {
     const subtotal = d.subtotal ?? r2(d.lines.reduce((s, [, a]) => s + a, 0));
     const received = workdays(d.date, 1) > today ? today : workdays(d.date, 1);
-    const confirmedOn = workdays(received, r.int(1, 2)) > today ? today : workdays(received, 1);
+    const confirmedOn = workdays(received, (d.past ? ctx.rPast : r).int(1, 2)) > today ? today : workdays(received, 1);
     drafts.push({
+      ...(d.past ? { past: true } : {}),
       supplier: d.supplier,
       invoiceNo: d.no,
       invoiceDate: d.date,
@@ -210,6 +212,9 @@ export function seedMoney(r: Rng, today: string, ctx: Ctx) {
   const rate = new Map(ctx.people.map((p) => [p.id, p.hourlyRate]));
   for (const p of ctx.projects) {
     if (p.status === "Not started") continue;
+    // The year before draws from its own sequence, so today's invoices come out as they always have.
+    const past = isPastCode(p.code);
+    const r = past ? ctx.rPast : rToday;
     const m = ctx.meta.get(p.code)!;
     const labour = labourCost(ctx.attendance.filter((a) => a.projectId === p.id).map((a) => ({ status: a.status, overtimeHours: a.overtimeHours, hourlyRate: rate.get(a.personId) ?? 0 })));
     const pct = p.status === "Live" ? scopePercent(ctx.scopeTasks.filter((t) => t.projectId === p.id)) : 100;
@@ -238,7 +243,7 @@ export function seedMoney(r: Rng, today: string, ctx: Ctx) {
         const lines = chosen.map(([desc, unit, unitRate, qty]) => [`${desc}, ${qty.toLocaleString("en-IE")} ${unit}`, r2(qty * unitRate)] as [string, number]);
         const frac = (k + 1) / (parts + 1) - 0.08 + ((i % 3) * 0.05);
         const date = workdays(m.startDate, Math.max(2, Math.round(days * Math.min(0.97, frac))));
-        add({ supplier: b.supplier, date: weekday(date > last ? last : date), job: r.chance(0.85) ? p.code : null, status: "confirmed", lines, alloc: lines.map(([, a]) => [p.code, b.category, a]) });
+        add({ supplier: b.supplier, date: weekday(date > last ? last : date), job: r.chance(0.85) ? p.code : null, status: "confirmed", lines, alloc: lines.map(([, a]) => [p.code, b.category, a]), past });
       }
     });
   }
@@ -250,21 +255,23 @@ export function seedMoney(r: Rng, today: string, ctx: Ctx) {
     const [prefix, newest] = NUMBERS[supplier] ?? ["INV-", 1000];
     const taken = new Set(list.filter((d) => d.invoiceNo).map((d) => d.invoiceNo));
     let next = newest;
-    for (const d of [...list].filter((x) => !x.invoiceNo).sort((a, b) => b.invoiceDate.localeCompare(a.invoiceDate))) {
-      do next -= r.int(3, 17);
+    // Today's first, as they always were; then the year before, older still, from its own sequence.
+    const unnumbered = [...list].filter((x) => !x.invoiceNo).sort((a, b) => b.invoiceDate.localeCompare(a.invoiceDate));
+    for (const d of [...unnumbered.filter((x) => !x.past), ...unnumbered.filter((x) => x.past)]) {
+      do next -= (d.past ? ctx.rPast : r).int(3, 17);
       while (taken.has(`${prefix}${next}`));
       d.invoiceNo = `${prefix}${next}`;
     }
   }
 
   drafts.sort((a, b) => b.receivedAt.localeCompare(a.receivedAt) || (a.invoiceNo ?? "").localeCompare(b.invoiceNo ?? ""));
-  const supplierInvoices: SupplierInvoice[] = drafts.map((d, i) => {
+  const supplierInvoices: SupplierInvoice[] = drafts.map(({ past: _past, ...d }, i) => {
     const vat = r2((d.subtotal * supplierVat) / 100);
     return { ...d, id: `si-${i + 1}`, invoiceNo: d.invoiceNo!, vat, total: r2(d.subtotal + vat), fileName: `${d.supplier} ${d.invoiceNo}.pdf`, allocations: d.allocations.map((a, j) => ({ ...a, id: `al-${i + 1}-${j + 1}` })) };
   });
 
   // Sales invoices: stage payments as the work reaches milestones, final accounts once it is done.
-  const salesInvoices = seedSales(r, today, ctx, proj);
+  const salesInvoices = [...seedSales(r, today, ctx, proj), ...seedPastSales(today, ctx)];
   return { supplierInvoices, salesInvoices };
 }
 
@@ -334,6 +341,55 @@ function seedSales(r: Rng, today: string, ctx: Ctx, proj: Map<string, Project>) 
       dueOn,
       paidOn: paid ? paidOn : undefined,
       accountsNo: s.issued ? `SI-${++accounts}` : undefined,
+      exportedAt: exported ? at(exported, "14:20") : undefined,
+    };
+  });
+}
+
+/**
+ * Client invoices for the year before (projects.ts, PAST_PROJECTS): a stage payment halfway
+ * through the bigger jobs, then the final account for the rest, all paid on the client's terms.
+ * Numbered below today's first invoice (SI-10401, INV-5201), so today's numbers stay put.
+ */
+function seedPastSales(today: string, ctx: Ctx): SalesInvoice[] {
+  const r = ctx.rPast;
+  const terms = (p: Project) => ctx.clients.find((c) => c.id === p.clientId)?.termsDays ?? 30;
+  type Row = { p: Project; description: string; net: number; issued: string };
+  const rows: Row[] = [];
+  for (const p of ctx.projects.filter((x) => isPastCode(x.code))) {
+    const tasks = ctx.scopeTasks.filter((t) => t.projectId === p.id);
+    const value = p.value ?? 0;
+    let billed = 0;
+    if (value > 60000 && tasks.length > 3) {
+      const mid = Math.floor(tasks.length / 2);
+      const done = tasks[mid - 1]!.completedAt!.slice(0, 10);
+      billed = r2(Math.round((value * mid) / tasks.length / 10) * 10);
+      rows.push({ p, description: `Stage payment 1: ${tasks[mid - 1]!.description.charAt(0).toLowerCase()}${tasks[mid - 1]!.description.slice(1)}`, net: billed, issued: workdays(done, 2) });
+    }
+    rows.push({ p, description: "Final account", net: r2(value - billed), issued: workdays(p.endDate, 3) });
+  }
+  rows.sort((a, b) => a.issued.localeCompare(b.issued) || a.p.code.localeCompare(b.p.code));
+  const exportDay = (issued: string) => {
+    const [y, m] = issued.split("-").map(Number) as [number, number];
+    let d = `${m === 12 ? y + 1 : y}-${String(m === 12 ? 1 : m + 1).padStart(2, "0")}-01`;
+    while (new Date(`${d}T12:00:00Z`).getUTCDay() !== 2) d = addDays(d, 1);
+    return d < today ? d : undefined;
+  };
+  return rows.map((row, i) => {
+    const exported = exportDay(row.issued);
+    return {
+      id: `inv-p${i + 1}`,
+      ref: `INV-${5201 - rows.length + i}`,
+      projectId: row.p.id,
+      clientId: row.p.clientId,
+      description: row.description,
+      net: row.net,
+      vatPct: ctx.vatPct,
+      status: "Paid" as const,
+      issuedOn: row.issued,
+      dueOn: addDays(row.issued, terms(row.p)),
+      paidOn: weekday(addDays(row.issued, terms(row.p) - r.int(1, 6))),
+      accountsNo: `SI-${10401 - rows.length + i}`,
       exportedAt: exported ? at(exported, "14:20") : undefined,
     };
   });

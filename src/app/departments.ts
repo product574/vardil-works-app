@@ -2,7 +2,7 @@
  * The map of the whole app: every department in the bottom bar, and the short sidebar each
  * one shows. Adding a screen means adding a line here and a route in router.tsx.
  */
-import { Browsers, CalendarDots, DeviceMobile, EnvelopeSimple, FolderOpen, Gauge, GearSix, Handshake, HardHat, type Icon, Receipt, Truck, UserGear, UsersThree } from "@phosphor-icons/react";
+import { AddressBook, Browsers, CalendarDots, ChartBar, DeviceMobile, EnvelopeSimple, FolderOpen, Gauge, GearSix, Handshake, HardHat, type Icon, Receipt, Truck, UserGear, UsersThree } from "@phosphor-icons/react";
 import { needsAccounts, partyOf, purchaseStage } from "@/lib/purchases";
 import { waitingOnDirector } from "@/lib/requests";
 import { dueState } from "@/lib/status";
@@ -40,8 +40,13 @@ export const DEPARTMENTS: Department[] = [
         { to: "/sales/enquiries", label: "Enquiries", count: (db) => db.enquiries.filter((e) => e.status === "Logged" && !e.quoteId).length },
         { to: "/sales/awaiting", label: "Awaiting response", count: (db) => db.quotes.filter((q) => q.status === "Queried").length, countTone: "warn" },
       ] },
-      { label: "Accounts", items: [{ to: "/sales/clients", label: "Clients" }] },
     ],
+  },
+  {
+    // Every customer and everything to do with them, on one page each (18 Nov). Sales, Clients
+    // was its pop-up before: its address still lands here.
+    key: "customers", label: "Customers", icon: AddressBook, home: "/customers", inBar: true,
+    groups: [{ label: "Directory", items: [{ to: "/customers", label: "All customers" }] }],
   },
   {
     key: "projects", label: "Projects", icon: HardHat, home: "/projects", inBar: true,
@@ -136,6 +141,19 @@ export const DEPARTMENTS: Department[] = [
       { label: "Set-up", items: [
         { to: "/invoicing/design", label: "Invoice design" },
         { to: "/invoicing/email", label: "Email template" },
+      ] },
+    ],
+  },
+  {
+    // The firm's figures over the last 12 months (18 Nov, from the HVAC reports Oisin likes).
+    // The managing director's to start with, switchable in Admin, Roles and access.
+    key: "reports", label: "Reports", icon: ChartBar, home: "/reports", inBar: true,
+    groups: [
+      { label: "Last 12 months", items: [
+        { to: "/reports", label: "Overview", end: true },
+        { to: "/reports/customers", label: "Sales by customer" },
+        { to: "/reports/margin", label: "Gross margin" },
+        { to: "/reports/tenders", label: "Tender conversion" },
       ] },
     ],
   },

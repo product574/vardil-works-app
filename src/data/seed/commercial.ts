@@ -15,6 +15,9 @@ export const CLIENTS: Client[] = [
   { id: "c-08", name: "Diocese of Killanure", type: "Church body", contactName: "Fr. Malachy Prunty", contactPhone: "049 555 0154", contactEmail: "property@killanurediocese.example", accountRef: "KILL01", termsDays: 30, portalEnabled: false, address: "Diocesan Office, Cathedral Close, Killanure", county: "Cavan" },
   { id: "c-09", name: "Mr and Mrs Prendiville", type: "Private owner", contactName: "Eleanor Prendiville", contactPhone: "066 555 0185", contactEmail: "eleanor.prendiville@mailbox.example", accountRef: "PREN01", termsDays: 14, portalEnabled: false, address: "Glebe House, Castlegregory", county: "Kerry" },
   { id: "c-10", name: "Inishbeg Heritage Trust", type: "Heritage trust", contactName: "Lorcan Vaughan", contactPhone: "074 555 0192", contactEmail: "lorcan@inishbegtrust.example", accountRef: "INIS01", termsDays: 45, portalEnabled: true, address: "The Boathouse Office, Inishbeg", county: "Donegal" },
+  // Customers for past work only (added 18 Nov with the year of history behind the reports).
+  { id: "c-11", name: "Rosmore Abbey Trust", type: "Heritage trust", contactName: "Gráinne Fortune", contactPhone: "053 555 0137", contactEmail: "grainne@rosmoreabbey.example", accountRef: "ROSM01", termsDays: 45, portalEnabled: false, address: "The Gate Lodge, Rosmore", county: "Wexford" },
+  { id: "c-12", name: "Kilbrack Hotels", type: "Commercial", contactName: "Declan Moynihan", contactPhone: "066 555 0148", contactEmail: "dmoynihan@kilbrackhotels.example", accountRef: "KILB01", termsDays: 30, portalEnabled: false, address: "Kilbrack House Hotel, Ventry Road", county: "Kerry" },
 ];
 
 /**
@@ -320,7 +323,80 @@ const PIPELINE: QSeed[] = [
 ];
 
 /** The margin a quote was priced at, for projects.ts to work out what each won job was worth. */
-export const quotedMargin = (n: number) => PIPELINE.find((q) => q.n === n)?.margin ?? 22;
+export const quotedMargin = (n: number) => PIPELINE.find((q) => q.n === n)?.margin ?? PAST.find((q) => q.n === n)?.margin ?? 22;
+
+// ── The year before (added 18 Nov, for Reports) ──────────────────────────────
+
+/**
+ * Tenders from the year before today's pipeline: the twelve won jobs behind the finished
+ * projects C697 to C708 (projects.ts), and the ones that were lost. `sent` is in working days
+ * from today. Won ones are priced from their crews, like today's (quoteTargets).
+ */
+type Past = { n: number; clientId: string; kind: WorkKind; title: string; location: string; county: string; sent: number; margin: number; won: boolean; target?: number; po?: string; source: Enquiry["source"]; loggedBy: string };
+const T = "Colm Henebry", N = "Niamh Lavelle", TM = "Tadhg Morrissey", A = "Aisling Rafter";
+const PAST: Past[] = [
+  { n: 101, clientId: "c-11", kind: "wall", title: "Rosmore Abbey: cloister walls consolidation", location: "Rosmore Abbey", county: "Wexford", sent: -292, margin: 25, won: true, po: "RAT-0112", source: "Architect referral", loggedBy: TM },
+  { n: 102, clientId: "c-01", kind: "slate", title: "Rathdoon Rectory: re-slating", location: "The Rectory, Church Road, Rathdoon", county: "Kildare", sent: -288, margin: 23, won: true, po: "RSV-2025-041", source: "Existing client", loggedBy: N },
+  { n: 103, clientId: "c-02", kind: "render", title: "Ardmullen stable yard: lime render", location: "Ardmullen House, Kilcolgan", county: "Galway", sent: -285, margin: 26, won: true, po: "ARD-0391", source: "Existing client", loggedBy: TM },
+  { n: 104, clientId: "c-04", kind: "repoint", title: "Dunmoy Market Cross: stone repairs and repointing", location: "The Square, Dunmoy", county: "Roscommon", sent: -280, margin: 28, won: true, po: "DCC-3982-25", source: "Tender", loggedBy: T },
+  { n: 105, clientId: "c-12", kind: "sash", title: "Kilbrack House Hotel: sash windows", location: "Kilbrack House Hotel, Ventry Road", county: "Kerry", sent: -278, margin: 24, won: true, po: "KHH-2211", source: "Email", loggedBy: N },
+  { n: 106, clientId: "c-05", kind: "brick", title: "6 Fitzgarret Square: brick repointing", location: "6 Fitzgarret Square", county: "Dublin", sent: -274, margin: 26, won: true, po: "FPH-09871", source: "Existing client", loggedBy: A },
+  { n: 107, clientId: "c-06", kind: "wall", title: "Pound Bridge, Carrowbeg: parapet rebuilding", location: "Pound Bridge, Carrowbeg", county: "Mayo", sent: -256, margin: 22, won: true, po: "CCC-BR-0287", source: "Tender", loggedBy: T },
+  { n: 108, clientId: "c-03", kind: "slate", title: "Ballyfinn Miller's Cottage: roof", location: "Miller's Cottage, Ballyfinn", county: "Clare", sent: -258, margin: 24, won: true, po: "BHT-PO-0071", source: "Existing client", loggedBy: A },
+  { n: 109, clientId: "c-07", kind: "timber", title: "Passage East Maltings: floor repairs", location: "The Maltings, Passage East", county: "Waterford", sent: -248, margin: 18, won: true, po: "HLB-SUB-2098", source: "Existing client", loggedBy: A },
+  { n: 110, clientId: "c-08", kind: "render", title: "Killanure Presbytery: lime plaster ceilings", location: "The Presbytery, Cathedral Close, Killanure", county: "Cavan", sent: -245, margin: 26, won: true, po: "DK-PROP-701", source: "Phone", loggedBy: N },
+  { n: 111, clientId: "c-09", kind: "slate", title: "Glebe House: outbuildings re-roof", location: "Glebe House, Castlegregory", county: "Kerry", sent: -227, margin: 27, won: true, po: "PREN-2026-01", source: "Email", loggedBy: N },
+  { n: 112, clientId: "c-10", kind: "render", title: "Inishbeg Coastguard Station: lime render and repointing", location: "Coastguard Station, Inishbeg", county: "Donegal", sent: -230, margin: 23, won: true, po: "IHT-2026-004", source: "Architect referral", loggedBy: A },
+
+  { n: 121, clientId: "c-04", kind: "facade", title: "Dunmoy Library: portico cleaning and repairs", location: "Library, Church Street, Dunmoy", county: "Roscommon", sent: -248, margin: 21, won: false, target: 96000, source: "Tender", loggedBy: T },
+  { n: 122, clientId: "c-06", kind: "wall", title: "Carrowbeg harbour wall: repointing and rebuilding", location: "Carrowbeg Harbour", county: "Mayo", sent: -244, margin: 19, won: false, target: 142000, source: "Tender", loggedBy: T },
+  { n: 123, clientId: "c-08", kind: "slate", title: "St Mel's Church, Killanure: re-slating", location: "St Mel's Church, Killanure", county: "Cavan", sent: -239, margin: 20, won: false, target: 188000, source: "Tender", loggedBy: T },
+  { n: 124, clientId: "c-05", kind: "sash", title: "3 Fitzgarret Square: sash windows", location: "3 Fitzgarret Square", county: "Dublin", sent: -236, margin: 28, won: false, target: 22400, source: "Existing client", loggedBy: N },
+  { n: 125, clientId: "c-11", kind: "render", title: "Rosmore Abbey guest house: lime render", location: "Rosmore Abbey", county: "Wexford", sent: -224, margin: 24, won: false, target: 58700, source: "Existing client", loggedBy: TM },
+  { n: 126, clientId: "c-04", kind: "wall", title: "Dunmoy Town Walls: section 2 consolidation", location: "Abbey Lane, Dunmoy", county: "Roscommon", sent: -221, margin: 21, won: false, target: 121000, source: "Tender", loggedBy: T },
+  { n: 127, clientId: "c-03", kind: "timber", title: "Ballyfinn Mill loft: floor repairs", location: "The Old Corn Mill, Ballyfinn", county: "Clare", sent: -216, margin: 22, won: false, target: 47300, source: "Existing client", loggedBy: A },
+  { n: 128, clientId: "c-12", kind: "render", title: "Kilbrack House Hotel: dining room ceilings", location: "Kilbrack House Hotel, Ventry Road", county: "Kerry", sent: -211, margin: 26, won: false, target: 36800, source: "Existing client", loggedBy: N },
+  { n: 129, clientId: "c-06", kind: "facade", title: "Carrowbeg Courthouse: stone repairs", location: "Courthouse, Carrowbeg", county: "Mayo", sent: -208, margin: 18, won: false, target: 164000, source: "Tender", loggedBy: T },
+  { n: 130, clientId: "c-07", kind: "brick", title: "Harcourt House: brick repointing", location: "Harcourt House, The Quay", county: "Waterford", sent: -203, margin: 20, won: false, target: 74500, source: "Existing client", loggedBy: A },
+  { n: 131, clientId: "c-10", kind: "slate", title: "Inishbeg Boathouse: roof repairs", location: "Inishbeg Boathouse", county: "Donegal", sent: -198, margin: 23, won: false, target: 41200, source: "Existing client", loggedBy: A },
+  { n: 132, clientId: "c-01", kind: "render", title: "Rathdoon Parochial House: lime render", location: "Parochial House, Church Road, Rathdoon", county: "Kildare", sent: -192, margin: 25, won: false, target: 52600, source: "Existing client", loggedBy: TM },
+  { n: 133, clientId: "c-04", kind: "repoint", title: "Dunmoy Bridewell: gate piers", location: "Gaol Lane, Dunmoy", county: "Roscommon", sent: -187, margin: 27, won: false, target: 18900, source: "Tender", loggedBy: T },
+  { n: 134, clientId: "c-08", kind: "sash", title: "Killanure Diocesan Office: windows", location: "Diocesan Office, Cathedral Close, Killanure", county: "Cavan", sent: -181, margin: 24, won: false, target: 33100, source: "Phone", loggedBy: N },
+  { n: 135, clientId: "c-06", kind: "wall", title: "Ballyhale Bridge, Carrowbeg: parapets", location: "Ballyhale Bridge, Carrowbeg", county: "Mayo", sent: -174, margin: 20, won: false, target: 61800, source: "Tender", loggedBy: T },
+  { n: 136, clientId: "c-02", kind: "timber", title: "Ardmullen House: library floor", location: "Ardmullen House, Kilcolgan", county: "Galway", sent: -168, margin: 26, won: false, target: 44600, source: "Existing client", loggedBy: TM },
+  { n: 137, clientId: "c-03", kind: "repoint", title: "Ballyfinn chapel: repointing", location: "Chapel Lane, Ballyfinn", county: "Clare", sent: -160, margin: 23, won: false, target: 39400, source: "Architect referral", loggedBy: A },
+  { n: 138, clientId: "c-05", kind: "facade", title: "18 Fitzgarret Square: portico", location: "18 Fitzgarret Square", county: "Dublin", sent: -152, margin: 22, won: false, target: 57200, source: "Existing client", loggedBy: N },
+  { n: 139, clientId: "c-07", kind: "render", title: "Granary Quay block A: internal lime plaster", location: "Granary Quay, Passage East", county: "Waterford", sent: -145, margin: 16, won: false, target: 88300, source: "Existing client", loggedBy: A },
+  { n: 140, clientId: "c-04", kind: "facade", title: "Dunmoy Market House: façade cleaning", location: "Market House, Dunmoy", county: "Roscommon", sent: -138, margin: 20, won: false, target: 71900, source: "Tender", loggedBy: T },
+  { n: 141, clientId: "c-11", kind: "wall", title: "Rosmore Abbey: precinct wall", location: "Rosmore Abbey", county: "Wexford", sent: -128, margin: 22, won: false, target: 66400, source: "Existing client", loggedBy: TM },
+  { n: 142, clientId: "c-06", kind: "slate", title: "Carrowbeg Library: roof repairs", location: "Library, Carrowbeg", county: "Mayo", sent: -119, margin: 19, won: false, target: 83700, source: "Tender", loggedBy: T },
+  { n: 143, clientId: "c-12", kind: "sash", title: "Kilbrack House Hotel: east wing windows", location: "Kilbrack House Hotel, Ventry Road", county: "Kerry", sent: -108, margin: 25, won: false, target: 41800, source: "Existing client", loggedBy: N },
+  { n: 144, clientId: "c-08", kind: "repoint", title: "Killanure Cathedral tower: repointing", location: "Cathedral Close, Killanure", county: "Cavan", sent: -101, margin: 18, won: false, target: 154000, source: "Tender", loggedBy: T },
+];
+
+/**
+ * The year's tenders before today's pipeline, with their enquiries. They have their own random
+ * sequence and number below today's (Q-2601 and ENQ-1401 stay where they are), so nothing in
+ * today's sample data moves. Lost tenders are answered a week or three after going out.
+ */
+export function seedPastCommercial(r: Rng, today: string, targets: Map<number, number>) {
+  const quotes: Quote[] = [];
+  const enquiries: Enquiry[] = [];
+  for (const q of PAST) {
+    const id = `q-${q.n}`;
+    const enqId = `e-${q.n}`;
+    const lines = linesFor(r, q.kind, targets.get(q.n) ?? q.target ?? 40000, id);
+    const sell = quoteTotal(lines);
+    const sentDay = workdays(today, q.sent);
+    const responded = workdays(sentDay, q.won ? r.int(3, 7) : r.int(6, 16));
+    quotes.push({ id, ref: "", enquiryId: enqId, clientId: q.clientId, title: q.title, status: q.won ? "Accepted" : "Declined", lines, costing: costingFor(q.kind, sell, q.margin), sentAt: at(sentDay, "16:20"), openedAt: at(workdays(sentDay, 1), "09:40"), respondedAt: at(responded, "11:15"), poNumber: q.po, validDays: 60, drafted: false, kind: WORK[q.kind].title });
+    enquiries.push({ id: enqId, ref: "", receivedAt: at(workdays(sentDay, -r.int(4, 9)), "10:05"), source: q.source, loggedBy: q.loggedBy, clientId: q.clientId, contactName: CLIENTS.find((c) => c.id === q.clientId)!.contactName, location: q.location, county: q.county, description: ((d) => d.charAt(0).toUpperCase() + d.slice(1))(q.title.split(": ")[1] ?? q.title), status: q.won ? "Won" : "Lost", quoteId: id, notes: "" });
+  }
+  // Numbered in the order they went out, below today's first quote and enquiry.
+  [...quotes].sort((a, b) => (a.sentAt ?? "").localeCompare(b.sentAt ?? "")).forEach((q, i) => (q.ref = `Q-${2601 - quotes.length + i}`));
+  [...enquiries].sort((a, b) => a.receivedAt.localeCompare(b.receivedAt)).forEach((e, i) => (e.ref = `ENQ-${1401 - enquiries.length + i}`));
+  return { quotes, enquiries };
+}
 
 /** When the two newest quotes' enquiries came in: from the emails in the inbox (office.ts). */
 const RECEIVED: Record<number, [days: number, time: string]> = { 19: [-1, "09:48"], 20: [0, "07:45"] };
@@ -358,6 +434,7 @@ export function seedCommercial(r: Rng, today: string, targets: Map<number, numbe
       validDays: 60,
       drafted: q.drafted ?? false,
       query: q.query,
+      kind: WORK[q.kind].title,
     });
     const fixed = RECEIVED[q.n];
     const received = fixed ? workdays(today, fixed[0]) : workdays(sentDay ?? today, -(sentDay ? r.int(4, 9) : r.int(1, 3)));

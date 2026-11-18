@@ -27,7 +27,7 @@ def steps(page, ctx):
     page.get_by_role("button", name="Managing director").click(); page.wait_for_url("**/dashboard")
     page.wait_for_selector("nav[aria-label=Departments] a")
     check("MD lands on dashboard", "/dashboard" in page.url)
-    check("Department bar shows 12 departments (Admin added and Files kept, 16 Nov)", page.locator("nav[aria-label=Departments] a").count() == 12, str(page.locator("nav[aria-label=Departments] a").count()))
+    check("Department bar shows 14 departments (Customers and Reports added 18 Nov)", page.locator("nav[aria-label=Departments] a").count() == 14, str(page.locator("nav[aria-label=Departments] a").count()))
     side = page.locator("nav[aria-label='Dashboard screens']")
     # 16 Nov: approvals live on the overview; the sidebar's Overview link carries the count (8 plus the Monday ticket reminder).
     check("Sidebar shows 9 pending approvals", side.get_by_role("link", name="Overview").inner_text().strip().endswith("9"), side.get_by_role("link", name="Overview").inner_text())

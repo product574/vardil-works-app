@@ -207,7 +207,7 @@ function TopBar({ canGoBack }: { canGoBack: boolean }) {
 type Hit = { key: string; label: string; sub: string; to: string };
 
 /**
- * Search across projects, quotes, clients and people. For the managing director the last line
+ * Search across projects, quotes, customers and people. For the managing director the last line
  * offers the same words to Ask AI, so a question typed here is one tap from an answer
  * (Aodhan's choice, 16 Nov: search and Ask AI stay separate, joined by this line).
  */
@@ -233,7 +233,7 @@ function Search({ autoFocus = false, onDone }: { autoFocus?: boolean; onDone?: (
     return [
       ...projects.filter((p) => has(p.code, p.name, p.location, p.county)).map((p) => ({ key: p.id, label: `${p.code} ${p.name}`, sub: `Project, ${p.status.toLowerCase()}, ${p.county}`, to: `/projects/${p.code}` })),
       ...quotes.filter((x) => has(x.ref, x.title)).map((x) => ({ key: x.id, label: `${x.ref} ${x.title}`, sub: `Quote, ${x.status.toLowerCase()}`, to: `/sales/quotes/${x.ref}` })),
-      ...clients.filter((c) => has(c.name, c.contactName)).map((c) => ({ key: c.id, label: c.name, sub: `Client, ${c.contactName}`, to: `/sales/clients?client=${c.id}` })),
+      ...clients.filter((c) => has(c.name, c.contactName)).map((c) => ({ key: c.id, label: c.name, sub: `Customer, ${c.contactName}`, to: `/customers/${c.id}` })),
       ...people.filter((p) => has(p.name, p.trade)).map((p) => ({ key: p.id, label: p.name, sub: p.trade, to: `/people?person=${p.id}` })),
     ].slice(0, 8);
   }, [q, projects, people, clients, quotes]);
@@ -274,8 +274,8 @@ function Search({ autoFocus = false, onDone }: { autoFocus?: boolean; onDone?: (
         role="combobox"
         aria-expanded={open && (hits.length > 0 || offerAsk)}
         aria-controls="search-results"
-        aria-label="Search projects, quotes, clients and people"
-        placeholder="Search projects, quotes, clients, people"
+        aria-label="Search projects, quotes, customers and people"
+        placeholder="Search projects, quotes, customers, people"
         className="field pl-8"
         value={q}
         onChange={(e) => {

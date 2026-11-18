@@ -44,8 +44,8 @@ def steps(page, ctx):
     check("New client: saved to Clients with an account ref and 30 day terms", c and c["accountRef"] == "KILR01" and c["termsDays"] == 30 and c["type"] == "Heritage trust", c)
     check("New client: the enquiry is logged against them", e["clientId"] == c["id"] and e["contactName"] == "Brid Hanrahan", e)
     check("New client: card on the board carries their name", "Kilronan Tidy Towns Committee" in page.locator("section[aria-label='To quote']").inner_text())
-    page.goto(BASE + "/sales/clients"); page.wait_for_timeout(300)
-    check("New client: listed on the Clients screen", page.locator("tbody tr", has_text="Kilronan Tidy Towns Committee").count() == 1)
+    page.goto(BASE + "/customers"); page.wait_for_timeout(300)
+    check("New client: listed on the Customers screen", page.locator("tbody tr", has_text="Kilronan Tidy Towns Committee").count() == 1)
 
     # ── 2. Edit, add and remove lines on a draft quote
     page.goto(BASE + "/sales"); page.wait_for_selector("section[aria-label='To quote']")

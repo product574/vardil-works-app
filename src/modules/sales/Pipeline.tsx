@@ -46,7 +46,7 @@ export function PipelineBoard() {
   const { seeValues, seeMargins, may } = useAccess();
   const canPrice = may("priceQuotes");
   const [showLost, setShowLost] = useState(false);
-  const [allWon, setAllWon] = useState(false);
+  const [allDone, setAllDone] = useState<Partial<Record<Stage, boolean>>>({});
   const [logging, setLogging] = useState(false);
   const [openEnquiry, setOpenEnquiry] = useState<Enquiry | null>(null);
   const [dragging, setDragging] = useState<Card | null>(null);
@@ -104,7 +104,7 @@ export function PipelineBoard() {
         <div className="grid grid-flow-col gap-3" style={{ gridAutoColumns: "minmax(12rem, 1fr)" }}>
           {columns.map((col) => {
             const quotes = col.quotes ?? [];
-            const shown = col.stage === "won" && !allWon ? quotes.slice(0, 4) : quotes;
+            const shown = (col.stage === "won" || col.stage === "lost") && !allDone[col.stage] ? quotes.slice(0, 4) : quotes;
             const count = (col.enquiries?.length ?? 0) + quotes.length;
             const total = quotes.reduce((s, q) => s + quoteTotal(q.lines), 0);
             const home = dragging && cardStage(dragging) === col.stage;
@@ -207,9 +207,9 @@ export function PipelineBoard() {
                   })}
                 </ul>
                 {count === 0 && <p className="rounded-md border border-dashed border-line-strong px-2.5 py-4 text-center text-[0.93rem] text-muted">Nothing at this stage</p>}
-                {col.stage === "won" && quotes.length > 4 && (
-                  <Button variant="ghost" size="sm" className="mt-2 self-start" onClick={() => setAllWon((v) => !v)}>
-                    {allWon ? "Show the latest 4" : `Show all ${quotes.length}`}
+                {(col.stage === "won" || col.stage === "lost") && quotes.length > 4 && (
+                  <Button variant="ghost" size="sm" className="mt-2 self-start" onClick={() => setAllDone((v) => ({ ...v, [col.stage]: !v[col.stage] }))}>
+                    {allDone[col.stage] ? "Show the latest 4" : `Show all ${quotes.length}`}
                   </Button>
                 )}
               </section>
@@ -378,7 +378,10 @@ export function Enquiries() {
   const [open, setOpen] = useState<Enquiry | null>(null);
   const canPrice = useAccess().may("priceQuotes");
   const [q, setQ] = useState("");
-  const rows = db.enquiries.filter((e) => !q.trim() || `${e.ref} ${e.location} ${e.county} ${e.description} ${clientName(db, e.clientId)}`.toLowerCase().includes(q.trim().toLowerCase()));
+  // Newest first: a year of past enquiries sits under today's.
+  const rows = db.enquiries
+    .filter((e) => !q.trim() || `${e.ref} ${e.location} ${e.county} ${e.description} ${clientName(db, e.clientId)}`.toLowerCase().includes(q.trim().toLowerCase()))
+    .sort((a, b) => b.receivedAt.localeCompare(a.receivedAt) || b.ref.localeCompare(a.ref, undefined, { numeric: true }));
 
   return (
     <>
@@ -573,7 +576,7 @@ function LogEnquiryDialog({ open, onClose }: { open: boolean; onClose: () => voi
             <Field label="Contact person">{(id) => <input id={id} className="field" autoComplete="name" value={contact} onChange={(e) => { setContact(e.target.value); clear(); }} />}</Field>
             <Field label="Phone">{(id) => <input id={id} className="field" type="tel" inputMode="tel" autoComplete="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />}</Field>
             <Field label="Email" className="sm:col-span-2">{(id) => <input id={id} className="field" type="email" inputMode="email" autoComplete="email" autoCapitalize="none" value={email} onChange={(e) => setEmail(e.target.value)} />}</Field>
-            <p className="text-[0.93rem] text-muted sm:col-span-2">They are added to Clients with 30 day terms. Only the name and a contact are needed now; the rest can follow.</p>
+            <p className="text-[0.93rem] text-muted sm:col-span-2">They are added to Customers with 30 day terms. Only the name and a contact are needed now; the rest can be filled in on their customer page.</p>
           </fieldset>
         )}
         <Field label="Building or address">{(id) => <input id={id} className="field" value={location} placeholder="The Old Forge, Main Street" onChange={(e) => { setLocation(e.target.value); clear(); }} />}</Field>

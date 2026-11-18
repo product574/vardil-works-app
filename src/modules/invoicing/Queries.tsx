@@ -92,8 +92,8 @@ function QueryCard({ q }: { q: InvoiceQuery }) {
           {invoiceNo(i)}
         </Link>
         <StageBadge i={i} />
-        {access.can("sales") ? (
-          <Link to={`/sales/clients?client=${i.clientId}`} className={LINK}>
+        {access.can("customers") ? (
+          <Link to={`/customers/${i.clientId}`} className={LINK}>
             {c?.name}
           </Link>
         ) : (

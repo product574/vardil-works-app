@@ -45,6 +45,8 @@ type PSeed = {
   margin: number;
   flags?: Partial<Pick<Project, "extrasFlag" | "snaggingFlag" | "invoiceHold">>;
   handoverSent?: boolean;
+  /** A finished job that ran over: how many working days after its planned finish it ended. */
+  late?: number;
 };
 
 /**
@@ -268,6 +270,7 @@ const PROJECTS: PSeed[] = [
     crew: [["p-101", -90, -45], ["p-119", -90, -45], ["p-123", -90, -21], ["p-112", -50, -46], ["p-117", -37, -21], ["p-118", -37, -21]],
   },
   {
+    late: 6,
     code: "C715", name: "St Colman's Graveyard Wall", clientId: "c-08", craft: "wall", location: "Killanure", county: "Cavan",
     description: "Rebuild 46 m of collapsed boundary wall in lime mortar.", heritage: "Recorded monument, medieval graveyard",
     status: "Complete", cm: "p-cm1", sm: "p-sm5", start: -70, end: -27, margin: 9, instructions: "", flags: { extrasFlag: true, invoiceHold: true },
@@ -276,6 +279,7 @@ const PROJECTS: PSeed[] = [
     crew: [["p-103", -70, -45], ["p-105", -70, -45], ["p-127", -70, -32], ["p-128", -70, -27], ["p-102", -49, -27], ["p-104", -49, -27]],
   },
   {
+    late: 3,
     code: "C716", name: "Glebe House", clientId: "c-09", craft: "sash", location: "Glebe House, Castlegregory", county: "Kerry",
     description: "Overhaul 18 sash windows and the front door case.", heritage: "Protected structure, 1820s glebe house",
     status: "Complete", cm: "p-cm1", sm: "p-sm2", start: -40, end: -6, margin: 18, instructions: "", flags: { snaggingFlag: true, invoiceHold: true },
@@ -337,6 +341,113 @@ const PROJECTS: PSeed[] = [
   },
 ];
 
+/**
+ * The year before (added 18 Nov, for Reports): twelve jobs finished and paid between November
+ * 2025 and April 2026, each won by one of the tenders in commercial.ts (quote 101 to 112).
+ * Their crews never overlap each other or today's jobs, and their timesheets, costs, invoices
+ * and files have a random sequence of their own, so nothing in today's sample data moves.
+ */
+export const PAST_PROJECTS: PSeed[] = [
+  {
+    code: "C697", name: "Rosmore Abbey Cloister", clientId: "c-11", quoteN: 101, craft: "wall", location: "Rosmore Abbey", county: "Wexford",
+    description: "Consolidation of the ruined cloister walls in lime mortar.", heritage: "National monument, 13th century abbey",
+    status: "Closed", cm: "p-cm1", sm: "p-sm1", start: -262, end: -228, margin: 24, instructions: "", handoverSent: true,
+    scope: ["Archaeologist's method statement agreed", "Vegetation removed and roots treated", "Loose facing recorded and taken down", "Core consolidated and facing rebuilt in lime", "Wall heads capped", "Site cleared and the lawn reinstated"],
+    done: 6,
+    crew: [["p-101", -262, -228], ["p-102", -262, -228], ["p-123", -262, -228], ["p-124", -262, -228]],
+  },
+  {
+    code: "C698", name: "Rathdoon Rectory", clientId: "c-01", quoteN: 102, craft: "roof", location: "Church Road, Rathdoon", county: "Kildare",
+    description: "Strip and re-slate the rectory roof, with leadwork to the valleys.", heritage: "Protected structure, 1840s rectory",
+    status: "Closed", cm: "p-cm1", sm: "p-sm1", start: -258, end: -232, late: 2, margin: 21, instructions: "", handoverSent: true,
+    scope: ["Scaffold and temporary weather protection", "Strip slates and set aside the sound ones", "Rafter repairs", "New battens and membrane", "Re-slate in salvaged and new slate", "Lead valleys and flashings", "Strike scaffold"],
+    done: 7,
+    crew: [["p-109", -258, -232], ["p-110", -258, -232], ["p-111", -258, -232], ["p-127", -258, -232]],
+  },
+  {
+    code: "C699", name: "Ardmullen Stable Yard", clientId: "c-02", quoteN: 103, craft: "render", location: "Ardmullen House, Kilcolgan", county: "Galway",
+    description: "Cement render removed from the stable range and replaced in lime.", heritage: "Protected structure, within the curtilage of Ardmullen House",
+    status: "Closed", cm: "p-cm1", sm: "p-sm2", start: -255, end: -222, margin: 27, instructions: "", handoverSent: true,
+    scope: ["Cement render removed by hand", "Masonry repairs and dubbing out", "Scratch and float coats", "Finish coat", "Limewash, four coats", "Yard cleared"],
+    done: 6,
+    crew: [["p-106", -255, -222], ["p-107", -255, -222], ["p-125", -255, -222]],
+  },
+  {
+    code: "C700", name: "Dunmoy Market Cross", clientId: "c-04", quoteN: 104, craft: "masonry", location: "The Square, Dunmoy", county: "Roscommon",
+    description: "Stone indent repairs and repointing to the market cross.", heritage: "Recorded monument",
+    status: "Closed", cm: "p-cm2", sm: "p-sm4", start: -250, end: -236, margin: 31, instructions: "", handoverSent: true,
+    scope: ["Pedestrian barriers and protection", "Mortar analysis and sample panel approved", "Stone indents to the shaft and steps", "Rake out and repoint", "Barriers away and the square cleaned"],
+    done: 5,
+    crew: [["p-103", -250, -236], ["p-104", -250, -236], ["p-105", -250, -236]],
+  },
+  {
+    code: "C701", name: "Kilbrack House Hotel", clientId: "c-12", quoteN: 105, craft: "sash", location: "Ventry Road, Kilbrack", county: "Kerry",
+    description: "Repairs to 28 sash windows on the front and garden elevations.", heritage: "Protected structure, 1790s house, hotel use",
+    status: "Closed", cm: "p-cm2", sm: "p-sm2", start: -248, end: -220, late: 4, margin: 18, instructions: "", handoverSent: true,
+    scope: ["Windows surveyed and numbered", "Sashes taken to the workshop in batches", "Splice repairs and re-cording", "Reglazing in cylinder glass", "Sashes refitted and draughtproofed", "Painting, three coats"],
+    done: 6,
+    crew: [["p-113", -248, -220], ["p-114", -248, -220], ["p-121", -248, -220], ["p-122", -248, -220]],
+  },
+  {
+    code: "C702", name: "6 Fitzgarret Square", clientId: "c-05", quoteN: 106, craft: "brick", location: "6 Fitzgarret Square", county: "Dublin",
+    description: "Brick repointing to the front elevation, with repairs in reclaimed brick.", heritage: "Protected structure, Georgian terrace",
+    status: "Closed", cm: "p-cm1", sm: "p-sm5", start: -244, end: -218, margin: 22, instructions: "", handoverSent: true,
+    scope: ["Scaffold and pavement licence", "Rake out by hand", "Brick repairs in reclaimed brick", "Repoint in lime", "Tuck pointing to the front", "Strike scaffold"],
+    done: 6,
+    crew: [["p-117", -244, -218], ["p-118", -244, -218], ["p-119", -244, -218], ["p-128", -244, -218]],
+  },
+  {
+    code: "C703", name: "Pound Bridge, Carrowbeg", clientId: "c-06", quoteN: 107, craft: "wall", location: "Pound Bridge, Carrowbeg", county: "Mayo",
+    description: "Rebuilding of the collapsed parapets in lime mortar.", heritage: "Recorded structure, masonry bridge",
+    status: "Closed", cm: "p-cm2", sm: "p-sm2", start: -226, end: -201, late: 5, margin: 15, instructions: "", handoverSent: true,
+    scope: ["Traffic management in place", "Collapsed parapet recorded and taken down", "Parapets rebuilt in lime", "Coping in salvaged stone", "Traffic management away"],
+    done: 5,
+    crew: [["p-101", -226, -201], ["p-102", -226, -201], ["p-126", -226, -201]],
+  },
+  {
+    code: "C704", name: "Miller's Cottage, Ballyfinn", clientId: "c-03", quoteN: 108, craft: "roof", location: "Miller's Cottage, Ballyfinn", county: "Clare",
+    description: "Re-roofing of the miller's cottage in salvaged slate.", heritage: "Protected structure, within the mill complex",
+    status: "Closed", cm: "p-cm2", sm: "p-sm3", start: -228, end: -200, margin: 26, instructions: "", handoverSent: true,
+    scope: ["Scaffold erected", "Strip and sort the slates", "Timber repairs to the roof", "Battens and membrane", "Re-slate", "Leadwork and ridge", "Strike scaffold"],
+    done: 7,
+    crew: [["p-109", -228, -200], ["p-110", -228, -200], ["p-112", -228, -200], ["p-115", -228, -200]],
+  },
+  {
+    code: "C705", name: "Passage East Maltings", clientId: "c-07", quoteN: 109, craft: "timber", location: "The Maltings, Passage East", county: "Waterford",
+    description: "Floor repairs to the maltings for the main contractor, in reclaimed pitch pine.", heritage: "Recorded structure, 19th century maltings",
+    status: "Closed", cm: "p-cm2", sm: "p-sm3", start: -219, end: -186, late: 3, margin: 12, instructions: "", handoverSent: true,
+    scope: ["Propping to the floors", "Boards lifted and numbered", "Joist ends spliced", "New oak bearers", "Boards relaid"],
+    done: 5,
+    crew: [["p-113", -219, -186], ["p-116", -219, -186], ["p-129", -219, -186], ["p-124", -218, -186]],
+  },
+  {
+    code: "C706", name: "Killanure Presbytery", clientId: "c-08", quoteN: 110, craft: "render", location: "Cathedral Close, Killanure", county: "Cavan",
+    description: "Lath and lime plaster ceilings repaired throughout the ground floor.", heritage: "Protected structure, 1860s presbytery",
+    status: "Closed", cm: "p-cm1", sm: "p-sm5", start: -215, end: -190, margin: 25, instructions: "", handoverSent: true,
+    scope: ["Floors protected and rooms cleared", "Failed plaster taken down and laths repaired", "Haired backing coats", "Finish coats", "Limewash"],
+    done: 5,
+    crew: [["p-106", -215, -190], ["p-108", -215, -190], ["p-125", -215, -190]],
+  },
+  {
+    code: "C707", name: "Glebe House Outbuildings", clientId: "c-09", quoteN: 111, craft: "roof", location: "Glebe House, Castlegregory", county: "Kerry",
+    description: "Re-roofing of the coach house and byre.", heritage: "Within the curtilage of a protected structure",
+    status: "Closed", cm: "p-cm1", sm: "p-sm2", start: -197, end: -180, margin: 29, instructions: "", handoverSent: true,
+    scope: ["Strip the roofs", "Rafter repairs", "Battens and membrane", "Re-slate", "Ridge and flashings"],
+    done: 5,
+    crew: [["p-111", -197, -180], ["p-127", -197, -180]],
+  },
+  {
+    code: "C708", name: "Inishbeg Coastguard Station", clientId: "c-10", quoteN: 112, craft: "render", location: "Coastguard Station, Inishbeg", county: "Donegal",
+    description: "Lime render to the seaward elevations and repointing to the boat house.", heritage: "Recorded structure, 1870s coastguard station",
+    status: "Closed", cm: "p-cm2", sm: "p-sm4", start: -200, end: -170, late: 2, margin: 20, instructions: "", handoverSent: true,
+    scope: ["Scaffold and weather screening", "Cement render removed", "Repointing to the boat house", "Three-coat lime render", "Limewash", "Strike scaffold"],
+    done: 6,
+    crew: [["p-103", -200, -170], ["p-104", -200, -170], ["p-107", -200, -170], ["p-123", -200, -170], ["p-120", -200, -170]],
+  },
+];
+const PAST_CODES = new Set(PAST_PROJECTS.map((p) => p.code));
+export const isPastCode = (code: string) => PAST_CODES.has(code);
+
 /** Paid hours expected on a planned day: 4% absent, 6% half days, and some overtime at time and a half. */
 const EXPECTED_HOURS = 0.9 * (8 + 0.12 * 2 * 1.5) + 0.06 * 4;
 /** Labour's share of the cost of a job, as in the quotes' cost build-up. */
@@ -354,8 +465,8 @@ function siteFor(stints: { code: string; from: string; to: string }[], personId:
 
 type Dated = PSeed & { startDate: string; endDate: string };
 
-function dated(today: string): Dated[] {
-  return PROJECTS.map((p) => ({ ...p, startDate: workdays(today, p.start), endDate: workdays(today, p.end) }));
+function dated(today: string, list: PSeed[] = PROJECTS): Dated[] {
+  return list.map((p) => ({ ...p, startDate: workdays(today, p.start), endDate: workdays(today, p.end) }));
 }
 
 /** Every person's stints, as dates, across all projects. */
@@ -393,7 +504,7 @@ function expectedLabour(p: Dated, rates: Map<string, number>, stints: Map<string
  * labour's share of cost and the quoted margin. Projects not started yet keep the quote's own figure.
  */
 export function quoteTargets(today: string, rates: Map<string, number>, holidays: Holiday[], quotedMargin: (n: number) => number): Map<number, number> {
-  const projects = dated(today);
+  const projects = [...dated(today), ...dated(today, PAST_PROJECTS)];
   const stints = stintsByPerson(today, projects);
   const out = new Map<number, number>();
   for (const p of projects) {
@@ -405,7 +516,7 @@ export function quoteTargets(today: string, rates: Map<string, number>, holidays
 
 export type ProjectMeta = { craft: Craft; margin: number; created: string; startDate: string; endDate: string };
 
-export function seedProjects(r: Rng, today: string, quotes: Quote[], holidays: Holiday[], names: Map<string, string>, rates: Map<string, number>) {
+export function seedProjects(r: Rng, today: string, quotes: Quote[], holidays: Holiday[], names: Map<string, string>, rates: Map<string, number>, rPast: Rng) {
   const projects: Project[] = [];
   const scopeGroups: ScopeGroup[] = [];
   const scopeTasks: ScopeTask[] = [];
@@ -416,13 +527,15 @@ export function seedProjects(r: Rng, today: string, quotes: Quote[], holidays: H
   const nextWeek = nextWorkWeek(today);
   const list = dated(today);
   const stints = stintsByPerson(today, list);
+  const past = dated(today, PAST_PROJECTS);
+  const pastStints = stintsByPerson(today, past);
   const pid = (code: string) => `pr-${code}`;
   let taskN = 0;
   let planN = 0;
 
   const variations = seedVariations(today, stints);
 
-  for (const p of list) {
+  for (const p of [...list, ...past]) {
     const id = pid(p.code);
     const quote = p.quoteN ? quotes.find((q) => q.id === `q-${String(p.quoteN).padStart(2, "0")}`) : undefined;
     const cmName = names.get(p.cm)!;
@@ -449,7 +562,7 @@ export function seedProjects(r: Rng, today: string, quotes: Quote[], holidays: H
 
     const approvedExtras = variations.filter((v) => v.projectId === id && v.status === "Approved").reduce((s, v) => s + v.estimatedValue, 0);
     const draftExtras = variations.some((v) => v.projectId === id && v.status === "Draft");
-    const value = quote ? Math.round((quoteTotal(quote.lines) + approvedExtras) * 100) / 100 : Math.round(expectedLabour(p, rates, stints, holidays) / LABOUR_SHARE / (1 - (p.margin + 3) / 100) / 50) * 50;
+    const value = quote ? Math.round((quoteTotal(quote.lines) + approvedExtras) * 100) / 100 : Math.round(expectedLabour(p, rates, isPastCode(p.code) ? pastStints : stints, holidays) / LABOUR_SHARE / (1 - (p.margin + 3) / 100) / 50) * 50;
 
     projects.push({
       id,
@@ -466,6 +579,7 @@ export function seedProjects(r: Rng, today: string, quotes: Quote[], holidays: H
       siteManagerId: p.sm,
       startDate: p.startDate,
       endDate: p.endDate,
+      plannedEnd: finished && p.late ? workdays(p.endDate, -p.late) : p.endDate,
       value,
       pricedBy: quote ? "Quote" : p.code === "C713" || p.code === "C717" ? "Schedule of rates" : "Quote",
       siteInstructions: p.instructions,
@@ -510,6 +624,22 @@ export function seedProjects(r: Rng, today: string, quotes: Quote[], holidays: H
         const status: Attendance["status"] = roll < 0.1 ? "half" : "full";
         const overtimeHours = status === "full" && r.chance(0.12) ? r.int(1, 3) : 0;
         attendance.push({ id: `att-${++attN}`, projectId: pid(code), personId, date: d, status, overtimeHours, savedBy: names.get(p.sm)!, savedAt: at(d, isToday ? "08:20" : "12:40"), sent: !isToday || sentToday.has(code) });
+      }
+    }
+  }
+  // The year before: the same, day by day over each past stint, with its own random sequence.
+  for (const [personId, mine] of [...pastStints].sort((a, b) => a[0].localeCompare(b[0]))) {
+    const first = mine.reduce((m, s) => (s.from < m ? s.from : m), mine[0]!.from);
+    const last = mine.reduce((m, s) => (s.to > m ? s.to : m), mine[0]!.to);
+    for (let d = first; d <= last; d = addDays(d, 1)) {
+      if (isWeekend(d) || approvedLeave(holidays, personId, d)) continue;
+      for (const code of siteFor(mine, personId, d)) {
+        const p = past.find((x) => x.code === code)!;
+        const roll = rPast.next();
+        if (roll < 0.04) continue;
+        const status: Attendance["status"] = roll < 0.1 ? "half" : "full";
+        const overtimeHours = status === "full" && rPast.chance(0.12) ? rPast.int(1, 3) : 0;
+        attendance.push({ id: `att-p${++attN}`, projectId: pid(code), personId, date: d, status, overtimeHours, savedBy: names.get(p.sm)!, savedAt: at(d, "12:40"), sent: true });
       }
     }
   }

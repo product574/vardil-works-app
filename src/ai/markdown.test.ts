@@ -42,6 +42,17 @@ describe("links in answers", () => {
     expect(safeHref("/files?project=C719&folder=Method statements")).toBe("/files?project=C719&folder=Method%20statements");
     expect(safeHref("/admin")).toBe("/admin");
     expect(safeHref("/admin/access?person=p-101")).toBe("/admin/access?person=p-101");
+    // Customers and Reports, 18 Nov: one customer's page with a tab, and the reports with their sort.
+    expect(safeHref("/customers")).toBe("/customers");
+    expect(safeHref("/customers/c-02")).toBe("/customers/c-02");
+    expect(safeHref("/customers/c-02?tab=invoices")).toBe("/customers/c-02?tab=invoices");
+    expect(safeHref("/reports")).toBe("/reports");
+    expect(safeHref("/reports/margin?sort=finished")).toBe("/reports/margin?sort=finished");
+    expect(safeHref("/reports/tenders")).toBe("/reports/tenders");
+  });
+
+  it("drops a customer page that is not one, or a tab that does not exist", () => {
+    for (const bad of ["/customers/c-02/../c-03/x", "/customers/anything", "/customers/c-02?tab=secrets", "/customers/c-02?redirect=https://x", "/reports/margin?sort=<script>", "/sales/clients?client=c-02"]) expect(safeHref(bad)).toBeNull();
   });
 
   it("drops links that leave the demo, or that a screen does not understand", () => {

@@ -16,12 +16,12 @@ import { REGION } from "@/lib/money";
 import { ROLES } from "../roles";
 import type { Db } from "../types";
 import { seedAssets } from "./assets";
-import { quotedMargin, seedCommercial } from "./commercial";
+import { quotedMargin, seedCommercial, seedPastCommercial } from "./commercial";
 import { fillInvoicing } from "./invoicing";
 import { APPROVAL_LIMIT, fillPurchases, seedPendingPurchases, seedSubcontractors } from "./purchases";
 import { fillManagementDates, seedActivity, seedFiles, seedMail, seedManagement, seedMoney } from "./office";
 import { seedPeople } from "./people";
-import { quoteTargets, seedProjects } from "./projects";
+import { isPastCode, quoteTargets, seedProjects } from "./projects";
 import { seedSubscription } from "./subscription";
 import { seedPortalNotes, seedSpendRequests, seedSupplies } from "./supply";
 import { demoDay, rng, workdays } from "./util";
@@ -65,15 +65,26 @@ function buildIrishSeed(realToday: string, opts: { emailDomain?: string; vatPct?
   const names = new Map(people.map((p) => [p.id, p.name]));
   const rates = new Map(people.map((p) => [p.id, p.hourlyRate]));
   // Won jobs were priced on the crews planned for them (projects.ts), so the quotes follow.
-  const { clients, enquiries, quotes } = seedCommercial(r, day, quoteTargets(day, rates, holidays, quotedMargin));
-  const { meta, ...proj } = seedProjects(r, day, quotes, holidays, names, rates);
+  const targets = quoteTargets(day, rates, holidays, quotedMargin);
+  const now = seedCommercial(r, day, targets);
+  // The year before (added 18 Nov, for Reports) draws from its own sequence, so nothing of
+  // today's sample data moves: the same figures, numbers and dates as before it was added.
+  const rPast = rng(20251118);
+  const before = seedPastCommercial(rPast, day, targets);
+  const clients = now.clients;
+  const enquiries = [...now.enquiries, ...before.enquiries];
+  const quotes = [...now.quotes, ...before.quotes];
+  const { meta, ...proj } = seedProjects(r, day, quotes, holidays, names, rates, rPast);
   // One driver per vehicle, matched to where it is based; the last was sold and has none.
   const drivers = ["p-sm2", "p-cm1", "p-sm5", "p-sm1", "p-sm3", "p-sm4", "p-yard", "p-128", "p-114", "p-107", "p-cm2", "p-hs"];
   const assets = seedAssets(r, day, drivers);
   const { approvals, automations } = seedManagement(day);
   const handoverPending = new Set(approvals.filter((a) => a.kind === "handover" && a.status === "Pending" && a.projectId).map((a) => a.projectId!.replace("pr-", "")));
-  const files = seedFiles(r, day, proj.projects, meta, names, handoverPending);
-  const money = seedMoney(r, day, { projects: proj.projects, meta, attendance: proj.attendance, people, scopeTasks: proj.scopeTasks, hiredPlant: assets.hiredPlant, clients, vatPct });
+  const files = [
+    ...seedFiles(r, day, proj.projects.filter((p) => !isPastCode(p.code)), meta, names, handoverPending),
+    ...seedFiles(rPast, day, proj.projects.filter((p) => isPastCode(p.code)), meta, names, new Set(), false).map((f, i) => ({ ...f, id: `f-p${i + 1}` })),
+  ];
+  const money = seedMoney(r, day, { projects: proj.projects, meta, attendance: proj.attendance, people, scopeTasks: proj.scopeTasks, hiredPlant: assets.hiredPlant, clients, vatPct, rPast });
   const mails = seedMail(day, domain, holidays.find((h) => h.id === "hol-1")!);
   const subcontractors = seedSubcontractors();
   // Invoices waiting for approval: none is in a job's costs yet, so no margin moves.

@@ -20,6 +20,7 @@ import { addDays, fmtLong } from "@/lib/dates";
 import { hireEstimate } from "@/lib/job-costs";
 import { partyOf, payBy, PURCHASE_LABEL, purchaseStage } from "@/lib/purchases";
 import { REGION, r2 } from "@/lib/money";
+import { conversionByKind, finishedInYear, onTime, paidInYear, salesByCustomer, salesInYear, tenderWinRate, topByMargin, totals, whereMoneyGoes, yearStart } from "@/lib/reports";
 import { currentPlan, invoicePaid, nextInvoice } from "@/lib/subscription";
 import { costBreakdown, marginPct, quoteTotal } from "@/lib/quotes";
 import { daysBetween, dueState, nextServiceDate } from "@/lib/status";
@@ -31,7 +32,7 @@ export const RECORD_LINKS: [pattern: string, what: string][] = [
   ["/projects/C719", "one project; add ?tab=scope, photos, files, plant, requests, extras, costs or history for a tab"],
   ["/sales/quotes/Q-2601", "one quote"],
   ["/invoicing/client/SI-10404", "one client invoice, by the number it goes by"],
-  ["/sales/clients?client=c-01", "one client"],
+  ["/customers/c-01", "one customer's page; add ?tab=projects, tenders, invoices, emails or files for a tab"],
   ["/inbox?mail=mail-1", "one email in the Inbox"],
   ["/dashboard?open=ap-1", "one draft in Approvals, opened on the overview"],
   ["/people?person=p-101", "one person"],
@@ -110,6 +111,24 @@ export function buildSnapshot(db: Db, today: string, brand: Brand): string {
     `Region: ${brand.region === "UK" ? "United Kingdom" : "Ireland"}. Money is in ${money}. Amounts are before VAT unless a column says gross. VAT on construction work is ${region.vatPct}%. The basic site safety card is called ${region.safetyCard}; the vehicle test is ${region.vehicleTest}.`,
     "Signed in: Aidan King, managing director. He can see everything, including pay rates, costs and margins.",
     "Dates are written YYYY-MM-DD. Counts of days (in 8 days, 38 days ago, days late) are already worked out from today.",
+  );
+
+  // Reports (added 18 Nov): the same figures as the Reports screens, worked out by the same rules.
+  const win = tenderWinRate(db.quotes, today);
+  const doneJobs = finishedInYear(db, today);
+  const paidJobs = paidInYear(db, today);
+  const timely = onTime(doneJobs);
+  const spent = whereMoneyGoes(db, today);
+  out.push(
+    [
+      `## Reports, last 12 months (${yearStart(today)} to ${today}), as on the Reports screens`,
+      `Tender win rate ${win.pct}%: ${win.won} won of ${win.decided} decided, ${n0(win.valueWon)} won. Sales invoiced ${n0(salesInYear(db.salesInvoices, today))} before VAT. Average margin on the ${paidJobs.length} jobs paid in full ${totals(paidJobs).pct}%. Jobs finished on time ${timely.pct}% (${timely.onTime} of ${timely.jobs}).`,
+      `Tender win rate by kind of work: ${conversionByKind(db.quotes, today).map((k) => `${k.kind} ${k.pct}% (${k.won} of ${k.decided})`).join("; ")}.`,
+      `Sales by customer: ${salesByCustomer(db, today).map((c) => `${c.client.name} ${n0(c.total)} from ${c.projects} projects`).join("; ")}.`,
+      `Most profitable jobs paid in full: ${topByMargin(db, today).map((j) => `${j.project.code} ${j.project.name} ${j.pct}% (price ${n0(j.revenue)}, cost ${n0(j.cost)}, margin ${n0(j.margin)})`).join("; ")}.`,
+      `Where the money goes, ${n0(spent.total)} of job costs: ${spent.rows.map((r) => `${r.heading} ${n0(r.amount)} (${r.pct}%)`).join("; ")}.`,
+      `Gross margin on the ${doneJobs.length} jobs finished: revenue ${n0(totals(doneJobs).revenue)}, cost ${n0(totals(doneJobs).cost)}, margin ${n0(totals(doneJobs).margin)} (${totals(doneJobs).pct}%).`,
+    ].join("\n"),
   );
 
   // Screens
@@ -262,13 +281,24 @@ export function buildSnapshot(db: Db, today: string, brand: Brand): string {
       "Late counts days past the due date, as on Invoicing: Unpaid (aged debt). An issued invoice goes by its accounts number (SI-), the one the client has; one not issued yet by our own reference (INV-).",
     ),
   );
+  // Every invoice of the last four months, and any older one not paid yet, in full; older paid
+  // ones as one line per supplier, so the summary stays well inside the server's limit.
+  const recentFrom = addDays(today, -120);
+  const inFull = (x: Db["supplierInvoices"][number]) => x.invoiceDate >= recentFrom || purchaseStage(x) !== "paid";
   out.push(
     table(
-      "Supplier and subcontractor invoices (accounts check each one; it is approved into job costs, then paid by accounts)",
+      "Supplier and subcontractor invoices (accounts check each one; it is approved into job costs, then paid by accounts). Every one from the last four months, and any older one not paid yet",
       ["from", "supplier or subcontractor", "number", "date", "type", "net", "gross", "job ref on the paper", "where it stands", "approved by", "to be paid by", "paid on", "costed to"],
-      db.supplierInvoices.map((s) => [s.supplier, partyOf(s), s.invoiceNo, s.invoiceDate, s.docType === "credit_note" ? "credit note" : "invoice", n2(s.subtotal), n2(s.total), s.jobRef ?? "none", `${PURCHASE_LABEL[purchaseStage(s)]}${s.sentBack && purchaseStage(s) === "back" ? `: ${clean(s.sentBack.reason)}` : ""}`, s.confirmedBy ?? "", s.docType === "credit_note" ? "" : payBy(s), s.paidOn ?? "", s.allocations.map((a) => `${code(a.projectId)} ${a.category} ${n2(a.amount)}`).join("; ")]),
+      db.supplierInvoices.filter(inFull).map((s) => [s.supplier, partyOf(s), s.invoiceNo, s.invoiceDate, s.docType === "credit_note" ? "credit note" : "invoice", n2(s.subtotal), n2(s.total), s.jobRef ?? "none", `${PURCHASE_LABEL[purchaseStage(s)]}${s.sentBack && purchaseStage(s) === "back" ? `: ${clean(s.sentBack.reason)}` : ""}`, s.confirmedBy ?? "", s.docType === "credit_note" ? "" : payBy(s), s.paidOn ?? "", s.allocations.map((a) => `${code(a.projectId)} ${a.category} ${n2(a.amount)}`).join("; ")]),
     ),
   );
+  const older = db.supplierInvoices.filter((x) => !inFull(x));
+  const bySupplier = [...new Set(older.map((x) => x.supplier))].sort().map((name) => {
+    const mine = older.filter((x) => x.supplier === name);
+    const dates = mine.map((x) => x.invoiceDate).sort();
+    return [name, mine.length, n2(mine.reduce((t, x) => t + (x.docType === "credit_note" ? -x.subtotal : x.subtotal), 0)), `${dates[0]} to ${dates[dates.length - 1]}`, [...new Set(mine.flatMap((x) => x.allocations.map((a) => code(a.projectId))))].sort().join(" ")];
+  });
+  out.push(table("Older supplier and subcontractor invoices, all approved and paid, one line per supplier", ["supplier", "invoices", "net in all", "dated", "projects"], bySupplier));
   out.push(
     table(
       "Variations (extras)",
@@ -313,9 +343,9 @@ export function buildSnapshot(db: Db, today: string, brand: Brand): string {
   // Inbox
   out.push(
     table(
-      "Email (shared mailboxes)",
+      "Email (shared mailboxes), the last four months",
       ["id", "folder", "mailbox", "from", "address", "received", "read", "tag", "passed to", "client", "subject", "drafted reply waiting", "text"],
-      db.mails.map((m) => [m.id, m.folder, m.mailbox, m.fromName, m.fromAddress, m.receivedAt.slice(0, 16).replace("T", " "), m.read ? "read" : "unread", m.intent, name(m.routedToId), m.clientId ? (client.get(m.clientId)?.name ?? "") : "", m.subject, m.replyDraft ? `yes: ${m.replyDraft.subject}` : "no", m.body.length > 600 ? `${m.body.slice(0, 600)}...` : m.body]),
+      db.mails.filter((m) => m.receivedAt.slice(0, 10) >= recentFrom).map((m) => [m.id, m.folder, m.mailbox, m.fromName, m.fromAddress, m.receivedAt.slice(0, 16).replace("T", " "), m.read ? "read" : "unread", m.intent, name(m.routedToId), m.clientId ? (client.get(m.clientId)?.name ?? "") : "", m.subject, m.replyDraft ? `yes: ${m.replyDraft.subject}` : "no", m.body.length > 600 ? `${m.body.slice(0, 600)}...` : m.body]),
     ),
   );
 

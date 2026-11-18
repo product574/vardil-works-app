@@ -15,7 +15,7 @@ export type Block = { kind: "p"; lines: Inline[][] } | { kind: "ul" | "ol"; item
 const SCREENS = new Set(DEPARTMENTS.flatMap((d) => d.groups.flatMap((g) => g.items.map((i) => i.to))));
 /** Query settings each screen understands. */
 const QUERY: Record<string, string[]> = {
-  "/sales/clients": ["client"],
+  "/reports/margin": ["sort"],
   "/inbox": ["mail"],
   "/inbox/sent": ["mail"],
   "/inbox/archive": ["mail"],
@@ -34,6 +34,9 @@ const QUERY: Record<string, string[]> = {
 };
 const PROJECT = /^\/projects\/C\d{3,4}$/i;
 const QUOTE = /^\/sales\/quotes\/Q-\d{3,6}$/i;
+/** One customer's own page (18 Nov), with a tab. */
+const CUSTOMER = /^\/customers\/c-[a-z0-9-]{1,30}$/i;
+const CUSTOMER_TABS = new Set(["projects", "tenders", "invoices", "emails", "files"]);
 /** One client invoice on its own page (18 Nov), by the number it goes by. */
 const INVOICE = /^\/invoicing\/client\/(SI|INV)-\d{3,6}$/i;
 const TABS = new Set(["overview", "scope", "photos", "files", "plant", "requests", "extras", "costs", "history"]);
@@ -51,9 +54,10 @@ export function safeHref(href: string): string | null {
   if (u.origin !== "https://demo.invalid" || u.hash) return null;
   const path = u.pathname.length > 1 ? u.pathname.replace(/\/+$/, "") : u.pathname;
   const isProject = PROJECT.test(path);
-  if (!SCREENS.has(path) && !isProject && !QUOTE.test(path) && !INVOICE.test(path)) return null;
+  const isCustomer = CUSTOMER.test(path);
+  if (!SCREENS.has(path) && !isProject && !isCustomer && !QUOTE.test(path) && !INVOICE.test(path)) return null;
   for (const [k, v] of u.searchParams) {
-    if (isProject ? k !== "tab" || !TABS.has(v) : !(QUERY[path] ?? []).includes(k) || !/^[\w .-]{1,60}$/.test(v)) return null;
+    if (isProject ? k !== "tab" || !TABS.has(v) : isCustomer ? k !== "tab" || !CUSTOMER_TABS.has(v) : !(QUERY[path] ?? []).includes(k) || !/^[\w .-]{1,60}$/.test(v)) return null;
   }
   return `${path}${u.search}`;
 }

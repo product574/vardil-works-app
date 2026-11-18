@@ -78,9 +78,15 @@ left as it is) at his word. A second part followed the same day (decisions 73 to
 "Invoicing, part two" further down): the aged-debt squares as filters, a Back button on
 every screen, the export for Sage only with sales and purchases, supplier invoices approved
 and then paid, subcontractors in their own section of the portal, and a confirm box on every
-approval and payment. 306 automated tests and 822 browser checks pass on that branch; one
-check in `review_check.py` (Week ahead) fails on a Wednesday on `main` too, so it is not from
-this work.
+approval and payment. A third part followed the same day (decisions 82 to 94, and "Reports
+and Customers" further down): a Reports section after the HVAC reporting demo (the overview
+with five figures, sales by customer, the ten most profitable jobs paid in full, where the
+money goes, gross margin on every job finished in the last 12 months, tender conversion by
+kind of work), a year of past work in the sample data so the reports have something to
+show, and Customers as a section of its own in place of Sales, Clients (so the Customers
+half of step 4 is built on his copy; Compliance is not). 324 automated tests and 907 browser
+checks pass on that branch; one check in `review_check.py` (Week ahead) fails on a Wednesday
+on `main` too, so it is not from this work.
 
 **Loose ends, any time:** Aodhan's own round of testing on a real phone; the Ask AI key
 moved from his personal Claude account to a Vardil one (step 5 under "Where we stopped");
@@ -212,6 +218,26 @@ with question buttons, the layout ones with sketches of each option):
 | 80 | Telling them it is paid | The client's or subcontractor's portal says so every time, at the top and on the invoice. The confirm box also has a tick to email them (a receipt for a client, a remittance advice for a subcontractor), filed under Email, Sent. His words: "Portal notice and when marked email; an option to also send email to them". It starts ticked |
 | 81 | Subcontractor hours | Decision 70 (subcontractors on the timesheet, invoices matched against the hours) waits for the next round |
 
+Decisions made by Oisin on his copy, later still on 18 Nov 2026, from the HVAC reporting demo
+(`reporting-hvac.wacz`; layouts and features only, as decision 61), first in his own words and
+then with question buttons (he picked the recommended answer unless it says otherwise):
+
+| # | Question | Decision |
+|---|---|---|
+| 82 | Where Reports lives | Its own tile in the bar, between Invoicing and Portal. Sidebar: Overview, Sales by customer, Gross margin, Tender conversion |
+| 83 | Who sees Reports | The managing director by default, switchable per level in Admin, Roles and access. What it shows follows that level's money settings (no values: no sales or overdue; no margins: no margin figures, top 10 or gross margin page) |
+| 84 | Left out of the HVAC reports | Sales by category, sales by rep, sales by brand, project pipeline, supplier performance, stock value, slow movers and debtors ageing ("not useful"; the aged-debt squares on Client invoices do that job). Categories only as the jobs on the gross margin page. The HVAC tiles on deliveries and quality are not a contractor's figures |
+| 85 | Figures across the top | Five: Tender win rate (in place of Quote win rate), then his four picks from the options: Average margin on paid jobs, Sales in the last 12 months, Overdue from clients, Jobs finished on time |
+| 86 | Tender win rate | By number, over the last 12 months: tenders won of tenders decided (answered in that time), with the value won beside it. Tender conversion is split by the kind of work, the rate book the tender was priced from (`Quote.kind`) |
+| 87 | Most profitable jobs | Only jobs paid in full: closed, and every invoice on the job paid, the last payment in the last 12 months (his pick over "closed or invoiced"). The top 10 by margin %, with Job, Price, Cost, Margin and Margin %. Cost is the actual cost from Job costs, headed Cost, not an estimate |
+| 88 | Where the money goes | Every job cost in the last 12 months, as in the HVAC example: labour (the timesheets at each person's loaded rate), materials, subcontractors, plant and hire, transport and other site costs (approved supplier and subcontractor invoices by the date on the invoice; credit notes come off). Biggest first |
+| 89 | Gross margin page | Every job finished in the last 12 months, paid or not: revenue, cost to do them, gross margin, losing money; best and weakest job; a table that sorts by margin %, margin, revenue or newest first; Export CSV |
+| 90 | Sales by customer | Kept from HVAC. Client invoices sent in the last 12 months, paid or not, before VAT: the sales Sage has. Each customer opens their customer page |
+| 91 | Customers | A tile of its own after Sales, in place of Sales, Clients, which is gone. Every client link (Client invoices, queries, the invoice page, search, the old `/sales/clients` addresses) lands on the customer's page. Contracts managers and accounts have it by default as well as the managing director |
+| 92 | A customer's page | Tabs across the top: Overview (figures, details, the latest with them), Projects, Tenders, Invoices, Emails, Files, each linking to the record in its own section |
+| 93 | Changing customers | Add customer and Edit details, for whoever may price quotes or handle invoices. The Sage account is made from the name when the customer is added and never changes after, so Sage keeps matching their invoices |
+| 94 | Past work | About a year of it in the sample data, so the 12-month reports are full |
+
 Standing preferences (these come from Aodhan and are not optional):
 
 - UK English. No em dashes or en dashes anywhere: code comments, interface text, notes, chat.
@@ -290,7 +316,9 @@ src/
                         draw), pdf.ts (writes the PDF, no library), purchases.ts (where a
                         supplier's or subcontractor's invoice stands, who may approve it,
                         what is to be paid, the rows Sage gets, the paid emails) and trail.ts
-                        (the screens behind the Back button). Since 16 Nov also:
+                        (the screens behind the Back button), and reports.ts (the last 12
+                        months: win rate, sales, jobs paid in full, where the money goes, a
+                        customer's figures and latest, the CSV). Since 16 Nov also:
                         overview.ts (the AI overview, worked out from the records),
                         approvals.ts (client first), portal.ts (the overview's Portal panel),
                         requests.ts (what waits for the managing director's yes or no),
@@ -308,7 +336,10 @@ src/
                         To approve, To be paid), purchase-shared.tsx (who may approve, and
                         the approve, send back and paid boxes) and Invoicing.tsx (job costs).
                         projects/SubInvoices.tsx is where a site manager approves a
-                        subcontractor; portal/SubPortal.tsx is what a subcontractor sees
+                        subcontractor; portal/SubPortal.tsx is what a subcontractor sees.
+                        reports/Reports.tsx (18 Nov) is the four report screens;
+                        customers/ is Customers.tsx (the list and the add or change form)
+                        and CustomerPage.tsx (one customer, with its tabs)
 functions/              Cloudflare Pages Functions: api/ask.ts (Ask AI) and ask-log.ts (the record)
 server/                 their helpers: the Access token check, the D1 record, request checks
 ```
@@ -423,6 +454,18 @@ day, so it looks the same on any weekday (rebuilt in the review, 16 Nov):
   operatives with free days (`NEXT_WEEK_FREE`), and C726 starting on Thursday with nobody
   planned yet.
 - `seed.test.ts` checks it hangs together (dates, links, holds, terms, margins).
+- A year of past work (18 Nov, for Reports): twelve finished jobs, C697 to C708, all closed
+  and paid (`PAST_PROJECTS` in `seed/projects.ts`), with their crews and timesheets (1,177
+  days), stage payments and final accounts (14 invoices), supplier invoices and files; and
+  36 past tenders (`PAST` in `seed/commercial.ts`: the 12 won ones and 24 lost) with their
+  enquiries. Two new customers came with them, Rosmore Abbey Trust and Kilbrack Hotels.
+  The past is drawn from its own random numbers (`rng(20251118)`, `rPast`) and numbered
+  below today's records (Q-2565 to Q-2600, ENQ-1365 to ENQ-1400, SI-10387 to SI-10400,
+  ids `q-1xx`, `e-1xx`, `inv-p`, `att-p`, `f-p`), so every record from before stayed exactly
+  as it was (checked by comparing the whole seed before and after).
+- A job can finish late: `Project.plannedEnd` is the planned finish, and `endDate` the day
+  it finished. Seven of the 21 jobs finished in the last 12 months were late (C715 by six
+  working days, C716 by three, and five past ones), so "on time" means something.
 
 ### Re-branding for a prospect
 
@@ -1023,6 +1066,79 @@ behind Cloudflare; Ask AI with the changed summary. `preview_check5.py` and
    an invoice with an open query; a subcontractor sign-in role; whether suppliers get a
    remittance email.
 
+## Reports and Customers, 18 Nov (on the co-founder's copy)
+
+Same branch, `invoicing-section`. Decisions 82 to 94. What Oisin asked for: the reporting in
+his HVAC demo, made right for a contractor: Tender win rate in place of Quote win rate; sales
+by customer kept, with a customer page holding all their details and linked to the other
+sections; the most profitable closed jobs, top 10 by margin %, with price, cost, margin and
+margin %; where the money goes over the last 12 months, every cost; gross margin on all the
+jobs of the last 12 months; and none of sales by category, by rep, supplier performance,
+stock value, slow movers or debtors ageing.
+
+**Built.**
+
+- **Rules** (`src/lib/reports.ts`, pure, with tests): "the last 12 months" is the demo's day
+  and the 364 days before it (`yearStart`, `inYear`). `tenderWinRate`, `conversionByKind`,
+  `salesInYear`, `salesByCustomer`, `overdueFromClients`, `jobRow` (revenue is the contract
+  value with agreed extras, cost is `projectCosts`, the Job costs screen's own figure),
+  `finishedInYear`, `paidInYear`, `topByMargin`, `totals`, `onTime`, `sortJobs`,
+  `whereMoneyGoes`, `customerFigures`, `customerTimeline`, `csvOf`.
+- **Reports overview** (`/reports`): the five figures, each a link to where it comes from
+  (Tender conversion; Gross margin; Sales by customer; Client invoices, Overdue; Gross margin
+  newest first); Sales by customer, top 6; Most profitable jobs paid in full, top 10; Where
+  the money goes; Tender win rate by kind of work.
+- **Sales by customer** (`/reports/customers`), **Gross margin** (`/reports/margin`, the sort
+  is in the address, `?sort=margin`, `revenue` or `finished`) and **Tender conversion**
+  (`/reports/tenders`), each with Export CSV (the file is made in the browser).
+- **Customers** (`/customers`): every customer with live jobs, tenders out, sales in the last
+  12 months and what they owe; a search by name, contact, type, county or Sage account; Add
+  customer. **A customer's page** (`/customers/c-02`, a tab is `?tab=projects`, `tenders`,
+  `invoices`, `emails` or `files`): their figures, details (the portal line opens what they
+  see), the latest with them, and a tab each for their projects (past ones too), tenders,
+  invoices, emails and files; Edit details. `addCustomer` and `updateCustomer` in
+  `actions.ts`, both in the Activity log.
+- **Sales, Clients is gone** (`src/modules/sales/Clients.tsx` deleted). `/sales/clients` and
+  `/sales/clients?client=c-02` redirect to Customers. Log enquiry for a new client adds them
+  to Customers. The top bar's search finds a customer as "Customer" and opens their page,
+  and says customers in its box.
+- **The Sales board**: Won and Declined show the latest four, with Show all (a year of past
+  tenders would otherwise fill them). Enquiries are listed newest first.
+- **Access**: `customers` and `reports` are new `DepartmentKey`s. Reports is the managing
+  director's by default; Customers also contracts managers' and accounts'. Both can be
+  switched per level in Admin, Roles and access like any department.
+- **Ask AI**: its summary has a "Reports, last 12 months" block and can link to a customer's
+  page with a tab and to the reports (`safeHref`, `RECORD_LINKS`). Not tried with the model.
+- DATA_VERSION 14.
+
+**Tested.** 324 automated tests (18 new: `reports.test.ts` and link checks in
+`markdown.test.ts`; the seed and Ask AI summary tests pass unchanged with the past year in). Browser: the new
+`rep_check.py` (85 checks: the bar; the past year in the data; each of the five figures
+against the records and against the screen it opens; the top 10 all paid in full, ordered,
+and adding up; where the money goes adding up to the whole; sales by customer adding up to
+the figure; tender conversion by kind adding up to the whole; gross margin's rows, on time
+marks, late jobs, the three sorts, the totals, the best job and the CSV; the Customers list,
+its order and search; a customer's page, figures against the records, every tab and its
+address, the portal link; the old addresses; links from Invoicing and search; changing and
+adding a customer, refusals included; the Activity log; contracts manager, site manager and
+accounts access; Reports switched on for site managers without margins; dark mode; phone
+width on seven screens). `m1_check.py`, `m2_check.py`, `m2b_check.py` and `inv_check.py`
+changed for the two new tiles, the past year and Customers. All sixteen suites: 907 pass,
+and the one Week ahead check fails as before. `csp_check.py` passes (44 screens, no
+violations). Not tested: a real phone; Safari and Firefox; Ask AI with the bigger summary
+and the new links; `fn_check.py`; the hosted build behind Cloudflare.
+
+**Known gaps in this part.**
+
+- The past year has no emails, approvals or activity of its own; a past customer's Emails
+  tab is empty, and the Activity log starts where it did.
+- Sales by customer counts invoices by the day they were sent, so a job's money can fall
+  either side of the 12 months; the gross margin page counts a job by the day it finished.
+- "Where the money goes" puts subcontractor invoices and the labour heading of supplier
+  invoices together under Subcontractors.
+- Margin on a live job (the customer's Projects tab, "so far") is from the costs posted so
+  far, so it reads high early in a job.
+
 ## Build status
 
 Work is in milestones, with a stop for Aodhan's feedback after each.
@@ -1189,7 +1305,10 @@ The pieces:
   CPU limit of a Pages Function on Cloudflare's free plan). Each question goes in the
   Activity log as "Asked Ask AI" with who asked it, never the answer (`logAskAi`).
 - **What the model is told** `src/ai/snapshot.ts`: a compact plain-text copy of the records
-  (about 80,000 characters; about 40,000 tokens with the instructions, measured live), every
+  (about 80,000 characters when built; about 138,000 since the past year went into the
+  sample data on 18 Nov, which makes a first question cost more, roughly double; older paid
+  supplier invoices are summed up per supplier and emails kept to the last four months to
+  hold it there; about 40,000 tokens with the instructions, measured live, before), every
   figure worked out with the same rules as the
   screens (`dashboardNumbers`, `projectCosts` in `src/data/figures.ts`, which the Job costs
   screen now uses too, `dueState`, `hireEstimate`), day counts already done, and the list of

@@ -21,6 +21,8 @@ const files = () => import("@/modules/files/Files");
 const invoicing = () => import("@/modules/invoicing");
 const inbox = () => import("@/modules/inbox/Inbox");
 const portal = () => import("@/modules/portal/Portal");
+const reports = () => import("@/modules/reports/Reports");
+const customers = () => import("@/modules/customers");
 const subPortal = () => import("@/modules/portal/SubPortal");
 const site = () => import("@/modules/site/SiteView");
 const settings = () => import("@/modules/settings");
@@ -45,6 +47,8 @@ function Moved({ to }: { to: (search: URLSearchParams) => string }) {
   return <Navigate to={to(new URLSearchParams(search))} replace />;
 }
 const keep = (path: string) => (q: URLSearchParams) => (q.toString() ? `${path}?${q}` : path);
+/** Sales, Clients and its pop-up became Customers (18 Nov): a link to one client opens their page. */
+const ToCustomer = () => <Moved to={(q) => (q.get("client") ? `/customers/${q.get("client")}` : "/customers")} />;
 
 export const router = create([
   { path: "/sign-in", element: <SignInPage /> },
@@ -68,7 +72,14 @@ export const router = create([
           screen("sales/enquiries", sales, (m) => m.Enquiries),
           screen("sales/quotes/:ref", sales, (m) => m.QuotePage),
           screen("sales/awaiting", sales, (m) => m.Awaiting),
-          screen("sales/clients", sales, (m) => m.Clients),
+          // Clients moved to a section of its own (18 Nov): its old address, with or without a client, lands there.
+          { path: "sales/clients", element: <ToCustomer /> },
+          screen("customers", customers, (m) => m.Customers),
+          screen("customers/:id", customers, (m) => m.CustomerPage),
+          screen("reports", reports, (m) => m.ReportsOverview),
+          screen("reports/customers", reports, (m) => m.SalesByCustomerReport),
+          screen("reports/margin", reports, (m) => m.GrossMarginReport),
+          screen("reports/tenders", reports, (m) => m.TenderConversionReport),
           screen("projects", projects, (m) => m.AllProjects),
           screen("projects/today", projects, (m) => m.OnSiteToday),
           screen("projects/extras", projects, (m) => m.ExtrasAndSnagging),

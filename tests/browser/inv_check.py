@@ -57,7 +57,7 @@ def steps(page, ctx):
     page.get_by_label("Search client invoices").fill("zzzz"); page.wait_for_timeout(200)
     check("Search: nothing found says so and what to try", 'No invoice matches "zzzz"' in main.inner_text())
     page.get_by_label("Search client invoices").fill("")
-    check("List: the client opens their record in Sales", page.locator("tbody tr").first.locator("a[href^='/sales/clients?client=']").count() == 1)
+    check("List: the client opens their customer page", page.locator("tbody tr").first.locator("a[href^='/customers/c-']").count() == 1)
     page.screenshot(path=f"{OUT}/200-invoices.png")
 
     # ── Draft an invoice from the project's records

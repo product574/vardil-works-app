@@ -122,6 +122,8 @@ export type Quote = {
   /** True when the first draft was prepared by the assistant from the enquiry. */
   drafted: boolean;
   query?: string;
+  /** The kind of work it prices, from its rate book: "Lime repointing", "Roof re-slating". For the tender reports. */
+  kind?: string;
 };
 
 // ── Projects ──────────────────────────────────────────────────────────────────
@@ -145,7 +147,10 @@ export type Project = {
   contractsManagerId: ID;
   siteManagerId: ID;
   startDate: Day;
+  /** The planned finish while a job runs; the day it finished once it has. */
   endDate: Day;
+  /** The finish agreed when the job was set up. A finished job later than this ran over (Reports, Jobs finished on time). */
+  plannedEnd?: Day;
   /** Agreed contract value excluding VAT. Null when the job is not priced yet. */
   value: number | null;
   pricedBy: "Quote" | "Schedule of rates" | "Unpriced";
@@ -613,12 +618,14 @@ export type DepartmentKey =
   | "dashboard"
   | "inbox"
   | "sales"
+  | "customers"
   | "projects"
   | "schedule"
   | "people"
   | "plant"
   | "files"
   | "invoicing"
+  | "reports"
   | "portal"
   | "site"
   | "admin"

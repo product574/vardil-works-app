@@ -135,8 +135,8 @@ export function ClientInvoices() {
                         <span className="block max-w-[20rem] text-[0.87rem] text-muted">{i.description}</span>
                       </td>
                       <td>
-                        {access.can("sales") ? (
-                          <Link to={`/sales/clients?client=${i.clientId}`} className="text-accent-ink underline-offset-2 hover:underline">
+                        {access.can("customers") ? (
+                          <Link to={`/customers/${i.clientId}`} className="text-accent-ink underline-offset-2 hover:underline">
                             {c?.name}
                           </Link>
                         ) : (

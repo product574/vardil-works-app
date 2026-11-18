@@ -1,4 +1,4 @@
-import os, sys
+import os, re, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 FIX = os.path.join(HERE, "fixtures") + os.sep
 REPO = os.path.dirname(os.path.dirname(HERE))
@@ -28,10 +28,10 @@ def steps(page, ctx):
     count = lambda label: page.locator(f"section[aria-label='{label}'] li").count()
     check("Board: 3 enquiries to quote", count("To quote") == 3, count("To quote"))
     check("Board: 2 drafting, 3 sent, 2 opened, 1 queried", (count("Drafting"), count("Sent"), count("Opened"), count("Queried")) == (2, 3, 2, 1), (count("Drafting"), count("Sent"), count("Opened"), count("Queried")))
-    check("Board: Won shows latest 4 of 10 with a 'Show all 10' button", count("Won") == 4 and page.get_by_role("button", name="Show all 10").count() == 1, count("Won"))
+    check("Board: Won shows the latest 4 of 22 (a year of past work) with a 'Show all 22' button", count("Won") == 4 and page.get_by_role("button", name="Show all 22").count() == 1, count("Won"))
     page.screenshot(path=f"{OUT}/20-sales-board.png")
     page.get_by_role("switch", name="Show declined quotes").click(); page.wait_for_timeout(200)
-    check("Board: declined column appears when switched on", count("Declined") == 2, count("Declined"))
+    check("Board: declined column appears when switched on, the latest 4 of 26", count("Declined") == 4 and page.get_by_role("button", name="Show all 26").count() == 1, count("Declined"))
     page.get_by_role("switch", name="Show declined quotes").click()
 
     # ── Log an enquiry, draft a quote from it
@@ -129,11 +129,13 @@ def steps(page, ctx):
     page.goto(BASE + "/sales/awaiting"); page.wait_for_timeout(300); page.screenshot(path=f"{OUT}/33-awaiting.png")
     page.get_by_role("button", name="Chase").first.click(); page.wait_for_timeout(200)
     check("Awaiting: chasing records the time", "Last chased today" in page.locator("main").inner_text())
-    page.goto(BASE + "/sales/clients"); page.wait_for_timeout(300)
-    page.locator("tbody tr", has_text="Ardmullen Estate").click(); page.wait_for_timeout(200)
-    check("Clients: opening one lists its projects and quotes", "C720 Ardmullen House" in page.locator("dialog[open]").inner_text() and "Q-2616" in page.locator("dialog[open]").inner_text())
+    page.goto(BASE + "/customers"); page.wait_for_timeout(300)
+    page.locator("tbody tr", has_text="Ardmullen Estate").get_by_role("link", name="Ardmullen Estate").click(); page.wait_for_url("**/customers/c-02"); page.wait_for_timeout(300)
+    page.get_by_role("tab", name=re.compile("^Projects")).click(); page.wait_for_timeout(200)
+    has_project = "C720 Ardmullen House" in page.locator("main").inner_text()
+    page.get_by_role("tab", name=re.compile("^Tenders")).click(); page.wait_for_timeout(200)
+    check("Customers: opening one lists its projects and tenders", has_project and "Q-2616" in page.locator("main").inner_text())
     page.screenshot(path=f"{OUT}/34-client.png")
-    page.keyboard.press("Escape")
     page.goto(BASE + "/sales/enquiries"); page.wait_for_timeout(300); page.screenshot(path=f"{OUT}/35-enquiries.png")
 
     # ── Roles and money
@@ -141,7 +143,7 @@ def steps(page, ctx):
     page.goto(BASE + "/projects"); page.wait_for_selector("table")
     page.get_by_role("tab", name="All").click(); page.wait_for_timeout(200)
     codes = sorted(r.inner_text().split("\t")[0].strip() for r in page.locator("tbody tr").all())
-    check("Site manager: sees only the projects he runs (C729 was assigned to him when it was created)", codes == ["C712", "C719", "C724", "C729"], codes)
+    check("Site manager: sees only the projects he runs, past ones included (C729 was assigned to him when it was created)", codes == ["C697", "C698", "C712", "C719", "C724", "C729"], codes)
     check("Site manager: sees the Value column by default", "Value" in page.locator("thead").inner_text())
     page.goto(BASE + "/projects/C719"); page.wait_for_timeout(300)
     tabs = [t.inner_text().split("\n")[0].strip() for t in page.locator("[role=tablist][aria-label='Project sections'] [role=tab]").all()]
@@ -185,7 +187,7 @@ errs = []
 try:
     errs = run(steps)
 except Exception as e:
-    print("STOPPED EARLY:", str(e).split("\n")[0])
+    print("STOPPED EARLY:", str(e).split("\n")[0]); traceback.print_exc()
 for name, ok, detail in results:
     print(("PASS " if ok else "FAIL ") + name + ("" if ok else f"  [{detail}]"))
 print("console problems:", errs)

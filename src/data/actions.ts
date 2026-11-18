@@ -17,7 +17,7 @@ import { attendanceShort } from "@/lib/week";
 import { levelOf, levelValue, signedInPersonId } from "./access";
 import { PERMISSIONS } from "./permissions";
 import { ROLES } from "./roles";
-import { costingFor, linesFor, type WorkKind } from "./seed/commercial";
+import { costingFor, linesFor, WORK, type WorkKind } from "./seed/commercial";
 import { rng } from "./seed/util";
 import { getDay, useData, usePrefs } from "./store";
 import type { AccessKey, AccessRow, Allocation, Cert, Client, Db, DepartmentKey, Enquiry, ID, LevelKey, PermKey, Person, PhotoStage, Language, Mail, MailIntent, Proof, RequestKind, RoleKey, FileCategory, FileKind, FleetDocCategory, InvoiceLine, InvoiceQuery, Project, SalesInvoice, SendRoute, Variation, Vehicle } from "./types";
@@ -416,6 +416,38 @@ export function addClient(c: Pick<Client, "name" | "type" | "contactName" | "con
   return id;
 }
 
+/** The details on a customer's page that can be changed there (18 Nov). The account reference is made once and kept, as Sage keys on it. */
+export type CustomerDetails = Pick<Client, "name" | "type" | "contactName" | "contactPhone" | "contactEmail" | "address" | "county" | "billingEmail" | "termsDays" | "portalEnabled">;
+
+/** A new customer added from the Customers section: everything on their page, with an account reference made from the name. */
+export function addCustomer(c: CustomerDetails) {
+  let id = "";
+  mutate((db) => {
+    id = newId("c");
+    const stem = c.name.replace(/[^A-Za-z]/g, "").slice(0, 4).toUpperCase().padEnd(4, "X");
+    const taken = db.clients.filter((x) => x.accountRef.startsWith(stem)).length;
+    db.clients.push({ ...tidy(c), id, accountRef: `${stem}${String(taken + 1).padStart(2, "0")}` });
+    log(db, "Added a customer", c.name.trim(), "customers");
+  });
+  return id;
+}
+
+/** Change a customer's details. Their projects, tenders and invoices go with them, as they are linked by the customer, not the name. */
+export function updateCustomer(id: ID, c: CustomerDetails) {
+  mutate((db) => {
+    const x = db.clients.find((k) => k.id === id);
+    if (!x) return;
+    const before = x.name;
+    Object.assign(x, tidy(c));
+    if (!c.billingEmail?.trim()) delete x.billingEmail;
+    log(db, "Changed a customer's details", before === x.name ? x.name : `${before}, now ${x.name}`, "customers");
+  });
+}
+
+function tidy(c: CustomerDetails): CustomerDetails {
+  return { ...c, name: c.name.trim(), contactName: c.contactName.trim(), contactPhone: c.contactPhone.trim(), contactEmail: c.contactEmail.trim(), address: c.address?.trim() || undefined, county: c.county?.trim() || undefined, billingEmail: c.billingEmail?.trim() || undefined, termsDays: Math.max(0, Math.round(c.termsDays)) };
+}
+
 export function logEnquiry(e: Pick<Enquiry, "clientId" | "contactName" | "location" | "county" | "description" | "source" | "notes">) {
   let id = "";
   mutate((db) => {
@@ -451,7 +483,7 @@ export function draftQuoteFromEnquiry(enquiryId: ID) {
     const id = newId("q");
     const lines = linesFor(r, kind, r.int(18, 95) * 1000, id);
     ref = `Q-${n}`;
-    db.quotes.unshift({ id, ref, enquiryId: e.id, clientId: e.clientId, title: `${e.location}: ${e.description.split(".")[0]}`, status: "Awaiting approval", lines, costing: costingFor(kind, quoteTotal(lines), r.int(19, 29)), validDays: 60, drafted: true });
+    db.quotes.unshift({ id, ref, enquiryId: e.id, clientId: e.clientId, title: `${e.location}: ${e.description.split(".")[0]}`, status: "Awaiting approval", lines, costing: costingFor(kind, quoteTotal(lines), r.int(19, 29)), validDays: 60, drafted: true, kind: WORK[kind].title });
     e.quoteId = id;
     db.approvals.unshift({ id: newId("ap"), kind: "quote", title: `Quote ${ref}: ${e.location}`, rationale: "Drafted from the enquiry and priced from your rates for this kind of work.", createdAt: nowStamp(), status: "Pending", quoteId: id });
     log(db, "Drafted a quote from an enquiry", `${ref} ${e.location}`, "sales", "Assistant");
