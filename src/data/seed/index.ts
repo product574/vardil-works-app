@@ -15,7 +15,9 @@ import { DEFAULT_BRAND } from "@/config/brand";
 import { REGION } from "@/lib/money";
 import { ROLES } from "../roles";
 import type { Db } from "../types";
+import { ticketBlocks } from "@/lib/compliance";
 import { seedAssets } from "./assets";
+import { fillSubPapers, seedCompanyPapers, seedCourses, seedLicences, seedScaffolds, seedSmallKit } from "./compliance";
 import { quotedMargin, seedCommercial, seedPastCommercial } from "./commercial";
 import { fillInvoicing } from "./invoicing";
 import { APPROVAL_LIMIT, fillPurchases, seedPendingPurchases, seedSubcontractors } from "./purchases";
@@ -75,9 +77,16 @@ function buildIrishSeed(realToday: string, opts: { emailDomain?: string; vatPct?
   const enquiries = [...now.enquiries, ...before.enquiries];
   const quotes = [...now.quotes, ...before.quotes];
   const { meta, ...proj } = seedProjects(r, day, quotes, holidays, names, rates, rPast);
+  // Nobody is on site on a day their Safe Pass or trade ticket had run out (Compliance, 18 Nov).
+  const person = new Map(people.map((p) => [p.id, p]));
+  proj.attendance = proj.attendance.filter((a) => !person.get(a.personId) || ticketBlocks(person.get(a.personId)!, a.date).length === 0);
   // One driver per vehicle, matched to where it is based; the last was sold and has none.
   const drivers = ["p-sm2", "p-cm1", "p-sm5", "p-sm1", "p-sm3", "p-sm4", "p-yard", "p-128", "p-114", "p-107", "p-cm2", "p-hs"];
   const assets = seedAssets(r, day, drivers);
+  // Compliance (18 Nov): none of it draws on the random sequence, so nothing else moves.
+  assets.plant.push(...seedSmallKit(day));
+  seedLicences(day, people);
+  const courses = seedCourses(day, people);
   const { approvals, automations } = seedManagement(day);
   const handoverPending = new Set(approvals.filter((a) => a.kind === "handover" && a.status === "Pending" && a.projectId).map((a) => a.projectId!.replace("pr-", "")));
   const files = [
@@ -87,6 +96,7 @@ function buildIrishSeed(realToday: string, opts: { emailDomain?: string; vatPct?
   const money = seedMoney(r, day, { projects: proj.projects, meta, attendance: proj.attendance, people, scopeTasks: proj.scopeTasks, hiredPlant: assets.hiredPlant, clients, vatPct, rPast });
   const mails = seedMail(day, domain, holidays.find((h) => h.id === "hol-1")!);
   const subcontractors = seedSubcontractors();
+  fillSubPapers(day, subcontractors);
   // Invoices waiting for approval: none is in a job's costs yet, so no margin moves.
   money.supplierInvoices.push(...seedPendingPurchases(day, people, proj.projects, subcontractors, { goods: vatPct === 20 ? 20 : 23, work: vatPct }));
 
@@ -107,6 +117,9 @@ function buildIrishSeed(realToday: string, opts: { emailDomain?: string; vatPct?
     ...money,
     subcontractors,
     approvalLimits: [{ id: "supplier", amount: APPROVAL_LIMIT }],
+    companyPapers: seedCompanyPapers(day),
+    courses,
+    scaffolds: seedScaffolds(day, proj.projects, people, (ref) => assets.hiredPlant.find((h) => h.hireRef === ref)?.onHireFrom),
     invoiceComments: [],
     invoiceQueries: [],
     mails,

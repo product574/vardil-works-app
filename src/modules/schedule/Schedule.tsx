@@ -6,6 +6,7 @@ import { co } from "@/data/place";
 import { useData, useDay } from "@/data/store";
 import { type Db, LANGUAGE_NAME, type Person, type Project } from "@/data/types";
 import { availabilityLine, type DayState, daysLabel, freeDays, openDays, partLoad, personWeek, planClashes, planShort } from "@/lib/availability";
+import { type Block, blocksText, bookingFor, planBlocks, ticketBlocks } from "@/lib/compliance";
 import { addDays, MONTHS } from "@/lib/dates";
 import { dShort, dWeekday, plural } from "@/lib/format";
 import { attendanceShort, nextWorkWeek, shiftMonth, workdaysOfMonth, workWeek } from "@/lib/week";
@@ -33,6 +34,18 @@ export function WeekAhead() {
   const sites = access.scope(db.projects).filter(running);
   const liveIds = useMemo(() => new Set(db.projects.filter((p) => p.status === "Live" || p.status === "Not started").map((p) => p.id)), [db.projects]);
   const clashes = useMemo(() => planClashes(db.plan.filter((p) => liveIds.has(p.projectId) && week.includes(p.date))), [db.plan, week, liveIds]);
+  // Someone planned on a day their Safe Pass or trade ticket has run out (Compliance, 18 Nov): the week cannot be sent.
+  const blocks = useMemo(() => planBlocks(db.people, db.plan.filter((p) => liveIds.has(p.projectId) && week.includes(p.date) && p.date > day)), [db.people, db.plan, week, liveIds, day]);
+  const blockLines = useMemo(() => {
+    const out = new Map<string, { personId: string; dates: string[]; b: Block[] }>();
+    for (const [k, b] of blocks) {
+      const [personId = "", date = ""] = k.split("|");
+      const g = out.get(personId) ?? { personId, dates: [], b };
+      g.dates.push(date);
+      out.set(personId, g);
+    }
+    return [...out.values()].map((g) => ({ ...g, dates: g.dates.sort() }));
+  }, [blocks]);
   // One line per person and pair of sites, however many days it runs to.
   const clashLines = useMemo(() => {
     const groups = new Map<string, { key: string; personId: string; siteIds: string[]; dates: string[] }>();
@@ -53,7 +66,11 @@ export function WeekAhead() {
   const isNext = week[0] === nextWorkWeek(day)[0];
   // Days that can still be planned: nothing today or earlier.
   const ahead = week.filter((d) => d > day);
-  const weekOf = (personId: string) => personWeek(db.plan, db.holidays, liveIds, personId, ahead);
+  // A day someone may not work (a Safe Pass or trade ticket run out) is not free to plan.
+  const weekOf = (personId: string) => {
+    const p = db.people.find((x) => x.id === personId);
+    return personWeek(db.plan, db.holidays, liveIds, personId, ahead).map((d) => (p && d.load === 0 && ticketBlocks(p, d.date).length > 0 ? { ...d, load: 1, sites: [], blocked: true } : d));
+  };
   const live = openPerson && db.people.find((p) => p.id === openPerson.person.id);
 
   return (
@@ -65,7 +82,7 @@ export function WeekAhead() {
           canEdit && (
             <Button
               variant="primary"
-              disabled={clashes.size > 0 || week[4]! <= day}
+              disabled={clashes.size > 0 || blocks.size > 0 || week[4]! <= day}
               onClick={() => {
                 const n = sendWeekAhead(week);
                 toast(`Week of ${dShort(week[0])} sent to ${plural(n, "person", "people")}, each in their own language`);
@@ -104,13 +121,32 @@ export function WeekAhead() {
               </ul>
             </div>
           )}
+          {blockLines.length > 0 && (
+            <div className="rounded-md bg-bad-soft px-3 py-2.5 text-bad">
+              <p className="font-medium">{plural(blockLines.length, "person", "people")} planned who cannot work: take them off or renew the ticket before the week can be sent</p>
+              <ul className="mt-1">
+                {blockLines.map((g) => {
+                  const course = bookingFor(db.courses, g.personId, g.b[0]!.ticket);
+                  return (
+                    <li key={g.personId}>
+                      {name(g.personId)}: {blocksText(g.b, day)}. Planned {g.dates.length === 1 ? `on ${dWeekday(g.dates[0]!)}` : `${daysLabel(g.dates, week)} (${g.dates.length} days)`}.{" "}
+                      {course ? `Booked on the course on ${dWeekday(course.date)}.` : ""}{" "}
+                      <Link to={`/compliance/personnel?person=${g.personId}`} className="font-medium underline underline-offset-2">
+                        Open their tickets
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
           {sites.length === 0 && (
             <Panel>
               <Empty title="No sites are running in this week">Move to another week, or check the project start and finish dates.</Empty>
             </Panel>
           )}
           {sites.map((site) => (
-            <SiteWeek key={site.id} site={site} week={week} db={db} day={day} canEdit={canEdit} clashes={clashes} weekOf={weekOf} ahead={ahead} onPerson={(person) => setOpenPerson({ person, siteId: site.id })} onDay={(person, date) => setOpenDay({ person, date, siteId: site.id, lockSite: true })} />
+            <SiteWeek key={site.id} site={site} week={week} db={db} day={day} canEdit={canEdit} clashes={clashes} blocks={blocks} weekOf={weekOf} ahead={ahead} onPerson={(person) => setOpenPerson({ person, siteId: site.id })} onDay={(person, date) => setOpenDay({ person, date, siteId: site.id, lockSite: true })} />
           ))}
         </div>
         {ahead.length > 0 && <NotPlaced db={db} week={week} ahead={ahead} weekOf={weekOf} onPerson={(person) => setOpenPerson({ person })} />}
@@ -220,8 +256,9 @@ function PersonBox({ person, siteId, db, week, day, liveIds, canEdit, onDay, onC
           <h3 className="mb-1 text-base">Week of {dShort(week[0])}</h3>
           <ul className="grid grid-cols-5 gap-1.5 text-center text-[0.87rem]">
             {states.map((d) => {
-              const tone = d.load > 1 ? "border-transparent bg-bad-soft text-bad" : d.leave ? "border-transparent bg-warn-soft text-warn" : d.load > 0 ? "border-transparent bg-accent-soft text-accent-ink" : "border-dashed border-line-strong text-muted";
-              const text = d.leave ? "Leave" : d.sites.length > 0 ? entries(d.date).map((e) => `${code(e.projectId)}${e.part === "half" ? " half" : e.overtimeHours ? ` +${e.overtimeHours}h` : ""}`).join(" + ") : d.date <= day ? "-" : "Free";
+              const cannot = d.date > day && !d.leave && ticketBlocks(person, d.date).length > 0;
+              const tone = d.load > 1 || cannot ? "border-transparent bg-bad-soft text-bad" : d.leave ? "border-transparent bg-warn-soft text-warn" : d.load > 0 ? "border-transparent bg-accent-soft text-accent-ink" : "border-dashed border-line-strong text-muted";
+              const text = d.leave ? "Leave" : cannot ? (d.sites.length ? `${d.sites.map(code).join(" + ")}, cannot work` : "Cannot work") : d.sites.length > 0 ? entries(d.date).map((e) => `${code(e.projectId)}${e.part === "half" ? " half" : e.overtimeHours ? ` +${e.overtimeHours}h` : ""}`).join(" + ") : d.date <= day ? "-" : "Free";
               const inner = (
                 <>
                   <span className="block text-muted">{wd(d.date)}</span>
@@ -243,6 +280,14 @@ function PersonBox({ person, siteId, db, week, day, liveIds, canEdit, onDay, onC
               );
             })}
           </ul>
+          {ticketBlocks(person, week[week.length - 1]!).length > 0 && (
+            <p className="mt-2 rounded-md bg-bad-soft px-2.5 py-1.5 text-[0.93rem] text-bad">
+              Cannot be planned on site: {blocksText(ticketBlocks(person, week[week.length - 1]!), day)}.{" "}
+              <Link to={`/compliance/personnel?person=${person.id}`} className="font-medium underline">
+                Open their tickets
+              </Link>
+            </p>
+          )}
           {canEdit && <p className="mt-2 text-[0.93rem] text-muted">Click a day to put {person.name.split(" ")[0]} on a site for a full day, a half day or with overtime, or to change or clear what is there.</p>}
         </div>
       </div>
@@ -277,6 +322,8 @@ function PlanDayDialog({ person, date, siteId, lockSite, db, liveIds, sites, onC
   const load = others.reduce((n, p) => n + partLoad(p), 0) + (choice === "half" ? 0.5 : 1);
   const first = person.name.split(" ")[0];
   const mark: PlanMark = { part: choice === "half" ? "half" : "full", overtimeHours: choice === "overtime" ? Math.max(0.5, hours) : 0 };
+  const cannot = ticketBlocks(person, date);
+  const today = useDay();
   return (
     <Dialog
       open
@@ -300,7 +347,7 @@ function PlanDayDialog({ person, date, siteId, lockSite, db, liveIds, sites, onC
           <Button onClick={onClose}>Cancel</Button>
           <Button
             variant="primary"
-            disabled={!site}
+            disabled={!site || cannot.length > 0}
             onClick={() => {
               if (!site) return;
               setPlanDay(site.id, person.id, date, mark);
@@ -314,6 +361,15 @@ function PlanDayDialog({ person, date, siteId, lockSite, db, liveIds, sites, onC
       }
     >
       <div className="grid gap-4">
+        {cannot.length > 0 && (
+          <p className="rounded-md bg-bad-soft px-2.5 py-2 text-[0.93rem] text-bad">
+            {first} cannot be planned on site this day: {blocksText(cannot, today)}. Renew it in{" "}
+            <Link to={`/compliance/personnel?person=${person.id}`} className="font-medium underline">
+              Compliance
+            </Link>
+            {existing ? ", or take this day off." : "."}
+          </p>
+        )}
         {lockSite && site ? (
           <p>
             <span className="text-muted">Site</span> <span className="font-medium">{site.code} {site.name}</span>
@@ -362,7 +418,7 @@ function PlanDayDialog({ person, date, siteId, lockSite, db, liveIds, sites, onC
   );
 }
 
-function SiteWeek({ site, week, db, day, canEdit, clashes, weekOf, ahead, onPerson, onDay }: { site: Project; week: string[]; db: Db; day: string; canEdit: boolean; clashes: Map<string, string[]>; weekOf: WeekOf; ahead: string[]; onPerson: (p: Person) => void; onDay: (p: Person, date: string) => void }) {
+function SiteWeek({ site, week, db, day, canEdit, clashes, blocks, weekOf, ahead, onPerson, onDay }: { site: Project; week: string[]; db: Db; day: string; canEdit: boolean; clashes: Map<string, string[]>; blocks: Map<string, Block[]>; weekOf: WeekOf; ahead: string[]; onPerson: (p: Person) => void; onDay: (p: Person, date: string) => void }) {
   const ids = new Set([...db.assignments.filter((a) => a.projectId === site.id).map((a) => a.personId), ...db.plan.filter((p) => p.projectId === site.id && week.includes(p.date)).map((p) => p.personId)]);
   const people = [...ids].map((id) => db.people.find((p) => p.id === id)).filter((p): p is Person => !!p && p.active).sort((a, b) => a.name.localeCompare(b.name));
   const planned = (personId: string, date: string) => db.plan.find((p) => p.projectId === site.id && p.personId === personId && p.date === date);
@@ -424,6 +480,15 @@ function SiteWeek({ site, week, db, day, canEdit, clashes, weekOf, ahead, onPers
                   if (off) return <td key={d} className="align-middle! text-faint">{d > site.endDate ? "Finished" : "Not started"}</td>;
                   const others = clash?.filter((s) => s !== site.id).map(code).join(", ");
                   const text = entry ? planShort(entry) : "";
+                  const blocked = on ? blocks.get(`${person.id}|${d}`) : undefined;
+                  if (blocked)
+                    return (
+                      <td key={d} className="align-middle!">
+                        <button type="button" disabled={!canEdit} aria-label={`${person.name}, ${dWeekday(d)}: planned but cannot work, ${blocksText(blocked)}`} title={`Cannot work: ${blocksText(blocked)}. Take them off or renew the ticket`} onClick={() => onDay(person, d)} className="press block h-8 w-full truncate rounded-md bg-bad-soft px-2 text-left text-[0.93rem] font-medium whitespace-nowrap text-bad disabled:cursor-default">
+                          Cannot work
+                        </button>
+                      </td>
+                    );
                   return (
                     <td key={d} className="align-middle!">
                       <button
@@ -452,6 +517,7 @@ function SiteWeek({ site, week, db, day, canEdit, clashes, weekOf, ahead, onPers
 
 /** Add someone to a site: choose the trade first, then a person, with where each one already is this week. */
 function AddToSite({ site, db, onSite, days, weekOf }: { site: Project; db: Db; onSite: Set<string>; days: string[]; weekOf: WeekOf }) {
+  const today = useDay();
   const [trade, setTrade] = useState("");
   const [personId, setPersonId] = useState("");
   const code = (id: string) => db.projects.find((p) => p.id === id)?.code ?? "";
@@ -459,7 +525,8 @@ function AddToSite({ site, db, onSite, days, weekOf }: { site: Project; db: Db; 
     .filter((p) => p.active && p.kind === "Operative" && !onSite.has(p.id))
     .map((p) => {
       const w = weekOf(p.id).filter((d) => days.includes(d.date));
-      return { p, w, free: freeDays(w) };
+      const blocked = days.filter((d) => ticketBlocks(p, d).length > 0);
+      return { p, w, free: freeDays(w), blocked, why: blocked.length ? blocksText(ticketBlocks(p, blocked[0]!), today) : "" };
     });
   const trades = [...new Set(pool.map((x) => x.p.trade))].sort();
   const options = pool.filter((x) => x.p.trade === trade).sort((a, b) => b.free.length - a.free.length || a.p.name.localeCompare(b.p.name));
@@ -490,9 +557,9 @@ function AddToSite({ site, db, onSite, days, weekOf }: { site: Project; db: Db; 
         </select>
         <select aria-label={`Person to add to ${site.code}`} className="field h-8 w-auto max-w-full" disabled={!trade} value={pick ? personId : ""} onChange={(e) => setPersonId(e.target.value)}>
           <option value="">{trade ? "Choose a person" : "Then a person"}</option>
-          {options.map(({ p, w }) => (
+          {options.map(({ p, w, blocked, why }) => (
             <option key={p.id} value={p.id}>
-              {p.name}: {lowerFirst(availabilityLine(w, code))}
+              {p.name}: {blocked.length === days.length ? `cannot work, ${why}` : `${lowerFirst(availabilityLine(w, code))}${blocked.length ? `; cannot work ${daysLabel(blocked, days)}` : ""}`}
             </option>
           ))}
         </select>
@@ -508,7 +575,7 @@ function AddToSite({ site, db, onSite, days, weekOf }: { site: Project; db: Db; 
             {pick.free.length === days.length ? "Plan for the week" : "Plan free days"}
           </Button>
         )}
-        {pick && pick.free.length === 0 && (
+        {pick && pick.free.length === 0 && pick.blocked.length < days.length && (
           <Button
             size="sm"
             variant="danger"
@@ -522,7 +589,12 @@ function AddToSite({ site, db, onSite, days, weekOf }: { site: Project; db: Db; 
           </Button>
         )}
       </div>
-      {pick && pick.free.length < days.length && (
+      {pick && pick.blocked.length > 0 && (
+        <p className="text-[0.93rem] text-bad">
+          {first} cannot be planned on site {pick.blocked.length === days.length ? "this week" : daysLabel(pick.blocked, days)}: {pick.why}.
+        </p>
+      )}
+      {pick && pick.free.length < days.length && pick.blocked.length < days.length && (
         <p className="text-[0.93rem] text-warn">
           {availabilityLine(pick.w, code)}. {pick.free.length > 0 ? `Only ${first}'s free days will be planned here.` : `${first} has no free day this week, so planning here double books. Leave days are never planned.`}
         </p>

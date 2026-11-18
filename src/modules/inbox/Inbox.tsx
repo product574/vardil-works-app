@@ -16,7 +16,7 @@ const NEXT: Partial<Record<MailIntent, { label: string; to: string }>> = {
   Enquiry: { label: "Open enquiries", to: "/sales/enquiries" },
   "Tender invitation": { label: "Open enquiries", to: "/sales/enquiries" },
   "Quote query": { label: "Open quotes awaiting a response", to: "/sales/awaiting" },
-  Certificate: { label: "Open training tickets", to: "/people/certs" },
+  Certificate: { label: "Open training tickets", to: "/compliance/personnel" },
   "Holiday request": { label: "Open holidays", to: "/people/holidays" },
   "Completion request": { label: "Open completed projects", to: "/projects/completed" },
   "Supplier statement": { label: "Open supplier invoices", to: "/invoicing/supplier" },

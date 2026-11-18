@@ -1,6 +1,9 @@
 import { useId, useState } from "react";
 import { Navigate, useSearchParams } from "react-router-dom";
-import { subcontractorSendsInvoice } from "@/data/actions";
+import { recordSubPaper, recordSubWorker, subcontractorSendsInvoice } from "@/data/actions";
+import { type ComplianceRow, complianceRows, renewedTo, subFlags } from "@/lib/compliance";
+import { addDays } from "@/lib/dates";
+import { StateBadge } from "@/modules/compliance/shared";
 import { co } from "@/data/place";
 import { useData, useDay, usePrefs } from "@/data/store";
 import type { Project, Subcontractor, SupplierInvoice } from "@/data/types";
@@ -27,6 +30,7 @@ export function SubPortal() {
   const brand = usePrefs((s) => s.brand);
   const [params, setParams] = useSearchParams();
   const [sendFor, setSendFor] = useState<string | null>(null);
+  const [paper, setPaper] = useState<ComplianceRow | null>(null);
   if (role === "client") return <Navigate to="/portal" replace />;
 
   const sites = db.projects.filter((p) => db.subcontractors.some((s) => s.projectIds.includes(p.id))).sort((a, b) => a.code.localeCompare(b.code));
@@ -137,6 +141,8 @@ export function SubPortal() {
             </dl>
           </Panel>
 
+          <SubPapers sub={sub} onSend={setPaper} />
+
           {theirs.map((p) => {
             const rows = mine.filter((s) => s.allocations.some((a) => a.projectId === p.id)).sort((a, b) => b.receivedAt.localeCompare(a.receivedAt));
             const manager = db.people.find((x) => x.id === p.siteManagerId);
@@ -208,7 +214,110 @@ export function SubPortal() {
         </div>
       </PageBody>
       {sendFor && <SendInvoice key={`${sub.id}|${sendFor}`} sub={sub} sites={onNow} projectId={sendFor} onClose={() => setSendFor(null)} />}
+      {paper && <SendPaper key={paper.key} sub={sub} row={paper} onClose={() => setPaper(null)} />}
     </>
+  );
+}
+
+/**
+ * Their papers (Compliance, 18 Nov): insurances, safety statement, a method statement for each
+ * site and their people's Safe Pass, each with where it stands and a way to send the new one.
+ */
+function SubPapers({ sub, onSend }: { sub: Subcontractor; onSend: (r: ComplianceRow) => void }) {
+  const db = useData((s) => s.db);
+  const day = useDay();
+  const rows = complianceRows(db, day).filter((r) => (r.ref.kind === "subPaper" || r.ref.kind === "subWorker") && r.ref.subId === sub.id);
+  const flags = subFlags(sub, db.projects.filter((p) => p.status === "Live" || p.status === "Not started"), day);
+  return (
+    <section aria-label="Your papers" className="grid gap-2">
+      <h2 className="text-[1.15rem]">Your papers</h2>
+      <p className="text-muted">We need these in date to have you on site. Send a new one here when it is renewed: we check it and it shows here straight away.</p>
+      {flags.length > 0 && <p className="rounded-md bg-bad-soft px-3 py-2 text-bad">Out of date or missing: {flags.join("; ")}. Your invoices are flagged to whoever approves them until these come in.</p>}
+      <Panel className="overflow-x-auto">
+        <table className="tbl" aria-label="Your papers, and your people's cards">
+          <thead>
+            <tr>
+              <th>Paper</th>
+              <th>Runs to</th>
+              <th>Where it stands</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.key}>
+                <td>
+                  <span className="font-medium">{r.ref.kind === "subWorker" ? `${r.who}: ${r.item}` : r.item}</span>
+                </td>
+                <td className="whitespace-nowrap">{r.due ? dFull(r.due) : r.state === "missing" ? "-" : "No end date"}</td>
+                <td>
+                  <StateBadge r={r} day={day} />
+                </td>
+                <td className="text-right">
+                  <Button size="sm" onClick={() => onSend(r)}>
+                    {r.state === "missing" ? "Send it" : "Send a new one"}
+                  </Button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Panel>
+    </section>
+  );
+}
+
+/** Send a paper through the portal: the date it runs to, a reference, and a copy. */
+function SendPaper({ sub, row, onClose }: { sub: Subcontractor; row: ComplianceRow; onClose: () => void }) {
+  const day = useDay();
+  const db = useData((s) => s.db);
+  const ref = row.ref;
+  const worker = ref.kind === "subWorker";
+  const rams = ref.kind === "subPaper" && ref.paper === "Method statement";
+  const [expires, setExpires] = useState(worker ? renewedTo("Safe Pass", day) : addDays(day, 365));
+  const [reference, setReference] = useState("");
+  const { proof, error, pick } = useProofPick();
+  const code = ref.kind === "subPaper" && ref.projectId ? db.projects.find((p) => p.id === ref.projectId)?.code : "";
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      title={worker ? `${row.who}: new ${row.item}` : rams ? `Method statement for ${code}` : `New ${row.item.split(",")[0]!.toLowerCase()}`}
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button
+            variant="primary"
+            disabled={!proof || (!rams && expires <= day)}
+            onClick={() => {
+              if (ref.kind === "subWorker") recordSubWorker(sub.id, ref.workerId, row.who, expires, proof, "Portal");
+              else if (ref.kind === "subPaper") recordSubPaper(sub.id, { kind: ref.paper, projectId: ref.projectId, expires: rams ? undefined : expires, reference: reference || (rams ? `RAMS for ${code}` : "") }, "Portal", proof);
+              toast("Sent. Thank you: it is on file with us now");
+              onClose();
+            }}
+          >
+            Send
+          </Button>
+        </>
+      }
+    >
+      <div className="grid gap-3">
+        {!rams && (
+          <Field label={worker ? "Card runs out" : ref.kind === "subPaper" && ref.paper === "Safety statement" ? "Next review due" : "Runs to"}>
+            {(id) => <input id={id} type="date" className="field" min={addDays(day, 1)} value={expires} onChange={(e) => setExpires(e.target.value)} />}
+          </Field>
+        )}
+        {!worker && <Field label="Reference" hint="Optional: a policy number or the document's title.">{(id) => <input id={id} className="field" value={reference} onChange={(e) => setReference(e.target.value)} />}</Field>}
+        <div>
+          <p className="mb-1 text-[0.93rem] font-medium">A copy</p>
+          <PickFile accept="image/*,application/pdf" what="copy" onFile={pick} chosen={proof?.name} />
+          <p className="mt-1 text-[0.87rem] text-muted">A PDF of the schedule or statement, or a photo of the card.</p>
+          <p role="alert" className="text-bad">
+            {error}
+          </p>
+        </div>
+      </div>
+    </Dialog>
   );
 }
 

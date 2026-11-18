@@ -4,6 +4,7 @@ import type { Project, Subcontractor, SupplierInvoice } from "@/data/types";
 import { dShort, plural } from "@/lib/format";
 import { money2 } from "@/lib/money";
 import { partyOf, payBy, purchaseStage, recently } from "@/lib/purchases";
+import { subInsuranceFlags } from "@/lib/compliance";
 import { Button, cx, Empty, PageBody, PageHead, Panel, Section, Segmented, Tel } from "@/ui";
 import { ApproveDialog, CopyLink, PurchaseBadge, SendBackDialog, usePurchases } from "@/modules/invoicing/purchase-shared";
 
@@ -83,6 +84,7 @@ export function SubcontractorInvoicesForSites() {
                           <span className="ml-2 font-normal text-muted">
                             {sub.trade}. {sub.contactName}, <Tel number={sub.phone} />
                           </span>
+                          {subInsuranceFlags(sub, day).length > 0 && <span className="mt-0.5 block font-normal text-bad">{subInsuranceFlags(sub, day).join(". ")}.</span>}
                         </th>
                       </tr>
                       {rows

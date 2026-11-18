@@ -1,4 +1,5 @@
 import { addDays } from "@/lib/dates";
+import { daysBetween as daysBetweenDays } from "@/lib/status";
 import { nextWorkWeek } from "@/lib/week";
 import type { Cert, Holiday, Language, LevelKey, Person } from "../types";
 import { type Rng, workdays } from "./util";
@@ -123,9 +124,12 @@ export function seedPeople(r: Rng, today: string, domain: string) {
       c.issued = addDays(c.expires, -365 * 3);
     }
   };
-  nudge("p-119", "Scaffolding ticket, advanced", -19);
+  // Two that stop work (18 Nov, Compliance): Kevin's scaffolding ticket runs out on the Friday
+  // before next week, so he cannot be planned next week; Tomás's Safe Pass ran out yesterday.
+  // A ticket is good through its expiry day, so neither has worked a day without one.
+  nudge("p-119", "Scaffolding ticket, advanced", daysBetweenDays(today, addDays(nextWorkWeek(today)[0]!, -3)));
   nudge("p-108", "Manual handling", -6);
-  nudge("p-124", "Safe Pass", -2);
+  nudge("p-124", "Safe Pass", -1);
   nudge("p-110", "Mobile elevating work platform", 5);
   nudge("p-103", "Abrasive wheels", 9);
   nudge("p-sm3", "First aid responder", 12);

@@ -1,4 +1,5 @@
 import { invoiceNo, invoicedLine, paidLine, salesInvoiceFile } from "@/lib/billing";
+import { mondayReminder } from "@/lib/compliance";
 import { addDays } from "@/lib/dates";
 import { money0, r2 } from "@/lib/money";
 import { labourCost, scopePercent } from "@/lib/project-costs";
@@ -500,7 +501,7 @@ export function seedManagement(today: string) {
     },
     { id: "ap-7", kind: "reply", title: "Reply to Imelda Fahy: dust on Main Street", rationale: "Tagged as a complaint and routed to Aisling Rafter.", createdAt: at(day(-2), "10:22"), status: "Pending", mailId: "mail-7" },
     // Written from the training tickets in fillManagementDates, like the weekly summary.
-    { id: "ap-12", kind: "cert_reminder", title: "Training ticket reminder to the site managers", rationale: "Drafted on Monday at 08:00 from every ticket that has run out or runs out within 30 days.", createdAt: at(lastWeekday(today, 1), "08:00"), status: "Pending", body: "" },
+    { id: "ap-12", kind: "cert_reminder", title: "Compliance reminder to the site managers", rationale: "Drafted on Monday at 08:00 from everything in Compliance that has run out or runs out within 30 days: tickets, vans, machinery, scaffolds, company and subcontractor papers.", createdAt: at(lastWeekday(today, 1), "08:00"), status: "Pending", body: "" },
     { id: "ap-8", kind: "variation", title: "Variation: wall plate, mill race side", rationale: "Raised by Brendan Looby from the site phone.", createdAt: "", status: "Approved", variationId: "var-4", projectId: "pr-C721", resolvedBy: "Aisling Rafter", resolvedAt: at(day(-7), "09:10") },
     { id: "ap-9", kind: "handover", title: "Handover email: Abbey Mill Chimney", rationale: "Scope is fully ticked off with no extras or snagging flagged.", createdAt: "", status: "Approved", projectId: "pr-C714", resolvedBy: "Aisling Rafter", resolvedAt: "" },
     { id: "ap-10", kind: "reply", title: "Reply to a marketing email", rationale: "Tagged as general.", createdAt: at(day(-6), "09:00"), status: "Discarded", resolvedBy: "Niamh Lavelle", resolvedAt: at(day(-6), "09:20") },
@@ -524,38 +525,6 @@ export function seedManagement(today: string) {
   ];
 
   return { approvals, automations };
-}
-
-/**
- * The Monday reminder to the site managers: every training ticket that has run out or runs out
- * within 30 days of that Monday, with the person's sites, so nobody works without one in date.
- */
-export function ticketReminder(db: Db, monday: string) {
-  const spoken = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString("en-IE", { day: "numeric", month: "long", timeZone: "UTC" });
-  const soon = addDays(monday, 30);
-  const sites = (personId: string) => {
-    const live = new Set(db.projects.filter((p) => p.status === "Live").map((p) => p.id));
-    const codes = db.assignments.filter((x) => x.personId === personId && live.has(x.projectId)).map((x) => db.projects.find((p) => p.id === x.projectId)!.code);
-    return codes.length ? ` (${[...new Set(codes)].sort().join(", ")})` : "";
-  };
-  const rows = db.people
-    .filter((p) => p.active)
-    .flatMap((p) => p.certs.filter((c) => c.expires <= soon).map((c) => ({ p, c })))
-    .sort((x, y) => x.c.expires.localeCompare(y.c.expires));
-  const line = ({ p, c }: (typeof rows)[number]) => `- ${p.name}, ${p.trade.toLowerCase()}${sites(p.id)}: ${c.name}, ${c.expires < monday ? "ran out on" : "runs out on"} ${spoken(c.expires)}`;
-  const gone = rows.filter((x) => x.c.expires < monday);
-  const due = rows.filter((x) => x.c.expires >= monday);
-  return [
-    "Hello all,",
-    "",
-    "These training tickets have run out or run out in the next 30 days. Please make sure nobody works on site without a ticket in date, and book any renewal course through me.",
-    ...(gone.length ? ["", "Run out already:", ...gone.map(line)] : []),
-    ...(due.length ? ["", "Running out soon:", ...due.map(line)] : []),
-    "",
-    "Kind regards,",
-    "Declan Furey",
-    "Health and safety officer",
-  ].join("\n");
 }
 
 /**
@@ -622,8 +591,8 @@ export function fillManagementDates(db: Db, today: string, region: "IE" | "UK") 
     if (a.kind === "weekly_summary") a.body = weeklySummary(db, today, region);
     if (a.kind === "cert_reminder") {
       const domain = db.people.find((x) => x.id === "p-md")?.email.split("@")[1] ?? "example.com";
-      a.email = { toName: "The site managers", toAddress: `sitemanagers@${domain}`, subject: "Training tickets to renew" };
-      a.body = ticketReminder(db, a.createdAt.slice(0, 10));
+      a.email = { toName: "The site managers", toAddress: `sitemanagers@${domain}`, subject: "Compliance: what runs out in the next 30 days" };
+      a.body = mondayReminder(db, a.createdAt.slice(0, 10));
     }
   }
   const latest = (xs: string[]) => xs.filter((x) => x <= at(today, "23:59")).sort().pop();

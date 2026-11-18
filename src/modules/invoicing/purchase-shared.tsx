@@ -10,6 +10,7 @@ import type { Allocation, SupplierInvoice } from "@/data/types";
 import { dFull } from "@/lib/format";
 import { money2 } from "@/lib/money";
 import { type Approver, approverWords, mayApprove, partyOf, payBy, PURCHASE_LABEL, PURCHASE_TONE, purchaseStage } from "@/lib/purchases";
+import { subInsuranceFlags } from "@/lib/compliance";
 import { Badge, Button, cx, Dialog, Field } from "@/ui";
 import { toast } from "@/ui/toast";
 
@@ -81,7 +82,10 @@ function Summary({ s }: { s: SupplierInvoice }) {
  * are the lines as they stand on the check screen, when it is approved straight from there.
  */
 export function ApproveDialog({ s, allocations, onClose }: { s: SupplierInvoice; allocations?: Omit<Allocation, "id">[]; onClose: (done: boolean) => void }) {
-  const { project } = usePurchases();
+  const { project, sub } = usePurchases();
+  const day = useDay();
+  // A subcontractor's lapsed insurance is flagged here, not held (Compliance, 18 Nov): the approver decides.
+  const flags = s.subcontractorId && sub(s.subcontractorId) ? subInsuranceFlags(sub(s.subcontractorId)!, day) : [];
   const lines = allocations ?? s.allocations;
   const codes = [...new Set(lines.map((l) => project(l.projectId)).filter((p) => !!p).map((p) => `${p.code} ${p.name}`))];
   const credit = s.docType === "credit_note";
@@ -108,6 +112,7 @@ export function ApproveDialog({ s, allocations, onClose }: { s: SupplierInvoice;
     >
       <div className="grid gap-3">
         <Summary s={s} />
+        {flags.length > 0 && <p className="rounded-md bg-bad-soft px-2.5 py-2 text-[0.93rem] text-bad">{flags.join(". ")}. You can still approve; ask them to send the new schedule through their portal.</p>}
         <p className="text-muted">
           {credit ? `It comes off the job costs of ${codes.join(" and ")}. Nothing is paid on a credit note.` : `It goes into the job costs of ${codes.join(" and ")}, and on to accounts, who pay it by ${dFull(payBy(s))} and mark it paid.`}
         </p>

@@ -17,6 +17,7 @@ const projects = () => import("@/modules/projects");
 const people = () => import("@/modules/people");
 const schedule = () => import("@/modules/schedule/Schedule");
 const plant = () => import("@/modules/plant");
+const compliance = () => import("@/modules/compliance");
 const files = () => import("@/modules/files/Files");
 const invoicing = () => import("@/modules/invoicing");
 const inbox = () => import("@/modules/inbox/Inbox");
@@ -90,7 +91,8 @@ export const router = create([
           screen("people/timesheet", people, (m) => m.Timesheet),
           screen("people/history", people, (m) => m.AttendanceHistory),
           screen("people", people, (m) => m.EmployeeRegister),
-          screen("people/certs", people, (m) => m.TrainingTickets),
+          // Training tickets moved to Compliance, Personnel on 18 Nov.
+          { path: "people/certs", element: <Navigate to="/compliance/personnel?view=list" replace /> },
           screen("people/holidays", people, (m) => m.Holidays),
           screen("schedule", schedule, (m) => m.WeekAhead),
           screen("schedule/month", schedule, (m) => m.MonthAhead),
@@ -102,6 +104,13 @@ export const router = create([
           screen("plant/vehicles", plant, (m) => m.Vehicles),
           screen("plant/documents", plant, (m) => m.VehicleDocuments),
           screen("plant/repairs", plant, (m) => m.RepairSpend),
+          screen("compliance", compliance, (m) => m.EverythingDue),
+          screen("compliance/personnel", compliance, (m) => m.Personnel),
+          screen("compliance/courses", compliance, (m) => m.Courses),
+          screen("compliance/fleet", compliance, (m) => m.Fleet),
+          screen("compliance/machinery", compliance, (m) => m.Machinery),
+          screen("compliance/company", compliance, (m) => m.CompanyPapers),
+          screen("compliance/subcontractors", compliance, (m) => m.Subcontractors),
           screen("files", files, (m) => m.ProjectFiles),
           screen("files/photos", files, (m) => m.AllPhotos),
           screen("files/unsorted", files, (m) => m.ToBeSorted),

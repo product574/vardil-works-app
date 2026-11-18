@@ -44,7 +44,7 @@ def steps(page, ctx):
     d.get_by_label("Reference").fill("mx1"); d.get_by_label("Name").fill("Another mixer"); d.locator("button[type=submit]").click(); page.wait_for_timeout(150)
     check("Own plant: a reference already in use is refused", "already in use" in d.inner_text())
     d.get_by_label("Reference").fill("mx5"); d.get_by_label("Name").fill("Belle 150 drum mixer"); d.get_by_label("Spec").fill("150 litre, petrol"); d.locator("button[type=submit]").click(); page.wait_for_timeout(300)
-    check("Own plant: a new item is added to the yard and listed", page.locator("tbody tr").count() == 25 and "Yard" in page.locator("tbody tr", has_text="MX5").inner_text())
+    check("Own plant: a new item is added to the yard and listed", page.locator("tbody tr").count() == 34 and "Yard" in page.locator("tbody tr", has_text="MX5").inner_text())
     page.goto(BASE + "/plant"); page.wait_for_selector("table")
     check("Plant overview: the new item shows under In the yard", page.locator("section", has_text="In the yard").locator("tr", has_text="MX5").count() == 1)
     page.goto(BASE + "/plant/vehicles"); page.wait_for_selector("table")

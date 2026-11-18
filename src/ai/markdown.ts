@@ -16,6 +16,9 @@ const SCREENS = new Set(DEPARTMENTS.flatMap((d) => d.groups.flatMap((g) => g.ite
 /** Query settings each screen understands. */
 const QUERY: Record<string, string[]> = {
   "/reports/margin": ["sort"],
+  "/compliance": ["area", "show", "all"],
+  "/compliance/personnel": ["person", "view"],
+  "/compliance/subcontractors": ["sub"],
   "/inbox": ["mail"],
   "/inbox/sent": ["mail"],
   "/inbox/archive": ["mail"],

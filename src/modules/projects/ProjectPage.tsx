@@ -2,7 +2,9 @@ import { DownloadSimple, FilmStrip, Image as ImageIcon } from "@phosphor-icons/r
 import { type FormEvent, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useAccess } from "@/data/access";
-import { addPhoto, addRequest, addScopeTask, clearHold, completeProject, notifyHireReturn, raiseExtra, setSnagging, toggleScopeTask } from "@/data/actions";
+import { addPhoto, addRequest, addScaffold, addScopeTask, clearHold, completeProject, notifyHireReturn, raiseExtra, setSnagging, strikeScaffold, toggleScopeTask } from "@/data/actions";
+import { plantBlocks, scaffoldDue, scaffoldUnsafe, standing, stateOf } from "@/lib/compliance";
+import { InspectForm } from "@/modules/compliance/shared";
 import { co } from "@/data/place";
 import { useData, useDay, usePrefs } from "@/data/store";
 import { type Db, LANGUAGE_NAME, type PhotoStage, type Project, type RequestKind } from "@/data/types";
@@ -397,6 +399,190 @@ function AddPhotoDialog({ projectId, onClose }: { projectId: string; onClose: ()
   );
 }
 
+/**
+ * The site's scaffold register (Compliance, 18 Nov; his pick: the site manager, on the project
+ * page). Every scaffold and tower standing, inspected on putting up, then every 7 days and after
+ * any change.
+ */
+function ScaffoldRegister({ p, db }: TabProps) {
+  const day = useDay();
+  const { may } = useAccess();
+  const canInspect = may("recordInspections") && p.status === "Live";
+  const [inspect, setInspect] = useState<string | null>(null);
+  const [history, setHistory] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
+  const list = db.scaffolds.filter((s) => s.projectId === p.id && standing(s));
+  const struck = db.scaffolds.filter((s) => s.projectId === p.id && !standing(s));
+  const shown = db.scaffolds.find((s) => s.id === history);
+  return (
+    <Section
+      title={`Scaffold register (${list.length})`}
+      aside={
+        <span className="flex flex-wrap items-center gap-2">
+          Inspected on putting up, every 7 days and after any change.
+          {canInspect && (
+            <Button size="sm" onClick={() => setAdding(true)}>
+              Add a scaffold
+            </Button>
+          )}
+        </span>
+      }
+    >
+      <Panel className="overflow-x-auto">
+        {list.length === 0 ? (
+          <Empty title="No scaffold or tower standing on this site">Add one when it goes up, and inspect it before first use.</Empty>
+        ) : (
+          <table className="tbl" aria-label="Scaffold register">
+            <thead>
+              <tr>
+                <th>Ref</th>
+                <th>Scaffold</th>
+                <th>Put up</th>
+                <th>Last inspected</th>
+                <th>Next due</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {list.map((s) => {
+                const last = s.inspections[0];
+                const due = scaffoldDue(s);
+                const unsafe = scaffoldUnsafe(s);
+                const state = unsafe ? "expired" : stateOf(due, day);
+                return (
+                  <tr key={s.id}>
+                    <td className="font-medium">{s.ref}</td>
+                    <td>
+                      {s.description}
+                      <span className="block text-[0.87rem] text-muted">
+                        {s.kind}, put up by {s.erectedBy === "Own team" ? "our own team" : s.erectedBy}
+                      </span>
+                    </td>
+                    <td className="whitespace-nowrap">{dShort(s.erectedOn)}</td>
+                    <td>
+                      {last ? (
+                        <button type="button" className="text-left text-accent-ink underline-offset-2 hover:underline" onClick={() => setHistory(s.id)}>
+                          {dShort(last.date)}, {last.by}
+                        </button>
+                      ) : (
+                        <span className="text-muted">Not yet</span>
+                      )}
+                      {last && <span className={cx("block text-[0.87rem]", unsafe ? "font-medium text-bad" : "text-muted")}>{last.result}</span>}
+                    </td>
+                    <td>
+                      <Badge tone={state === "expired" ? "bad" : state === "due" ? "warn" : "neutral"}>{unsafe ? "Not safe to use" : state === "expired" ? `Overdue since ${dShort(due)}` : `Due ${dShort(due)}`}</Badge>
+                      {state === "expired" && <span className="mt-0.5 block text-[0.87rem] font-medium text-bad">Do not use until inspected</span>}
+                    </td>
+                    <td className="text-right whitespace-nowrap">
+                      {canInspect && (
+                        <>
+                          <Button size="sm" onClick={() => setInspect(s.id)}>
+                            Record inspection
+                          </Button>{" "}
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              strikeScaffold(s.id);
+                              toast(`${s.ref} taken off the register. Its inspections are kept`);
+                            }}
+                          >
+                            Taken down
+                          </Button>
+                        </>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </Panel>
+      {struck.length > 0 && <p className="mt-1.5 text-[0.93rem] text-muted">Taken down: {struck.map((s) => `${s.ref} ${s.description} (${dShort(s.struckOn)})`).join(", ")}.</p>}
+      {inspect && <InspectForm key={inspect} scaffoldId={inspect} title={`Inspect ${p.code} ${db.scaffolds.find((s) => s.id === inspect)?.ref}`} onClose={() => setInspect(null)} />}
+      {shown && (
+        <Dialog open onClose={() => setHistory(null)} title={`${p.code} ${shown.ref}: inspections`} wide>
+          <ul className="divide-y divide-line rounded-md border border-line">
+            {shown.inspections.map((i) => (
+              <li key={i.id} className="px-2.5 py-1.5">
+                <span className="font-medium">{dFull(i.date)}</span>, {i.by}: <span className={i.result === "Not safe to use" ? "font-medium text-bad" : ""}>{i.result}</span>
+                <span className="block text-[0.87rem] text-muted">{i.note}</span>
+              </li>
+            ))}
+          </ul>
+        </Dialog>
+      )}
+      {adding && <AddScaffoldDialog p={p} db={db} onClose={() => setAdding(false)} />}
+    </Section>
+  );
+}
+
+function AddScaffoldDialog({ p, db, onClose }: TabProps & { onClose: () => void }) {
+  const day = useDay();
+  const [kind, setKind] = useState<"Scaffold" | "Tower">("Scaffold");
+  const [description, setDescription] = useState("");
+  const [erectedBy, setErectedBy] = useState(db.subcontractors.find((s) => s.trade === "Scaffolding" && s.projectIds.includes(p.id))?.name ?? "");
+  const [erectedOn, setErectedOn] = useState(day);
+  const towers = db.plant.filter((x) => x.kind === "Scaffold tower" && x.projectId === p.id);
+  const [plantId, setPlantId] = useState("");
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      title={`Add a scaffold to ${p.code}'s register`}
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button
+            variant="primary"
+            disabled={!description.trim() || !erectedBy.trim() || erectedOn > day}
+            onClick={() => {
+              addScaffold(p.id, { kind, description, erectedBy, erectedOn, plantId: plantId || undefined });
+              toast(`${kind} added to ${p.code}'s register. Inspect it before first use`);
+              onClose();
+            }}
+          >
+            Add to register
+          </Button>
+        </>
+      }
+    >
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label="Kind">
+          {(id) => (
+            <select id={id} className="field" value={kind} onChange={(e) => setKind(e.target.value as "Scaffold" | "Tower")}>
+              <option>Scaffold</option>
+              <option>Tower</option>
+            </select>
+          )}
+        </Field>
+        <Field label="Put up on">{(id) => <input id={id} type="date" className="field" max={day} value={erectedOn} onChange={(e) => setErectedOn(e.target.value)} />}</Field>
+        <Field label="What and where" className="sm:col-span-2">
+          {(id) => <input id={id} className="field" placeholder="Independent scaffold, north elevation, 3 lifts" value={description} onChange={(e) => setDescription(e.target.value)} />}
+        </Field>
+        <Field label="Put up by" hint="The scaffolding firm, or our own team for a tower.">
+          {(id) => <input id={id} className="field" value={erectedBy} onChange={(e) => setErectedBy(e.target.value)} />}
+        </Field>
+        {kind === "Tower" && towers.length > 0 && (
+          <Field label="Which tower">
+            {(id) => (
+              <select id={id} className="field" value={plantId} onChange={(e) => setPlantId(e.target.value)}>
+                <option value="">Not one of ours</option>
+                {towers.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.assetRef} {t.name}
+                  </option>
+                ))}
+              </select>
+            )}
+          </Field>
+        )}
+      </div>
+    </Dialog>
+  );
+}
+
 function PlantTab({ p, db }: TabProps) {
   const day = useDay();
   const region = usePrefs((s) => s.brand.region);
@@ -405,6 +591,7 @@ function PlantTab({ p, db }: TabProps) {
   const hired = db.hiredPlant.filter((x) => x.projectId === p.id);
   return (
     <div className="grid gap-6">
+      <ScaffoldRegister p={p} db={db} />
       <Section title={`Own plant on this site (${own.length})`}>
         <Panel className="overflow-x-auto">
           {own.length === 0 ? (
@@ -433,6 +620,7 @@ function PlantTab({ p, db }: TabProps) {
                         <Badge tone={state === "overdue" ? "bad" : state === "soon" ? "warn" : "neutral"}>
                           {next.what}: {dueLabel(next.date, day).toLowerCase()}
                         </Badge>
+                        {plantBlocks(x, day).length > 0 && <span className="mt-0.5 block text-[0.87rem] font-medium text-bad">May not be used: {plantBlocks(x, day).map((r) => r.kind.toLowerCase()).join(" and ")} ran out</span>}
                       </td>
                     </tr>
                   );

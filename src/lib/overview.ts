@@ -10,6 +10,7 @@
 import type { Db } from "@/data/types";
 import { planClashes } from "./availability";
 import { invoiceNo } from "./billing";
+import { BLOCKING_CHECKS, blockText, bookingFor, planBlocks } from "./compliance";
 import { costBreakdown, marginPct, quoteTotal } from "./quotes";
 import { directorQueue } from "./requests";
 import { daysBetween } from "./status";
@@ -33,6 +34,8 @@ const WORDS = ["No", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eig
 /** "Three invoices", "11 invoices": a number that starts a sentence, in words while it is small. */
 const counted = (n: number, one: string, many = `${one}s`) => `${WORDS[n] ?? n} ${n === 1 ? one : many}`;
 const weekdayName = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString("en-IE", { weekday: "long", timeZone: "UTC" });
+/** "Tuesday 24 Nov". */
+const dayDate = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString("en-IE", { weekday: "long", day: "numeric", month: "short", timeZone: "UTC" }).replace(",", "");
 
 /** How a training ticket reads in a sentence: "advanced scaffolding ticket", "Safe Pass". */
 export function ticketWords(name: string) {
@@ -82,25 +85,32 @@ export function recordsOverview(db: Db, today: string, o: OverviewOptions): Over
     });
   }
 
-  // 3. Someone working on a live site with a ticket out of date.
-  const onSite = new Map<string, string[]>();
-  for (const x of db.assignments.filter((x) => liveIds.has(x.projectId))) onSite.set(x.personId, [...(onSite.get(x.personId) ?? []), project(x.projectId)!.code]);
-  const expired = db.people
-    .filter((p) => p.active && onSite.has(p.id))
-    .flatMap((p) => p.certs.filter((c) => c.expires < today).map((c) => ({ p, c, days: daysBetween(c.expires, today) })))
-    .sort((a, b) => b.days - a.days);
-  const worst = expired[0];
-  if (worst) {
-    const codes = [...new Set(onSite.get(worst.p.id))].sort().join(" and ");
-    decisions.push({ text: `[${worst.p.name}](/people/certs) is working on ${codes} with ${article(ticketWords(worst.c.name))} that ran out ${worst.days} days ago.`, button: { label: "Open the ticket", to: "/people/certs" } });
+  // 3. Someone planned who cannot work (Compliance, 18 Nov): a Safe Pass or trade ticket that
+  // has run out by a day they are planned, from today to the end of next week. Soonest first.
+  const horizon = nextWorkWeek(today)[4]!;
+  const ahead = db.plan.filter((x) => x.date >= today && x.date <= horizon && liveIds.has(x.projectId));
+  const blocked = [...planBlocks(db.people, ahead).entries()]
+    .map(([k, b]) => ({ personId: k.split("|")[0]!, date: k.split("|")[1]!, b }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const first = blocked[0];
+  if (first) {
+    const p = db.people.find((x) => x.id === first.personId)!;
+    const sites = [...new Set(ahead.filter((x) => x.personId === p.id && blocked.some((y) => y.personId === p.id && y.date === x.date)).map((x) => project(x.projectId)!.code))].sort().join(" and ");
+    const when = first.date === today ? "today" : `from ${dayDate(first.date)}`;
+    const course = bookingFor(db.courses, p.id, first.b[0]!.ticket);
+    const others = new Set(blocked.map((x) => x.personId)).size - 1;
+    decisions.push({
+      text: `[${p.name}](/compliance/personnel?person=${p.id}) is planned on ${sites} ${when}, but ${first.b[0]!.expires ? `their ${blockText(first.b[0]!, today)}` : `they have ${blockText(first.b[0]!)}`}. They cannot be marked on site until it is renewed${course ? `; booked on the course on ${dayDate(course.date)}` : ""}.${others > 0 ? ` ${counted(others, "other person", "other people")} too.` : ""}`,
+      button: { label: course ? "Open the course" : "Open their tickets", to: course ? "/compliance/courses" : `/compliance/personnel?person=${p.id}` },
+    });
   }
 
-  // 4. Plant on a site that is past its examination or test.
+  // 4. A machine on a site that may not be used: its examination, test, inspection or insurance ran out.
   const plant = db.plant
     .filter((x) => x.projectId && liveIds.has(x.projectId))
-    .flatMap((x) => x.renewals.filter((r) => r.expires < today).map((r) => ({ x, r, days: daysBetween(r.expires, today) })))
+    .flatMap((x) => x.renewals.filter((r) => BLOCKING_CHECKS.has(r.kind) && r.expires < today).map((r) => ({ x, r, days: daysBetween(r.expires, today) })))
     .sort((a, b) => b.days - a.days)[0];
-  if (plant) decisions.push({ text: `The [${plant.x.name.charAt(0).toLowerCase()}${plant.x.name.slice(1)}](/plant?item=${plant.x.id}) at ${project(plant.x.projectId)!.code} is ${plant.days} days past its ${plant.r.kind.toLowerCase()}.`, button: { label: "Open the plant", to: `/plant?item=${plant.x.id}` } });
+  if (plant) decisions.push({ text: `The [${plant.x.name.charAt(0).toLowerCase()}${plant.x.name.slice(1)}](/plant?item=${plant.x.id}) at ${project(plant.x.projectId)!.code} may not be used: its ${plant.r.kind.toLowerCase()} ran out ${plant.days} days ago.`, button: { label: "Open in Compliance", to: "/compliance/machinery" } });
 
   // 5. Next week: a double booking, or a project starting with nobody on it.
   const next = nextWorkWeek(today);
@@ -166,5 +176,3 @@ export function recordsOverview(db: Db, today: string, o: OverviewOptions): Over
   return { decisions: decisions.slice(0, 3), facts: facts.slice(0, 4) };
 }
 
-/** "a Safe Pass", "an advanced scaffolding ticket". */
-const article = (words: string) => `${/^[aeiou]/i.test(words) ? "an" : "a"} ${words}`;

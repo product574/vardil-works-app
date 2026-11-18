@@ -41,7 +41,8 @@ def steps(page, ctx):
     check("Timesheet: the overtime choice is not cut off beside its hours box", box and box["width"] >= 120, box)
     page.get_by_role("button", name="Send today's time stamps").click(); page.wait_for_timeout(250)
     check("Timesheet: sending marks them sent and locks today's cells", data(page, "db.attendance.filter(a => a.projectId==='pr-C722' && a.date===day && a.sent).length") == 3 and page.get_by_label("Today for Adrian Stoica").count() == 0)
-    check("Timesheet: unmarked people can still be marked after sending", page.get_by_label("Today for Tomás Breslin").count() == 1)
+    check("Timesheet: unmarked people can still be marked after sending", page.get_by_label("Today for Ionuț Marin").count() == 1)
+    check("Timesheet: someone whose Safe Pass ran out cannot be marked, and it says why", page.get_by_label("Today for Tomás Breslin").count() == 0 and "Cannot work: Safe Pass ran out" in page.locator("tr", has_text="Tomás Breslin").inner_text())
 
     # correction of a sent day needs a reason and is logged
     page.get_by_role("button", name="Adrian Stoica, " ).first.click(); page.wait_for_timeout(200)
@@ -97,15 +98,17 @@ def steps(page, ctx):
     check("Register: archived list holds them with history kept", page.locator("tbody tr", has_text="Fergal Noone").count() == 1 and data(page, "db.attendance.filter(a => a.personId==='p-101').length") > 10)
 
     # ── Training tickets
-    page.goto(BASE + "/people/certs"); page.wait_for_selector("table")
+    # Moved to Compliance, Personnel on 18 Nov; the old address lands there.
+    page.goto(BASE + "/people/certs"); page.wait_for_url("**/compliance/personnel?view=list"); page.wait_for_selector("table")
+    page.goto(BASE + "/compliance?area=personnel"); page.wait_for_selector("table")
     n_att = page.locator("tbody tr").count()
-    check("Tickets: 9 need attention (3 expired, 6 due soon)", n_att == 9 and "3 expired, 6 due inside 30 days" in main.inner_text(), (n_att, main.inner_text()[:160]))
+    check("Tickets: the ones that need attention are listed in Compliance, soonest first", n_att >= 9 and page.locator("tbody tr", has_text="Kevin Shortall").count() == 1, (n_att, main.inner_text()[:160]))
     page.screenshot(path=f"{OUT}/63-tickets.png")
-    page.locator("tbody tr", has_text="Kevin Shortall").get_by_role("button", name="Record renewal").click()
+    page.locator("tbody tr", has_text="Kevin Shortall").get_by_role("button", name="Renew").click()
     dlg = page.locator("dialog[open]")
-    check("Tickets: the renewal asks for proof and warns when there is none", "No proof attached yet" in dlg.inner_text() and dlg.get_by_role("button", name="Take a photo", exact=True).count() == 1 and dlg.get_by_role("button", name="Choose a file", exact=True).count() == 1)
+    check("Tickets: the renewal asks for proof and warns when there is none", "No copy attached yet" in dlg.inner_text() and dlg.get_by_role("button", name="Take a photo", exact=True).count() == 1 and dlg.get_by_role("button", name="Choose a file", exact=True).count() == 1)
     dlg.get_by_label("Choose a proof from this device").set_input_files(FIX + "card.png"); page.wait_for_timeout(500)
-    check("Tickets: the chosen file is named and the warning goes", "card.png" in dlg.inner_text() and "No proof attached yet" not in dlg.inner_text())
+    check("Tickets: the chosen file is named and the warning goes", "card.png" in dlg.inner_text() and "No copy attached yet" not in dlg.inner_text())
     dlg.get_by_role("button", name="Save renewal").click(); page.wait_for_timeout(300)
     check("Tickets: a renewal with proof clears it from the attention list", page.locator("tbody tr").count() == n_att - 1 and page.locator("tbody tr", has_text="Kevin Shortall").count() == 0)
     kev = data(page, "(() => { const c = db.people.find(p=>p.name==='Kevin Shortall').certs.find(c=>c.name.startsWith('Scaffolding')); return [c.proof.name, c.proof.addedBy, c.proof.dataUrl.slice(0,15), !!c.proofNeeded] })()")
@@ -132,7 +135,13 @@ def steps(page, ctx):
     clash_btn.click(); page.wait_for_timeout(250)
     check("Week ahead: clicking a planned day opens the day planner with the site fixed", "Ionuț Marin" in page.locator("dialog[open]").last.inner_text() and page.locator("dialog[open]").last.locator("select").count() == 0)
     page.locator("dialog[open]").last.get_by_role("button", name="Take off this day").click(); page.wait_for_timeout(250)
-    check("Week ahead: taking him off one site clears the clash and allows sending", "double booking" not in main.inner_text() and page.get_by_role("button", name="Send week to operatives").is_enabled())
+    check("Week ahead: taking him off one site clears the clash", "double booking" not in main.inner_text())
+    # People whose Safe Pass or trade ticket has run out by a day they are planned (Compliance, 18 Nov).
+    check("Week ahead: people planned who cannot work are named, and still hold the week back", "planned who cannot work" in main.inner_text() and "Tomás Breslin: Safe Pass ran out" in main.inner_text() and page.get_by_role("button", name="Send week to operatives").is_disabled())
+    while page.locator("button", has_text="Cannot work").count() > 0:
+        page.locator("button", has_text="Cannot work").first.click(); page.wait_for_timeout(120)
+        page.locator("dialog[open]").last.get_by_role("button", name="Take off this day").click(); page.wait_for_timeout(120)
+    check("Week ahead: with them taken off, the week can be sent", "planned who cannot work" not in main.inner_text() and page.get_by_role("button", name="Send week to operatives").is_enabled())
     block = page.locator("section", has=page.get_by_role("link", name="C725 Granary Quay Warehouses"))
     before = data(page, "db.plan.filter(p => p.projectId==='pr-C725').length")
     block.get_by_label("Trade to add to C725").select_option("General operative"); page.wait_for_timeout(150)
@@ -183,7 +192,7 @@ def steps(page, ctx):
     page.goto(BASE + "/people/timesheet"); page.wait_for_timeout(400); page.screenshot(path=f"{OUT}/70-timesheet-dark.png")
     page.get_by_role("button", name="Switch to light mode").click()
     page.set_viewport_size({"width": 390, "height": 844})
-    for path, shot in [("/people/timesheet", "71-timesheet-mobile"), ("/schedule", "72-week-ahead-mobile"), ("/people/certs", "73-tickets-mobile")]:
+    for path, shot in [("/people/timesheet", "71-timesheet-mobile"), ("/schedule", "72-week-ahead-mobile"), ("/compliance/personnel", "73-tickets-mobile")]:
         page.goto(BASE + path); page.wait_for_timeout(400); page.screenshot(path=f"{OUT}/{shot}.png")
         check(f"Phone width: page itself does not scroll sideways on {path}", not page.evaluate("document.documentElement.scrollWidth > document.documentElement.clientWidth"))
 

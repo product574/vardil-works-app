@@ -7,6 +7,7 @@
  */
 import { ASK_ACTIVITY } from "@/ai/tools";
 import { finalAccountNet, holdReason, invoiceNo, invoicedLine, paidLine, salesInvoiceFile } from "@/lib/billing";
+import { plantBlocks, renewedTo, ticketBlocks } from "@/lib/compliance";
 import { addDays, isWeekend } from "@/lib/dates";
 import { billingEmail, grossOf, linesNet, nextAccountsNo, routeWords } from "@/lib/invoices";
 import { nextFileNo, partyOf, purchaseStage, receiptEmail, remittanceEmail } from "@/lib/purchases";
@@ -20,7 +21,7 @@ import { ROLES } from "./roles";
 import { costingFor, linesFor, WORK, type WorkKind } from "./seed/commercial";
 import { rng } from "./seed/util";
 import { getDay, useData, usePrefs } from "./store";
-import type { AccessKey, AccessRow, Allocation, Cert, Client, Db, DepartmentKey, Enquiry, ID, LevelKey, PermKey, Person, PhotoStage, Language, Mail, MailIntent, Proof, RequestKind, RoleKey, FileCategory, FileKind, FleetDocCategory, InvoiceLine, InvoiceQuery, Project, SalesInvoice, SendRoute, Variation, Vehicle } from "./types";
+import type { AccessKey, AccessRow, Allocation, Cert, Client, Course, Db, DepartmentKey, Enquiry, ID, LevelKey, PermKey, Person, PhotoStage, Language, Mail, MailIntent, Proof, RequestKind, RoleKey, FileCategory, FileKind, FleetDocCategory, InvoiceLine, InvoiceQuery, Project, SalesInvoice, Scaffold, SendRoute, SubPaper, Variation, Vehicle } from "./types";
 
 const mutate = (fn: (db: Db) => void) => useData.getState().mutate(fn);
 
@@ -880,6 +881,7 @@ export function markAttendance(projectId: ID, personId: ID, date: string, mark: 
       if (i >= 0) db.attendance.splice(i, 1);
       return;
     }
+    if (mayNotWork(db, personId, date)) return; // a Safe Pass or trade ticket had run out (Compliance)
     if (existing) Object.assign(existing, mark, { savedBy: actorName(db), savedAt: nowStamp() });
     else db.attendance.push({ id: newId("att"), projectId, personId, date, ...mark, savedBy: actorName(db), savedAt: nowStamp(), sent: false });
   });
@@ -902,6 +904,7 @@ export function correctAttendance(projectId: ID, personId: ID, date: string, mar
     const from = markText(existing ? { status: existing.status, overtimeHours: existing.overtimeHours } : null);
     const to = markText(mark);
     if (from === to) return;
+    if (mark && mayNotWork(db, personId, date)) return;
     const who = actorName(db);
     let attendanceId = existing?.id ?? "";
     if (!mark && i >= 0) db.attendance.splice(i, 1);
@@ -1027,6 +1030,12 @@ export function decideHoliday(id: ID, approve: boolean) {
 
 // ── Schedule ──────────────────────────────────────────────────────────────────
 
+/** Someone whose Safe Pass or trade ticket has run out by that day may not be planned or marked on site (Compliance, 18 Nov). */
+function mayNotWork(db: Db, personId: ID, date: string) {
+  const p = db.people.find((x) => x.id === personId);
+  return !!p && ticketBlocks(p, date).length > 0;
+}
+
 const onLeave = (db: Db, personId: ID, date: string) => db.holidays.some((h) => h.personId === personId && h.status === "Approved" && date >= h.from && date <= h.to);
 
 export type PlanMark = { part: "full" | "half"; overtimeHours: number } | null;
@@ -1042,7 +1051,7 @@ export function setPlanDay(projectId: ID, personId: ID, date: string, mark: Plan
       if (i >= 0) db.plan.splice(i, 1);
       return;
     }
-    if (isWeekend(date) || onLeave(db, personId, date)) return;
+    if (isWeekend(date) || onLeave(db, personId, date) || mayNotWork(db, personId, date)) return;
     const entry = i >= 0 ? db.plan[i]! : { id: newId("pl"), projectId, personId, date };
     if (mark.part === "half") entry.part = "half";
     else delete entry.part;
@@ -1057,7 +1066,7 @@ export function setPlanDay(projectId: ID, personId: ID, date: string, mark: Plan
 export function planPerson(projectId: ID, personId: ID, dates: string[]) {
   mutate((db) => {
     for (const date of dates) {
-      if (isWeekend(date) || onLeave(db, personId, date)) continue;
+      if (isWeekend(date) || onLeave(db, personId, date) || mayNotWork(db, personId, date)) continue;
       if (db.plan.some((p) => p.projectId === projectId && p.personId === personId && p.date === date)) continue;
       db.plan.push({ id: newId("pl"), projectId, personId, date });
     }
@@ -1082,16 +1091,26 @@ export function sendWeekAhead(dates: string[]) {
 
 const siteName = (db: Db, projectId: ID | null) => (projectId ? `${db.projects.find((p) => p.id === projectId)?.code}` : "the yard");
 
-/** Send a piece of the firm's own plant to a site, or bring it back to the yard (null). */
+/**
+ * Send a piece of the firm's own plant to a site, or bring it back to the yard (null). A machine
+ * whose examination, test, inspection or insurance has run out cannot go to a site (Compliance):
+ * returns false and changes nothing.
+ */
 export function movePlant(id: ID, projectId: ID | null) {
+  let moved = true;
   mutate((db) => {
     const x = db.plant.find((p) => p.id === id);
     if (!x || x.projectId === projectId) return;
+    if (projectId && plantBlocks(x, getDay()).length > 0) {
+      moved = false;
+      return;
+    }
     const from = siteName(db, x.projectId);
     x.projectId = projectId;
     if (x.status !== "Off for repair") x.status = projectId ? "On site" : "Available";
     log(db, "Moved plant", `${x.assetRef} ${x.name}: ${from} to ${siteName(db, projectId)}`, "plant");
   });
+  return moved;
 }
 
 export function addPlant(x: { assetRef: string; name: string; kind: string; spec: string; finance: string; basis: "hours" | "months" }) {
@@ -1144,9 +1163,11 @@ export function renewPlantCert(id: ID, renewalId: ID, expires: string, proof: Ne
     if (proof) {
       r.proof = { ...proof, addedBy: actorName(db), addedAt: nowStamp() };
       r.doc = proof.name;
+      delete r.proofNeeded;
     } else {
       delete r.proof;
       delete r.doc;
+      r.proofNeeded = true;
     }
     log(db, "Renewed a plant certificate", `${x.assetRef} ${r.kind}${proof ? ", certificate attached" : ", certificate still needed"}`, "plant");
   });
@@ -1171,7 +1192,7 @@ export function renewVehicle(id: ID, item: "tax" | "test" | "insurance", expiryD
   mutate((db) => {
     const v = db.vehicles.find((x) => x.id === id);
     if (!v) return;
-    v.compliance[item] = { paidDate: getDay(), expiryDate, amount };
+    v.compliance[item] = { paidDate: getDay(), expiryDate, amount, ...(proof ? {} : { proofNeeded: true }) };
     db.fleetDocs.unshift({ id: newId("fd"), vehicleId: id, category: item, date: getDay(), amount, expiryDate, fileName: proof?.name ?? docName(v.reg, item), ...(proof ? { proof: { ...proof, addedBy: actorName(db), addedAt: nowStamp() } } : {}) });
     log(db, "Renewed a vehicle document", `${v.reg} ${item}`, "plant");
   });
@@ -1800,3 +1821,185 @@ export function discardReplyDraft(mailId: ID) {
   });
 }
 
+
+// ── Compliance (18 Nov) ───────────────────────────────────────────────────────
+
+/** A photo of a new card, sent by an operative from the site phone. The office checks it in Compliance. */
+export function sendTicketPhoto(personId: ID, certId: ID, photo: { name: string; dataUrl: string }) {
+  mutate((db) => {
+    const p = db.people.find((x) => x.id === personId);
+    const c = p?.certs.find((x) => x.id === certId);
+    if (!p || !c) return;
+    c.sentPhoto = { ...photo, sentAt: nowStamp() };
+    log(db, "Sent a photo of a new ticket from the site phone", `${p.name}, ${c.name}`, "compliance", p.name);
+  });
+}
+
+/** The office's answer to a card sent from the phone: take it as the renewal (with its new expiry) or turn it down. */
+export function checkTicketPhoto(personId: ID, certId: ID, accept: { expires: string } | null) {
+  mutate((db) => {
+    const p = db.people.find((x) => x.id === personId);
+    const c = p?.certs.find((x) => x.id === certId);
+    if (!p || !c?.sentPhoto) return;
+    if (accept) {
+      c.issued = getDay();
+      c.expires = accept.expires;
+      Object.assign(c, stampProof(db, { name: c.sentPhoto.name, dataUrl: c.sentPhoto.dataUrl }));
+      log(db, "Accepted a new ticket sent from the phone", `${p.name}, ${c.name}, to ${accept.expires}`, "compliance");
+    } else log(db, "Turned down a ticket photo sent from the phone", `${p.name}, ${c.name}`, "compliance");
+    delete c.sentPhoto;
+  });
+}
+
+/** A driver's licence seen and checked: its categories, when it runs out, and a copy. */
+export function checkLicence(personId: ID, l: { categories: string; expires: string }, proof: NewProof) {
+  mutate((db) => {
+    const p = db.people.find((x) => x.id === personId);
+    if (!p) return;
+    p.licence = { categories: l.categories.trim(), expires: l.expires, checkedOn: getDay(), checkedBy: actorName(db), ...stampProof(db, proof) };
+    log(db, "Checked a driving licence", `${p.name}${proof ? ", copy attached" : ", copy still needed"}`, "compliance");
+  });
+}
+
+/** A vehicle's service: resets the clock by date and by the mileage now. */
+export function recordVehicleService(id: ID, note: string) {
+  mutate((db) => {
+    const v = db.vehicles.find((x) => x.id === id);
+    if (!v) return;
+    v.service.lastServiced = getDay();
+    if (v.service.basis !== "months") v.service.lastMeter = v.service.meterNow;
+    log(db, "Recorded a vehicle service", `${v.reg}${note.trim() ? `: ${note.trim()}` : ""}`, "compliance");
+  });
+}
+
+export function addCourse(c: Omit<Course, "id" | "bookedIds" | "doneAt" | "doneBy">) {
+  let id = "";
+  mutate((db) => {
+    id = newId("crs");
+    db.courses.push({ ...c, id, provider: c.provider.trim(), venue: c.venue.trim(), bookedIds: [] });
+    log(db, "Added a training course", `${c.ticket}, ${c.date}`, "compliance");
+  });
+  return id;
+}
+
+/** Book someone on a course, if it has a place and they are not on it already. */
+export function bookOnCourse(courseId: ID, personId: ID) {
+  let ok = false;
+  mutate((db) => {
+    const c = db.courses.find((x) => x.id === courseId);
+    const p = db.people.find((x) => x.id === personId);
+    if (!c || !p || c.doneAt || c.bookedIds.includes(personId) || c.bookedIds.length >= c.places) return;
+    c.bookedIds.push(personId);
+    ok = true;
+    log(db, "Booked someone on a course", `${p.name}, ${c.ticket} on ${c.date}`, "compliance");
+  });
+  return ok;
+}
+
+export function unbookFromCourse(courseId: ID, personId: ID) {
+  mutate((db) => {
+    const c = db.courses.find((x) => x.id === courseId);
+    if (!c || c.doneAt || !c.bookedIds.includes(personId)) return;
+    c.bookedIds = c.bookedIds.filter((x) => x !== personId);
+    log(db, "Took someone off a course", `${db.people.find((p) => p.id === personId)?.name}, ${c.ticket}`, "compliance");
+  });
+}
+
+/**
+ * The course has happened: everyone booked gets the ticket from the course's day (renewed, or
+ * new), marked "Proof needed" until their certificate comes in.
+ */
+export function markCourseDone(courseId: ID) {
+  let n = 0;
+  mutate((db) => {
+    const c = db.courses.find((x) => x.id === courseId);
+    if (!c || c.doneAt) return;
+    const expires = renewedTo(c.ticket, c.date);
+    for (const id of c.bookedIds) {
+      const p = db.people.find((x) => x.id === id);
+      if (!p) continue;
+      const cert = p.certs.find((x) => x.name === c.ticket);
+      if (cert) Object.assign(cert, { issued: c.date, expires, proof: undefined, proofNeeded: true });
+      else p.certs.push({ id: newId("cert"), name: c.ticket, issued: c.date, expires, proofNeeded: true });
+      n++;
+    }
+    c.doneAt = nowStamp();
+    c.doneBy = actorName(db);
+    log(db, "Marked a course done", `${c.ticket}, ${n} ${n === 1 ? "person" : "people"} renewed to ${expires}`, "compliance");
+  });
+  return n;
+}
+
+export function renewCompanyPaper(id: ID, x: { expires: string; reference: string; cover?: string }, proof: NewProof) {
+  mutate((db) => {
+    const c = db.companyPapers.find((y) => y.id === id);
+    if (!c) return;
+    Object.assign(c, { expires: x.expires, reference: x.reference.trim() || c.reference, ...(x.cover?.trim() ? { cover: x.cover.trim() } : {}) }, stampProof(db, proof));
+    log(db, "Renewed a company paper", `${c.name}, to ${x.expires}`, "compliance");
+  });
+}
+
+/**
+ * A subcontractor's paper: a new insurance schedule, a reviewed safety statement or a method
+ * statement for a site. The old one is kept; the newest counts. Sent through their portal, or
+ * recorded by the office from an email.
+ */
+export function recordSubPaper(subId: ID, x: Pick<SubPaper, "kind" | "projectId" | "expires" | "reference" | "cover">, via: SubPaper["via"], proof: NewProof) {
+  mutate((db) => {
+    const s = db.subcontractors.find((y) => y.id === subId);
+    if (!s) return;
+    s.papers.push({ id: newId("spp"), kind: x.kind, ...(x.projectId ? { projectId: x.projectId } : {}), ...(x.expires ? { expires: x.expires } : {}), ...(x.reference?.trim() ? { reference: x.reference.trim() } : {}), ...(x.cover?.trim() ? { cover: x.cover.trim() } : {}), receivedOn: getDay(), via, ...stampProof(db, proof) });
+    const site = x.projectId ? ` for ${db.projects.find((p) => p.id === x.projectId)?.code}` : "";
+    log(db, via === "Portal" ? "A subcontractor sent a paper through the portal" : "Recorded a subcontractor's paper", `${s.name}: ${x.kind}${site}`, "compliance", via === "Portal" ? s.contactName : actorName(db));
+  });
+}
+
+/** One of a subcontractor's people: a renewed Safe Pass, or someone new on our sites. */
+export function recordSubWorker(subId: ID, workerId: ID | null, name: string, expires: string, proof: NewProof, via: SubPaper["via"] = "Email") {
+  mutate((db) => {
+    const s = db.subcontractors.find((y) => y.id === subId);
+    if (!s) return;
+    const w = workerId ? s.workers.find((y) => y.id === workerId) : undefined;
+    if (w) Object.assign(w, { safePassExpires: expires }, stampProof(db, proof));
+    else s.workers.push({ id: newId("sw"), name: name.trim(), safePassExpires: expires, ...stampProof(db, proof) });
+    log(db, w ? "Recorded a subcontractor's renewed Safe Pass" : "Added a subcontractor's worker", `${s.name}: ${w?.name ?? name.trim()}`, "compliance", via === "Portal" ? s.contactName : actorName(db));
+  });
+}
+
+export function addScaffold(projectId: ID, x: Pick<Scaffold, "kind" | "description" | "erectedBy" | "erectedOn" | "plantId">) {
+  let id = "";
+  mutate((db) => {
+    const p = db.projects.find((y) => y.id === projectId);
+    if (!p) return;
+    const prefix = x.kind === "Tower" ? "T" : "S";
+    const n = db.scaffolds.filter((y) => y.projectId === projectId && y.ref.startsWith(prefix)).length + 1;
+    id = newId("scf");
+    db.scaffolds.push({ id, projectId, ref: `${prefix}${n}`, kind: x.kind, description: x.description.trim(), erectedBy: x.erectedBy.trim(), erectedOn: x.erectedOn, ...(x.plantId ? { plantId: x.plantId } : {}), inspections: [] });
+    audit(db, projectId, `${x.kind} put up: ${x.description.trim()}`);
+    log(db, "Added a scaffold to the register", `${p.code} ${prefix}${n}, ${x.description.trim()}`, "compliance");
+  });
+  return id;
+}
+
+/** The weekly inspection (or one after a change): who, today, safe or not, and what was seen. */
+export function inspectScaffold(id: ID, result: "Safe to use" | "Not safe to use", note: string) {
+  mutate((db) => {
+    const s = db.scaffolds.find((y) => y.id === id);
+    if (!s) return;
+    s.inspections.unshift({ id: newId("si"), date: getDay(), by: actorName(db), result, note: note.trim() || (result === "Safe to use" ? "Inspected. Tag updated." : "Not safe to use. Tagged red.") });
+    const p = db.projects.find((y) => y.id === s.projectId);
+    audit(db, s.projectId, `${s.ref} inspected: ${result.toLowerCase()}`);
+    log(db, "Inspected a scaffold", `${p?.code} ${s.ref}: ${result.toLowerCase()}`, "compliance");
+  });
+}
+
+/** Taken down: off the register's live list, its inspections kept. */
+export function strikeScaffold(id: ID) {
+  mutate((db) => {
+    const s = db.scaffolds.find((y) => y.id === id);
+    if (!s || s.struckOn) return;
+    s.struckOn = getDay();
+    audit(db, s.projectId, `${s.ref} taken down: ${s.description}`);
+    log(db, "Took a scaffold off the register", `${db.projects.find((p) => p.id === s.projectId)?.code} ${s.ref}`, "compliance");
+  });
+}

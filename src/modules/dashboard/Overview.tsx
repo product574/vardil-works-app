@@ -71,7 +71,7 @@ export function Overview() {
             />
             <Glance
               heading="Compliance"
-              to={canSee("people") ? "/people/certs" : undefined}
+              to={canSee("compliance") ? "/compliance" : undefined}
               rows={[
                 ["Training tickets expired", k.compliance.certsExpired, k.compliance.certsExpired > 0 ? "bad" : undefined],
                 ["Tickets expiring in 30 days", k.compliance.certsSoon, k.compliance.certsSoon > 0 ? "warn" : undefined],

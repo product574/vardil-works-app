@@ -5,6 +5,7 @@ import { useAccess } from "@/data/access";
 import { addToRoster, correctAttendance, markAttendance, removeFromRoster, sendTimeStamps } from "@/data/actions";
 import { useData, useDay } from "@/data/store";
 import type { Attendance, Person } from "@/data/types";
+import { blocksText, ticketBlocks } from "@/lib/compliance";
 import { addDays } from "@/lib/dates";
 import { dLong, dShort, plural } from "@/lib/format";
 import { attendanceChoice, attendanceShort, workWeek } from "@/lib/week";
@@ -203,6 +204,15 @@ function Cell({ person, date, day, startDate, a, onLeave, onMark, onFix, canMark
   if (onLeave && !a) return <span className="inline-block rounded bg-warn-soft px-1.5 py-0.5 text-[0.93rem] text-warn">Leave</span>;
   if (date < startDate) return <span className="text-faint">Not started</span>;
 
+  // Someone whose Safe Pass or trade ticket has run out cannot be marked on site (Compliance, 18 Nov).
+  const blocks = !a ? ticketBlocks(person, date) : [];
+  if (blocks.length > 0 && (date === day || !canCorrect))
+    return (
+      <span className="block px-2 text-[0.87rem] leading-tight font-medium text-bad" title={`Cannot be marked on site: ${blocksText(blocks)}`}>
+        Cannot work: {blocksText(blocks)}
+      </span>
+    );
+
   // Today, until the day is sent: marked straight in the grid.
   const text = a ? attendanceShort(a.status, a.overtimeHours) : "Not in";
   if (date === day && !a?.sent && !canMark) return <span className="px-2 text-muted">{a ? text : "Not marked"}</span>;
@@ -237,6 +247,8 @@ function CorrectDialog({ person, date, a, onClose, onSave }: { person: Person; d
   const was = a ? attendanceShort(a.status, a.overtimeHours) : "Not in";
   const next = toMark(choice, hours);
   const now = next ? attendanceShort(next.status, next.overtimeHours) : "Not in";
+  const blocks = ticketBlocks(person, date);
+  const refused = blocks.length > 0 && next !== null;
   return (
     <Dialog
       open
@@ -247,7 +259,7 @@ function CorrectDialog({ person, date, a, onClose, onSave }: { person: Person; d
           <Button onClick={onClose}>Cancel</Button>
           <Button
             variant="primary"
-            disabled={!reason.trim() || was === now}
+            disabled={!reason.trim() || was === now || refused}
             onClick={() => {
               onSave(next, reason);
               toast(`Corrected: ${was} to ${now}`);
@@ -277,6 +289,7 @@ function CorrectDialog({ person, date, a, onClose, onSave }: { person: Person; d
           </Field>
           {choice === "overtime" && <Field label="Overtime hours">{() => <NumInput label="Overtime hours" className="h-9 w-full" value={hours} onChange={setHours} />}</Field>}
         </div>
+        {refused && <p className="rounded-md bg-bad-soft px-2.5 py-2 text-[0.93rem] text-bad">{person.name} cannot be marked on site that day: {blocksText(blocks)}.</p>}
         <Field label="Reason for the correction" hint="Kept with the change in the attendance history.">
           {(id) => <input id={id} className="field" value={reason} placeholder="Left at lunch for a hospital appointment" onChange={(e) => setReason(e.target.value)} />}
         </Field>

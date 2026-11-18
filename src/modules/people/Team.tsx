@@ -1,16 +1,17 @@
 import { type FormEvent, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { exceptionCount, levelOf, useAccess } from "@/data/access";
-import { addCert, addCertProof, addEmployee, addHoliday, decideHoliday, renewCert, setEmployeeActive } from "@/data/actions";
+import { addEmployee, addHoliday, decideHoliday, setEmployeeActive } from "@/data/actions";
+import { blocksText, ticketBlocks } from "@/lib/compliance";
 import { ROLES } from "@/data/roles";
 import { useData, useDay, usePrefs } from "@/data/store";
-import { type Cert, type Db, type Language, LANGUAGE_NAME, type LevelKey, type Person } from "@/data/types";
+import { type Db, type Language, LANGUAGE_NAME, type LevelKey, type Person } from "@/data/types";
 import { addDays } from "@/lib/dates";
 import { dFull, dShort, plural } from "@/lib/format";
 import { money2 } from "@/lib/money";
 import { dueLabel, dueState } from "@/lib/status";
 import { Badge, Button, Dialog, Empty, Fact, Field, Mail, NumInput, PageBody, PageHead, Panel, Segmented, Switch, Tel, type Tone } from "@/ui";
-import { ProofField, ProofLink, useProofPick } from "@/ui/files";
+import { ProofLink } from "@/ui/files";
 import { toast } from "@/ui/toast";
 
 const TONE: Record<"overdue" | "soon" | "ok", Tone> = { overdue: "bad", soon: "warn", ok: "neutral" };
@@ -114,6 +115,7 @@ function PersonDialog({ person, onClose }: { person: Person; onClose: () => void
   const level = levelOf(person);
   const exceptions = level ? exceptionCount(db.access.find((a) => a.id === level), db.personAccess.find((a) => a.id === person.id)) : 0;
   const holidays = db.holidays.filter((h) => h.personId === person.id).sort((a, b) => b.from.localeCompare(a.from));
+  const blocks = person.active ? ticketBlocks(person, day) : [];
   return (
     <Dialog
       open
@@ -163,7 +165,13 @@ function PersonDialog({ person, onClose }: { person: Person; onClose: () => void
         </dl>
         <div className="grid content-start gap-4">
           <div>
-            <h3 className="mb-1 text-base">Training tickets</h3>
+            <h3 className="mb-1 flex items-baseline gap-2 text-base">
+              Training tickets
+              <Link to={`/compliance/personnel?person=${person.id}`} className="text-[0.93rem] font-normal text-accent-ink underline-offset-2 hover:underline">
+                Open in Compliance
+              </Link>
+            </h3>
+            {blocks.length > 0 && <p className="mb-1.5 rounded-md bg-bad-soft px-2.5 py-1.5 text-[0.93rem] text-bad">Cannot be planned or marked on site: {blocksText(blocks)}.</p>}
             {person.certs.length === 0 ? (
               <p className="text-muted">None recorded.</p>
             ) : (
@@ -300,196 +308,6 @@ function AddEmployeeDialog({ open, onClose }: { open: boolean; onClose: () => vo
           </Button>
         </div>
       </form>
-    </Dialog>
-  );
-}
-
-// ── Training tickets ──────────────────────────────────────────────────────────
-
-export function TrainingTickets() {
-  const db = useData((s) => s.db);
-  const day = useDay();
-  const canEdit = useAccess().may("manageStaff");
-  const [show, setShow] = useState<"attention" | "all">("attention");
-  const [dialog, setDialog] = useState<{ mode: "renew" | "attach"; person: Person; cert: Cert } | null>(null);
-  const [adding, setAdding] = useState(false);
-  const all = db.people.filter((p) => p.active).flatMap((p) => p.certs.map((c) => ({ p, c, state: dueState(c.expires, day) }))).sort((a, b) => a.c.expires.localeCompare(b.c.expires));
-  const expired = all.filter((x) => x.state === "overdue").length;
-  const soon = all.filter((x) => x.state === "soon").length;
-  const unproven = all.filter((x) => x.c.proofNeeded).length;
-  const attention = all.filter((x) => x.state !== "ok" || x.c.proofNeeded);
-  const rows = show === "all" ? all : attention;
-
-  return (
-    <>
-      <PageHead
-        title="Training tickets"
-        note={`${all.length} tickets on file. ${expired} expired, ${soon} due inside 30 days${unproven > 0 ? `, ${unproven} waiting on proof` : ""}. Nobody should be on site with an expired Safe Pass.`}
-        actions={
-          <>
-            <Segmented label="Tickets shown" value={show} onChange={setShow} options={[{ value: "attention", label: "Need attention", count: attention.length }, { value: "all", label: "All", count: all.length }]} />
-            {canEdit && <Button onClick={() => setAdding(true)}>Record a new ticket</Button>}
-          </>
-        }
-      />
-      <PageBody>
-        <Panel className="max-w-6xl overflow-x-auto">
-          {rows.length === 0 ? (
-            <Empty title="Every ticket is in date">Tickets appear here 30 days before they expire.</Empty>
-          ) : (
-            <table className="tbl">
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Trade</th>
-                  <th>Ticket</th>
-                  <th>Expires</th>
-                  <th>Status</th>
-                  <th>Proof</th>
-                  <th>On site at</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map(({ p, c, state }) => (
-                  <tr key={c.id}>
-                    <td className="font-medium">{p.name}</td>
-                    <td>{p.trade}</td>
-                    <td>{c.name}</td>
-                    <td className="whitespace-nowrap">{dFull(c.expires)}</td>
-                    <td>
-                      <Badge tone={TONE[state]}>{dueLabel(c.expires, day)}</Badge>
-                    </td>
-                    <td className="whitespace-nowrap">{c.proof ? <ProofLink proof={c.proof} title={`${c.name}, ${p.name}`} /> : c.proofNeeded ? <Badge tone="warn">Proof needed</Badge> : <span className="text-muted">On paper file</span>}</td>
-                    <td>{sitesOf(db, p.id) || <span className="text-muted">-</span>}</td>
-                    <td className="text-right whitespace-nowrap">
-                      {canEdit && !c.proof && state === "ok" && (
-                        <Button size="sm" onClick={() => setDialog({ mode: "attach", person: p, cert: c })}>
-                          Add proof
-                        </Button>
-                      )}
-                      {canEdit && state !== "ok" && (
-                        <Button size="sm" onClick={() => setDialog({ mode: "renew", person: p, cert: c })}>
-                          Record renewal
-                        </Button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </Panel>
-        <p className="mt-2 max-w-6xl text-[0.93rem] text-muted">Proof is a photo or PDF of the card or certificate, kept against the ticket for audits and HR. Tickets that were on file before the system came in show as "On paper file" until someone attaches a copy.</p>
-      </PageBody>
-      {dialog && <TicketProofDialog key={dialog.cert.id + dialog.mode} {...dialog} onClose={() => setDialog(null)} />}
-      {adding && <NewTicketDialog onClose={() => setAdding(false)} />}
-    </>
-  );
-}
-
-/** Record a renewal (new expiry plus proof), or attach proof to a ticket already on file. */
-function TicketProofDialog({ mode, person, cert, onClose }: { mode: "renew" | "attach"; person: Person; cert: Cert; onClose: () => void }) {
-  const day = useDay();
-  const [expires, setExpires] = useState(addDays(day, 365 * (cert.name === "Safe Pass" ? 4 : 3)));
-  const { proof, error, pick } = useProofPick();
-  const renew = mode === "renew";
-  return (
-    <Dialog
-      open
-      onClose={onClose}
-      title={renew ? `Renew ${cert.name} for ${person.name}` : `Proof of ${cert.name} for ${person.name}`}
-      footer={
-        <>
-          <Button onClick={onClose}>Cancel</Button>
-          <Button
-            variant="primary"
-            disabled={renew ? expires <= day : !proof}
-            onClick={() => {
-              if (renew) {
-                renewCert(person.id, cert.id, expires, proof);
-                toast(proof ? `${cert.name} renewed to ${dFull(expires)}, proof attached` : `${cert.name} renewed to ${dFull(expires)}. Marked as waiting on proof`);
-              } else if (proof) {
-                addCertProof(person.id, cert.id, proof);
-                toast(`Proof attached to ${person.name}'s ${cert.name}`);
-              }
-              onClose();
-            }}
-          >
-            {renew ? "Save renewal" : "Attach proof"}
-          </Button>
-        </>
-      }
-    >
-      <div className="grid gap-4">
-        {renew && (
-          <Field label="New expiry date" hint="Taken from the new card or certificate.">
-            {(id) => <input id={id} type="date" className="field" min={addDays(day, 1)} value={expires} onChange={(e) => setExpires(e.target.value)} />}
-          </Field>
-        )}
-        <ProofField pick={pick} proof={proof} error={error} />
-        {renew && !proof && <p className="rounded-md bg-warn-soft px-2.5 py-2 text-[0.93rem] text-warn">No proof attached yet. You can still save: the ticket will show as "Proof needed" until a copy is added.</p>}
-      </div>
-    </Dialog>
-  );
-}
-
-const TICKETS = ["Safe Pass", "Manual handling", "Working at height", "Abrasive wheels", "First aid responder", "Mobile elevating work platform", "Telescopic handler", "Scaffolding ticket, advanced", "Hot works", "Confined spaces"];
-
-function NewTicketDialog({ onClose }: { onClose: () => void }) {
-  const db = useData((s) => s.db);
-  const day = useDay();
-  const people = db.people.filter((p) => p.active).sort((a, b) => a.name.localeCompare(b.name));
-  const [personId, setPersonId] = useState(people[0]?.id ?? "");
-  const [name, setName] = useState(TICKETS[0]!);
-  const [expires, setExpires] = useState(addDays(day, 365 * 4));
-  const { proof, error, pick } = useProofPick();
-  return (
-    <Dialog
-      open
-      onClose={onClose}
-      title="Record a new ticket"
-      footer={
-        <>
-          <Button onClick={onClose}>Cancel</Button>
-          <Button
-            variant="primary"
-            disabled={!personId || expires <= day}
-            onClick={() => {
-              addCert(personId, name, expires, proof);
-              toast(`${name} recorded for ${people.find((p) => p.id === personId)?.name}${proof ? ", proof attached" : ". Marked as waiting on proof"}`);
-              onClose();
-            }}
-          >
-            Record ticket
-          </Button>
-        </>
-      }
-    >
-      <div className="grid gap-3">
-        <Field label="Person">
-          {(id) => (
-            <select id={id} className="field" value={personId} onChange={(e) => setPersonId(e.target.value)}>
-              {people.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}, {p.trade}
-                </option>
-              ))}
-            </select>
-          )}
-        </Field>
-        <Field label="Ticket">
-          {(id) => (
-            <select id={id} className="field" value={name} onChange={(e) => setName(e.target.value)}>
-              {TICKETS.map((t) => (
-                <option key={t}>{t}</option>
-              ))}
-            </select>
-          )}
-        </Field>
-        <Field label="Expiry date">{(id) => <input id={id} type="date" className="field" min={addDays(day, 1)} value={expires} onChange={(e) => setExpires(e.target.value)} />}</Field>
-        <ProofField pick={pick} proof={proof} error={error} />
-      </div>
     </Dialog>
   );
 }

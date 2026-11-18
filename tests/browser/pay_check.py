@@ -204,7 +204,7 @@ def steps(page, ctx):
     check("Subcontractor portal: a payment made in the last month is announced at the top", news.count() == 1 and re.search(r"Paid: invoice CS-INV-\d+ for C\d+\. €[\d,]+\.\d\d was paid on \d+ \w+ 2026", news.inner_text()), news.inner_text() if news.count() else "")
     glance = page.get_by_label("Your invoices at a glance").inner_text()
     check("Subcontractor portal: what is waiting, approved and paid, at a glance", all(w in glance for w in ["Waiting for approval", "Approved, to be paid", "Paid in the last 30 days"]))
-    check("Subcontractor portal: the site picked on the left comes first", view().locator("section").first.get_attribute("aria-label") == "C721 The Old Corn Mill")
+    check("Subcontractor portal: the site picked on the left comes first", view().locator("section[aria-label^='C']").first.get_attribute("aria-label") == "C721 The Old Corn Mill")
     page.screenshot(path=f"{OUT}/225-sub-portal.png", full_page=True)
 
     # ── A subcontractor sends an invoice

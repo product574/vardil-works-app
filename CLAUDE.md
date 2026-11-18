@@ -84,9 +84,16 @@ with five figures, sales by customer, the ten most profitable jobs paid in full,
 money goes, gross margin on every job finished in the last 12 months, tender conversion by
 kind of work), a year of past work in the sample data so the reports have something to
 show, and Customers as a section of its own in place of Sales, Clients (so the Customers
-half of step 4 is built on his copy; Compliance is not). 324 automated tests and 907 browser
-checks pass on that branch; one check in `review_check.py` (Week ahead) fails on a Wednesday
-on `main` too, so it is not from this work.
+half of step 4 is built on his copy). A fourth part followed the same day (decisions 95 to
+118, and "Compliance, 18 Nov" further down), after the HVAC compliance demo: Compliance as a
+section of its own after Plant, so step 4 is now built on his copy. Every expiry in one list
+(people's tickets, vans and driving licences, machinery checks and scaffold inspections,
+company papers, subcontractors' papers), a screen per area, training courses, and what stops
+work: someone with a Safe Pass or trade ticket out of date cannot be planned or marked on
+site, and a machine past its checks cannot go to a site. Training tickets moved there from
+People. 355 automated tests and 992 browser checks pass on that branch; one check in
+`review_check.py` (Week ahead) fails on a Wednesday on `main` too, so it is not from this
+work.
 
 **Loose ends, any time:** Aodhan's own round of testing on a real phone; the Ask AI key
 moved from his personal Claude account to a Vardil one (step 5 under "Where we stopped");
@@ -238,6 +245,40 @@ then with question buttons (he picked the recommended answer unless it says othe
 | 93 | Changing customers | Add customer and Edit details, for whoever may price quotes or handle invoices. The Sage account is made from the name when the customer is added and never changes after, so Sage keeps matching their invoices |
 | 94 | Past work | About a year of it in the sample data, so the 12-month reports are full |
 
+Decisions made by Oisin on his copy, later still on 18 Nov 2026, from the HVAC compliance demo
+(`compliance-hvac.wacz`; layouts and features only, as decision 61). His words: "the
+compliance section link up with the training and personal records ... sections for fleet,
+like personnel training, and then fleet will be like insurance services. Then there'll be
+machinery that needs servicing every so often as well". Then six rounds of question buttons
+(he picked the recommended answer unless it says otherwise):
+
+| # | Question | Decision |
+|---|---|---|
+| 95 | Compliance home | One list of everything, soonest first, with five figures across the top that filter it (run out or missing, stopping work, due in 30 days, proof needed, in date), a switch by area, a search, and Record a renewal |
+| 96 | "A different file" | A screen per area: Personnel, Training courses, Fleet, Machinery, Company papers, Subcontractors |
+| 97 | Training tickets and van papers | Move to Compliance (People, Training tickets is gone; Plant and Vehicles keep a "Renew in Compliance" link; an employee's box links to their tickets). `/people/certs` lands on Personnel as a list |
+| 98 | Areas beyond his three | Company papers, Subcontractor papers and Training courses as well as Personnel, Fleet and Machinery |
+| 99 | Personnel | A training matrix (people down, tickets across) and a list, with a switch |
+| 100 | Machinery | Services by hours or months, thorough examinations, a weekly inspection for each scaffold and tower, electrical tests (transformers) and harness inspections |
+| 101 | Fleet | Tax, test (CVRT or MOT), insurance and service, plus a yearly driving licence check for each driver |
+| 102 | Someone whose ticket has run out | Blocked: cannot be planned or marked on site until it is renewed (his pick, over "warn only") |
+| 103 | What blocks | The Safe Pass (CSCS card in the UK) and the trade ticket each trade needs (scaffolder: advanced scaffolding; roofer and slater: MEWP; leadworker: hot works; stonemason: abrasive wheels; site manager: site supervisor safety). Other tickets show but do not block |
+| 104 | Already planned | Stays on the plan, marked "Cannot work", and the week cannot be sent to operatives until they are taken off or the ticket renewed |
+| 105 | Due soon | 30 days, for everything |
+| 106 | Who sees it | Every office level, switchable in Admin, Roles and access. Site managers see only the people, machinery and subcontractors on their own sites, and not Fleet or Company papers |
+| 107 | Reminders | One weekly list of what runs out in the next 30 days, every area, waiting in Approvals on Monday (in place of the ticket reminder) |
+| 108 | Subcontractor papers out of date | Their invoices are flagged wherever they are approved, and can still be approved |
+| 109 | Courses | A list of courses with places; people are booked from their ticket; marking a course done renews the ticket of everyone booked, waiting on the certificate |
+| 110 | Site phone | Operatives see their tickets, are told plainly when they cannot work, and can send a photo of a new card for the office to check |
+| 111 | Scaffold register | Kept by the site manager on the project's Plant tab: add a scaffold, record each inspection (safe or not, with what was seen), take it down |
+| 112 | Small kit | Harnesses and site transformers as items in Own plant, with their checks |
+| 113 | Machine past a check | Cannot go to a site until renewed (thorough examination, tower inspection, electrical test, harness inspection, insurance; a service overdue does not block). A van out of date: its driver is told on the phone not to drive it |
+| 114 | Where the tile goes | After Plant |
+| 115 | Subcontractor papers tracked | Public and employers' liability insurance, their people's Safe Pass, the safety statement, and a method statement (RAMS) for each site. No tax clearance |
+| 116 | Company papers | Kept by the managing director and accounts (a new permission, "Manage company and subcontractor papers") |
+| 117 | Proof | A renewal can be saved without a copy; it then shows "Proof needed" until one is attached |
+| 118 | The overview | Only what stops work: someone planned who cannot work, and a machine on site that may not be used |
+
 Standing preferences (these come from Aodhan and are not optional):
 
 - UK English. No em dashes or en dashes anywhere: code comments, interface text, notes, chat.
@@ -318,7 +359,10 @@ src/
                         what is to be paid, the rows Sage gets, the paid emails) and trail.ts
                         (the screens behind the Back button), and reports.ts (the last 12
                         months: win rate, sales, jobs paid in full, where the money goes, a
-                        customer's figures and latest, the CSV). Since 16 Nov also:
+                        customer's figures and latest, the CSV), and compliance.ts (every
+                        expiry as one list of rows, what stops work for a person, a machine,
+                        a van or a scaffold, the training matrix, courses, subcontractors'
+                        papers, the Monday reminder). Since 16 Nov also:
                         overview.ts (the AI overview, worked out from the records),
                         approvals.ts (client first), portal.ts (the overview's Portal panel),
                         requests.ts (what waits for the managing director's yes or no),
@@ -339,7 +383,10 @@ src/
                         subcontractor; portal/SubPortal.tsx is what a subcontractor sees.
                         reports/Reports.tsx (18 Nov) is the four report screens;
                         customers/ is Customers.tsx (the list and the add or change form)
-                        and CustomerPage.tsx (one customer, with its tabs)
+                        and CustomerPage.tsx (one customer, with its tabs). compliance/
+                        (18 Nov) is Compliance.tsx (the seven screens) and shared.tsx (the
+                        figures, the table of rows, and one renewal box per kind of thing);
+                        the scaffold register is ScaffoldRegister in projects/ProjectPage.tsx
 functions/              Cloudflare Pages Functions: api/ask.ts (Ask AI) and ask-log.ts (the record)
 server/                 their helpers: the Access token check, the D1 record, request checks
 ```
@@ -382,7 +429,19 @@ three permissions: "Handle invoices" (accounts: a supplier's invoice up to the l
 `db.approvalLimits`), "Approve invoices of any size" (the managing director's by default,
 who also sets the limit) and "Approve subcontractor invoices for their own sites" (site
 managers by default: a subcontractor's invoice for a site they are site manager or contracts
-manager of). Access is worked out in two layers:
+manager of).
+
+Compliance (18 Nov) adds two permissions, so there are 17: "Manage company and subcontractor
+papers" (`manageCompany`: the managing director and accounts) and "Record scaffold
+inspections" (`recordInspections`: the managing director, contracts managers and site
+managers). Who may renew what is `AREA_PERM` in `src/modules/compliance/shared.tsx`: tickets
+need "Manage staff and training tickets", vans and machinery "Manage plant and fleet",
+company and subcontractor papers `manageCompany`, scaffolds `recordInspections`. Fleet and
+Company papers are firm-wide, so their sidebar items carry `perm: "allProjects"`
+(`NavItem.perm`, filtered in `Shell.tsx`): without "See every project" they are not shown,
+and the other screens keep to the rows on that person's own sites (`rowsInScope`).
+
+Access is worked out in two layers:
 
 1. **Level.** Every office person has a level (`Person.level`: managing director, contracts
    manager, site manager, accounts). Each level's departments, money and permissions are a
@@ -466,6 +525,25 @@ day, so it looks the same on any weekday (rebuilt in the review, 16 Nov):
 - A job can finish late: `Project.plannedEnd` is the planned finish, and `endDate` the day
   it finished. Seven of the 21 jobs finished in the last 12 months were late (C715 by six
   working days, C716 by three, and five past ones), so "on time" means something.
+- Compliance (18 Nov, `seed/compliance.ts`, no random numbers, so nothing else moved).
+  Three people planned who cannot work, on purpose: Tomás Breslin (p-124), whose Safe Pass
+  ran out yesterday and who is planned on C722 today (booked on next Tuesday's Safe Pass
+  course); Kevin Shortall (p-119), whose advanced scaffolding ticket runs out on the Friday
+  before next week; and Mindaugas Petrauskas (p-110), whose MEWP ticket runs out late next
+  week (booked on a MEWP course before then). Attendance is never recorded on a day a
+  needed ticket had run out (filtered in `seed/index.ts`). Small kit: six harnesses
+  (HAR1 to HAR6) and three site transformers (TR1 to TR3) in Own plant; HAR4 on C721 and
+  TR3 in the yard are past their checks. Twelve drivers with licences (Liam Costigan's
+  yearly check overdue). Eight courses, one of them yesterday's Hot works not yet marked
+  done, one done three weeks ago that renewed three people's tickets. Seven company
+  papers (contractors all risk due in 19 days, professional indemnity waiting on its
+  schedule). Each subcontractor's papers and people, with one lapsed insurance (Kinvara),
+  a missing method statement (Corrib on C721, Curragh on C722), a lapsed Safe Pass
+  (Corrib's Łukasz Zieliński) and an overdue safety statement review (Portumna). Six
+  scaffolds and towers standing with weekly inspections by each site's manager, two of
+  them overdue (C719 S2, C723 T1), and one "Not safe to use" last week put right the next
+  day (C722 S1). Ten things stop work today. The Monday reminder in Approvals is
+  `mondayReminder` in `lib/compliance.ts`. DATA_VERSION 15.
 
 ### Re-branding for a prospect
 
@@ -1139,6 +1217,111 @@ and the new links; `fn_check.py`; the hosted build behind Cloudflare.
 - Margin on a live job (the customer's Projects tab, "so far") is from the costs posted so
   far, so it reads high early in a job.
 
+## Compliance, 18 Nov (on the co-founder's copy)
+
+Same branch, `invoicing-section`. Decisions 95 to 118. What Oisin asked for: a Compliance
+section linked to the training and personnel records, from his HVAC compliance demo, with a
+screen per area: personnel training, fleet (insurance and services) and machinery that needs
+servicing every so often. Step 4's Compliance half, as first written, is covered by it.
+
+**Built.**
+
+- **Rules** (`src/lib/compliance.ts`, pure, with tests). A ticket or paper is good through
+  its expiry day; "due" is inside 30 days (`DUE_WINDOW`). `neededTickets` is the safety card
+  ("Safe Pass" in Ireland, "CSCS card" in the UK) for operatives and site managers, plus the
+  trade ticket in `TRADE_TICKETS`; `ticketBlocks(person, date)` says what stops them working
+  that day, missing tickets included, and `planBlocks` finds everyone planned on a day they
+  cannot work. `plantBlocks` is a machine past one of `BLOCKING_CHECKS` (thorough
+  examination, tower inspection, electrical safety test, harness inspection, insurance);
+  `vehicleBlocks` a van with tax, test or insurance out of date; a scaffold is due every 7
+  days and a "Not safe to use" stands until a safe inspection. `complianceRows` turns every
+  one of them into one list of rows (who, what, due, state, proof, what it stops, which
+  sites), missing ones first then soonest first; `rowsInScope` keeps a site manager to their
+  own sites. Also the training matrix, courses (`courseStage`), licences (`licenceDue`: a
+  yearly check, or the licence running out), subcontractors (`subFlags`,
+  `subInsuranceFlags`) and the Monday reminder (`mondayReminder`).
+- **What stops work** is enforced in the actions, not only shown: `markAttendance`,
+  `correctAttendance`, `setPlanDay` and `planPerson` refuse a day the person cannot work
+  (`mayNotWork` in `actions.ts`; `planPerson` skips those days), and `movePlant` refuses to
+  send a blocked machine to a site (it now returns whether it moved).
+- **Everything due** (`/compliance`): the five figures as filters (`?show=expired`,
+  `blocks`, `due`, `proof`, `ok`), area (`?area=`), Needs attention or Everything
+  (`?all=1`), search, and Record a renewal (pick the thing, then its own form).
+- **Personnel** (`/compliance/personnel`): a banner naming everyone planned who cannot
+  work, with when and their course; the matrix (`?view=list` for the list, `?person=` for
+  one person), each cell a button that opens the renewal; cards sent from the site phone to
+  check; Record a new ticket; Book on a course (those whose ticket is running out first).
+- **Training courses** (`/compliance/courses`): to come and done; a course opens to book
+  someone, take them off, or mark it done, which renews the ticket of everyone booked from
+  the course's day, waiting on the certificate. The sidebar counts courses to mark done.
+- **Fleet** (`/compliance/fleet`): tax, test, insurance and service for every vehicle on
+  the road, each a button; driving licences with the yearly check.
+- **Machinery** (`/compliance/machinery`): every scaffold and tower standing with its last
+  inspection, then a column per check for every machine and piece of small kit.
+- **Company papers** (`/compliance/company`) and **Subcontractors**
+  (`/compliance/subcontractors`, `?sub=`): a section each, their papers (insurances, safety
+  statement, a method statement per site) and their people's Safe Pass, Add a person.
+- **Renewals** (`RenewDialog` in `compliance/shared.tsx`): one form per kind of thing, all
+  saving without a copy as "Proof needed" (decision 117). Renewing a ticket offers the
+  course it is booked on.
+- **Where it shows elsewhere.** The timesheet shows "Cannot work" and refuses the mark. The
+  week ahead marks those days, says how many people are planned who cannot work, and keeps
+  Send switched off until they are taken off or renewed; the day planner and the picker say
+  why. Plant and Vehicles lost their Renew buttons ("Renew in Compliance"); a blocked
+  machine's Where list leaves out the other sites. The project's Plant tab opens with its
+  scaffold register. The overview's decisions include someone planned who cannot work and a
+  machine on site that may not be used. Subcontractor invoices are flagged under the
+  subcontractor's name in Invoicing, in the approve box, and on a site manager's
+  Subcontractor invoices; approval still goes ahead. The subcontractor's portal has "Your
+  papers" with Send a new one (a copy is required there). The site phone shows a red card
+  when the operative cannot work, a notice about their van, and My tickets, with "Send a
+  photo of the new card"; the office checks it on Personnel and either accepts it (with the
+  new date) or turns it down. The employee box links to their tickets.
+- **Ask AI**: a Compliance block in the summary (the rules, the figures, who cannot work,
+  what has run out or is due, courses, company papers), and links to a person's tickets and
+  a subcontractor. Not tried with the model.
+- **Sample data**: see "The sample data" above. DATA_VERSION 15.
+
+**Tested.** 355 automated tests (31 new: `compliance.test.ts`, 21, and
+`compliance-actions.test.ts`, 10; `overview.test.ts` and `snapshot.test.ts` changed). Browser:
+the new `comp_check.py` (80 checks: the bar; the overview decision; the old address; the five
+figures and their counts, the filters, the area switch, search and Record a renewal; the
+matrix, the banner, the list, booking the last place on a course, a new ticket waiting on
+proof; marking yesterday's course done renewing the ticket from the course's day; adding a
+course; fleet papers and a licence check; recording a safe and a not safe scaffold
+inspection; a harness that may not go to another site, and a transformer that can once
+renewed; company papers; a subcontractor's method statement and a new person; their invoice
+flagged for the site manager; the portal refusing a paper without a copy, then taking one
+and the flag going; Tomás seeing his red card on the phone, sending a photo of his card, and
+the office accepting it, after which he can be marked; the week ahead held back and the day
+planner refusing; the scaffold register on a project (add, inspect, history, taken down);
+the Activity log; a site manager's scope and what they may do, a contracts manager kept out
+of company papers, accounts renewing them; dark mode; phone width on nine screens).
+`m1_check.py`, `m3_check.py`, `m3b_check.py`, `m4_check.py`, `m4b_check.py`, `s1_check.py`,
+`s1b_check.py` and `pay_check.py` changed for the moved tickets, the new tile and the
+blocked people. All seventeen suites: 992 pass, and the one Week ahead check fails as
+before. `csp_check.py` passes (53 screens, no violations). Not tested: a real phone; Safari
+and Firefox; Ask AI with the bigger summary; `fn_check.py`; the hosted build behind
+Cloudflare.
+
+**Known gaps in this part.**
+
+- The site phone's new words in Polish, Lithuanian, Romanian and Portuguese were written by
+  Claude and have not been read by a native speaker.
+- An overdue service does not stop a machine; only the checks in `BLOCKING_CHECKS` do.
+- A subcontractor's person with a lapsed Safe Pass is flagged but not stopped: subcontractors
+  are not on the timesheet yet (decisions 70 and 81).
+- The UK copy uses the CSCS card as the safety card; the trade tickets are Irish names.
+- Ticket lengths on renewal are fixed (`renewedTo`: four years for the safety card, three
+  for the rest); a renewal can change the date.
+- The Ask AI summary is about 146,000 characters, near the test's 150,000 bound.
+- The first page's main file is 538 kB (166 kB compressed), over Vite's 500 kB warning,
+  because the sample data builder is in it.
+
+**Next, if he wants it:** subcontractors on the timesheet with their people's cards checked
+there; overdue services stopping a machine; tax clearance and RCT for subcontractors;
+a native speaker for the phone's words.
+
 ## Build status
 
 Work is in milestones, with a stop for Aodhan's feedback after each.
@@ -1308,7 +1491,9 @@ The pieces:
   (about 80,000 characters when built; about 138,000 since the past year went into the
   sample data on 18 Nov, which makes a first question cost more, roughly double; older paid
   supplier invoices are summed up per supplier and emails kept to the last four months to
-  hold it there; about 40,000 tokens with the instructions, measured live, before), every
+  hold it there; about 146,000 since Compliance went in later that day, which leaves only
+  4,000 before `snapshot.test.ts` fails at half the server's 300,000 limit, so trim before
+  adding more; about 40,000 tokens with the instructions, measured live, before), every
   figure worked out with the same rules as the
   screens (`dashboardNumbers`, `projectCosts` in `src/data/figures.ts`, which the Job costs
   screen now uses too, `dueState`, `hireEstimate`), day counts already done, and the list of

@@ -80,10 +80,11 @@ def steps(page, ctx):
 
     # The Monday ticket reminder is a real draft now.
     appr.get_by_role("button", name=re.compile("^Ticket reminder")).click(); page.wait_for_timeout(300)
-    check("Ticket reminder: an email to the site managers, written from the tickets", "To The site managers <sitemanagers@" in appr.inner_text() and "Run out already:" in appr.get_by_label("Email").input_value())
+    body = appr.get_by_label("Email").input_value()
+    check("Ticket reminder: an email to the site managers, written from everything in Compliance (18 Nov)", "To The site managers <sitemanagers@" in appr.inner_text() and all(a in body for a in ["Personnel:", "Fleet:", "Machinery:", "Company:", "Subcontractors:"]), body[:200])
     appr.get_by_role("button", name="Approve ticket reminder").click(); page.wait_for_timeout(400)
     sent = data(page, "db.mails.filter(m => m.folder==='Sent')[0]")
-    check("Ticket reminder: approving files it under Sent, from info@", sent["subject"] == "Training tickets to renew" and sent["fromAddress"].startswith("info@"), sent["subject"])
+    check("Ticket reminder: approving files it under Sent, from info@", sent["subject"] == "Compliance: what runs out in the next 30 days" and sent["fromAddress"].startswith("info@"), sent["subject"])
 
     # Discard, then bring back: only a discarded draft can go back to waiting.
     appr.get_by_role("button", name=re.compile("^Variation.*cracked quoins")).click(); page.wait_for_timeout(300)

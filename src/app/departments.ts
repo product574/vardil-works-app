@@ -2,17 +2,17 @@
  * The map of the whole app: every department in the bottom bar, and the short sidebar each
  * one shows. Adding a screen means adding a line here and a route in router.tsx.
  */
-import { AddressBook, Browsers, CalendarDots, ChartBar, DeviceMobile, EnvelopeSimple, FolderOpen, Gauge, GearSix, Handshake, HardHat, type Icon, Receipt, Truck, UserGear, UsersThree } from "@phosphor-icons/react";
+import { AddressBook, Browsers, CalendarDots, ChartBar, DeviceMobile, EnvelopeSimple, FolderOpen, Gauge, GearSix, Handshake, HardHat, type Icon, Receipt, ShieldCheck, Truck, UserGear, UsersThree } from "@phosphor-icons/react";
 import { needsAccounts, partyOf, purchaseStage } from "@/lib/purchases";
 import { waitingOnDirector } from "@/lib/requests";
-import { dueState } from "@/lib/status";
-import type { Db, DepartmentKey } from "@/data/types";
+import type { Db, DepartmentKey, PermKey } from "@/data/types";
 
 /**
  * `mdOnly`: shown to the managing director only, even when the department is switched on for another level.
  * `staffOnly`: not shown to a client signed in to their portal.
+ * `perm`: shown only to people with that permission (Compliance's firm-wide screens need "See every project").
  */
-export type NavItem = { to: string; label: string; count?: (db: Db, today: string) => number; countTone?: "accent" | "warn" | "bad"; end?: boolean; mdOnly?: boolean; staffOnly?: boolean };
+export type NavItem = { to: string; label: string; count?: (db: Db, today: string) => number; countTone?: "accent" | "warn" | "bad"; end?: boolean; mdOnly?: boolean; staffOnly?: boolean; perm?: PermKey };
 export type NavGroup = { label: string; items: NavItem[] };
 export type Department = { key: DepartmentKey; /** Name in the bottom bar. */ label: string; /** Longer name for the sidebar heading, when it differs. */ title?: string; icon: Icon; home: string; groups: NavGroup[]; inBar: boolean };
 
@@ -83,7 +83,7 @@ export const DEPARTMENTS: Department[] = [
       ] },
       { label: "Team", items: [
         { to: "/people", label: "Employee register", end: true },
-        { to: "/people/certs", label: "Training tickets", count: (db, today) => db.people.filter((p) => p.active).flatMap((p) => p.certs).filter((c) => dueState(c.expires, today) !== "ok" || c.proofNeeded).length, countTone: "bad" },
+        // Training tickets moved to Compliance, Personnel on 18 Nov (one home for every expiry).
         { to: "/people/holidays", label: "Holidays", count: (db) => db.holidays.filter((h) => h.status === "Requested").length },
       ] },
     ],
@@ -101,6 +101,24 @@ export const DEPARTMENTS: Department[] = [
         { to: "/plant/vehicles", label: "Vehicles" },
         { to: "/plant/documents", label: "Vehicle documents" },
         { to: "/plant/repairs", label: "Repair spend" },
+      ] },
+    ],
+  },
+  {
+    // Every expiry in one place (18 Nov, after the HVAC compliance demo). Site managers see the
+    // people, machinery and subcontractors on their own sites; Fleet and Company are firm-wide.
+    key: "compliance", label: "Compliance", icon: ShieldCheck, home: "/compliance", inBar: true,
+    groups: [
+      { label: "Compliance", items: [
+        { to: "/compliance", label: "Everything due", end: true },
+      ] },
+      { label: "Areas", items: [
+        { to: "/compliance/personnel", label: "Personnel" },
+        { to: "/compliance/courses", label: "Training courses", count: (db, today) => db.courses.filter((c) => !c.doneAt && c.date <= today).length, countTone: "warn" },
+        { to: "/compliance/fleet", label: "Fleet", perm: "allProjects" },
+        { to: "/compliance/machinery", label: "Machinery" },
+        { to: "/compliance/company", label: "Company papers", perm: "allProjects" },
+        { to: "/compliance/subcontractors", label: "Subcontractors" },
       ] },
     ],
   },

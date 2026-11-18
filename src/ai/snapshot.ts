@@ -20,6 +20,7 @@ import { addDays, fmtLong } from "@/lib/dates";
 import { hireEstimate } from "@/lib/job-costs";
 import { partyOf, payBy, PURCHASE_LABEL, purchaseStage } from "@/lib/purchases";
 import { REGION, r2 } from "@/lib/money";
+import { bookingFor, complianceRows, countRows, courseStage, planBlocks } from "@/lib/compliance";
 import { conversionByKind, finishedInYear, onTime, paidInYear, salesByCustomer, salesInYear, tenderWinRate, topByMargin, totals, whereMoneyGoes, yearStart } from "@/lib/reports";
 import { currentPlan, invoicePaid, nextInvoice } from "@/lib/subscription";
 import { costBreakdown, marginPct, quoteTotal } from "@/lib/quotes";
@@ -38,6 +39,8 @@ export const RECORD_LINKS: [pattern: string, what: string][] = [
   ["/people?person=p-101", "one person"],
   ["/plant?item=pl-MX1", "one item of own plant"],
   ["/plant/vehicles?vehicle=v-1", "one vehicle"],
+  ["/compliance/personnel?person=p-124", "one person's training tickets in Compliance"],
+  ["/compliance/subcontractors?sub=sub-1", "one subcontractor's papers in Compliance"],
   ["/files?project=C719", "one project's files in the Files section"],
 ];
 
@@ -148,6 +151,33 @@ export function buildSnapshot(db: Db, today: string, brand: Brand): string {
       `Approvals waiting: ${k.approvalsPending}.`,
     ].join("\n"),
   );
+
+  // Compliance (18 Nov): what stops work, what is due, courses, company and subcontractor papers.
+  {
+    const rows = complianceRows(db, today, { safetyCard: region.safetyCard, vehicleTest: region.vehicleTest, roadTax: region.roadTax });
+    const c = countRows(rows);
+    const line = (r: (typeof rows)[number]) => `${r.who} (${r.area}): ${r.item}, ${r.state === "missing" ? "missing" : r.state === "expired" ? `out of date since ${r.due}` : `due ${r.approx ? "about " : ""}${r.due}`}${r.proofNeeded ? ", proof needed" : ""}`;
+    const horizon = nextWorkWeek(today)[4]!;
+    const blocked = [...planBlocks(db.people, db.plan.filter((e) => e.date >= today && e.date <= horizon))].map(([key, b]) => ({ id: key.split("|")[0]!, date: key.split("|")[1]!, b }));
+    const firstBlocked = [...new Set(blocked.map((x) => x.id))].map((id) => {
+      const p = db.people.find((x) => x.id === id)!;
+      const from = blocked.filter((x) => x.id === id).map((x) => x.date).sort()[0];
+      const course = bookingFor(db.courses, id, blocked.find((x) => x.id === id)!.b[0]!.ticket);
+      return `${p.name} (${id}) planned from ${from} but ${blocked.find((x) => x.id === id)!.b.map((b) => `${b.ticket} ${b.expires ? `ran out ${b.expires}` : "not held"}`).join(", ")}${course ? `; booked on the course ${course.date}` : ""}`;
+    });
+    out.push(
+      [
+        "## Compliance (as on the Compliance screens). A ticket or paper is good through its expiry day.",
+        `Rules: nobody with a Safe Pass or trade ticket out of date can be planned or marked on site (trade tickets: scaffolder advanced scaffolding, roofer MEWP, leadworker hot works, stonemason abrasive wheels, site manager site supervisor safety); a week with such a person planned cannot be sent; a machine whose thorough examination, tower inspection, electrical safety test, harness inspection or insurance has run out cannot go to a site; a vehicle without tax, test and insurance may not be driven; scaffolds are inspected every 7 days; a subcontractor's lapsed insurance flags their invoices but does not hold them.`,
+        `Figures: ${c.expired} run out or missing, ${c.blocks} stopping work, ${c.due} due within 30 days, ${c.proof} waiting on proof.`,
+        `Planned but cannot work: ${firstBlocked.join("; ") || "nobody"}.`,
+        `Run out, missing or stopping work (training tickets are in the People table): ${rows.filter((r) => r.area !== "personnel" && (r.state === "expired" || r.state === "missing")).map(line).join("; ")}.`,
+        `Due within 30 days (besides tickets): ${rows.filter((r) => r.area !== "personnel" && r.state === "due").map(line).join("; ")}.`,
+        `Training courses: ${db.courses.map((x) => `${x.ticket} ${x.date} at ${x.venue}, ${x.bookedIds.length} of ${x.places} booked (${x.bookedIds.map(name).join(", ") || "nobody"}), ${courseStage(x, today)}`).join("; ")}.`,
+        `Company papers: ${db.companyPapers.map((x) => `${x.name} ${x.reference}${x.cover ? `, cover ${x.cover}` : ""}, runs to ${x.expires}`).join("; ")}.`,
+      ].join("\n"),
+    );
+  }
 
   // Projects
   const flags = (p: Project) =>

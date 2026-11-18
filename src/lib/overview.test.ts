@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildSeed } from "@/data/seed";
-import { ticketReminder } from "@/data/seed/office";
+import { mondayReminder } from "@/lib/compliance";
 import type { Db } from "@/data/types";
 import { approvalClient, rankApprovals } from "./approvals";
 import { recordsOverview, ticketWords } from "./overview";
@@ -32,8 +32,9 @@ describe("the AI overview, worked out from the records (option B)", () => {
     expect(other.button).toEqual({ label: "Open the invoices", to: "/invoicing/invoiced" });
   });
 
-  it("names the person on a live site with the ticket longest out of date", () => {
-    expect(o.decisions[2]!.text).toBe("[Kevin Shortall](/people/certs) is working on C719 with an advanced scaffolding ticket that ran out 19 days ago.");
+  it("names someone planned who cannot work, the soonest first (Compliance, 18 Nov)", () => {
+    expect(o.decisions[2]!.text).toBe("[Tomás Breslin](/compliance/personnel?person=p-124) is planned on C722 today, but their Safe Pass ran out on 15 Nov. They cannot be marked on site until it is renewed; booked on the course on Tuesday 24 Nov. Three other people too.");
+    expect(o.decisions[2]!.button).toEqual({ label: "Open the course", to: "/compliance/courses" });
   });
 
   it("follows with four facts worth knowing", () => {
@@ -141,16 +142,18 @@ describe("requests waiting for the managing director's yes or no", () => {
   });
 });
 
-describe("the Monday ticket reminder", () => {
+describe("the Monday reminder, every area (Compliance, 18 Nov)", () => {
   const { db } = seed();
   const a = db.approvals.find((x) => x.kind === "cert_reminder")!;
 
-  it("waits in Approvals as an email to the site managers, written from the tickets", () => {
+  it("waits in Approvals as an email to the site managers, written from everything in Compliance", () => {
     expect(a.status).toBe("Pending");
-    expect(a.email).toEqual({ toName: "The site managers", toAddress: "sitemanagers@abcconstruction.example", subject: "Training tickets to renew" });
-    expect(a.body).toBe(ticketReminder(db, "2026-11-16"));
-    expect(a.body).toContain("- Kevin Shortall, scaffolder (C719): Scaffolding ticket, advanced, ran out on 28 October");
-    expect(a.body).toContain("Running out soon:");
+    expect(a.email).toEqual({ toName: "The site managers", toAddress: "sitemanagers@abcconstruction.example", subject: "Compliance: what runs out in the next 30 days" });
+    expect(a.body).toBe(mondayReminder(db, "2026-11-16"));
+    expect(a.body).toContain("- Tomás Breslin, general operative, on C722: Safe Pass, ran out on 15 Nov");
+    expect(a.body).toContain("- Kevin Shortall, scaffolder, on C719: Scaffolding ticket, advanced, due 20 Nov");
+    expect(a.body).toContain("- C719 S2 Birdcage scaffold, nave interior: Weekly inspection, overdue since 12 Nov");
+    for (const area of ["Personnel:", "Fleet:", "Machinery:", "Company:", "Subcontractors:"]) expect(a.body).toContain(area);
     expect(a.body).not.toMatch(/[–—]/);
   });
 });

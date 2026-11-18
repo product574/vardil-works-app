@@ -30,7 +30,7 @@ export const ROLES: RoleDef[] = [
     personId: "p-md",
     does: "Sees the whole firm: sales, sites, money and compliance.",
     home: "/dashboard",
-    departments: ["dashboard", "inbox", "sales", "customers", "projects", "schedule", "people", "plant", "files", "invoicing", "reports", "portal", "site", "admin", "settings"],
+    departments: ["dashboard", "inbox", "sales", "customers", "projects", "schedule", "people", "plant", "compliance", "files", "invoicing", "reports", "portal", "site", "admin", "settings"],
     money: [true, true],
     perms: ALL_PERMS,
     locked: true,
@@ -41,11 +41,12 @@ export const ROLES: RoleDef[] = [
     personId: "p-cm1",
     does: "Prices work, runs the projects and plans who goes where.",
     home: "/projects",
-    departments: ["dashboard", "inbox", "sales", "customers", "projects", "schedule", "people", "plant", "files", "portal", "site"],
+    departments: ["dashboard", "inbox", "sales", "customers", "projects", "schedule", "people", "plant", "compliance", "files", "portal", "site"],
     money: [true, true],
     // Everything except answering requests, which waits for the managing director (16 Nov),
-    // and approving invoices: the managing director, or a site manager for a subcontractor (18 Nov).
-    perms: ALL_PERMS.filter((k) => k !== "answerRequests" && k !== "approveInvoices" && k !== "approveSubInvoices"),
+    // approving invoices: the managing director, or a site manager for a subcontractor (18 Nov),
+    // and company papers: the managing director and accounts (Compliance, 18 Nov).
+    perms: ALL_PERMS.filter((k) => k !== "answerRequests" && k !== "approveInvoices" && k !== "approveSubInvoices" && k !== "manageCompany"),
   },
   {
     key: "site",
@@ -53,9 +54,9 @@ export const ROLES: RoleDef[] = [
     personId: "p-sm1",
     does: "Marks attendance, ticks off scope, requests people and plant.",
     home: "/people/timesheet",
-    departments: ["projects", "schedule", "people", "plant", "files", "site"],
+    departments: ["projects", "schedule", "people", "plant", "compliance", "files", "site"],
     money: [true, false],
-    perms: ["markTime", "correctTime", "approveSubInvoices"],
+    perms: ["markTime", "correctTime", "approveSubInvoices", "recordInspections"],
   },
   {
     key: "accounts",
@@ -63,9 +64,9 @@ export const ROLES: RoleDef[] = [
     personId: "p-acc",
     does: "Checks supplier invoices, sends client invoices, pays what is approved, exports to Sage.",
     home: "/invoicing",
-    departments: ["dashboard", "inbox", "invoicing", "sales", "customers", "people", "plant", "files"],
+    departments: ["dashboard", "inbox", "invoicing", "sales", "customers", "people", "plant", "compliance", "files"],
     money: [true, true],
-    perms: ["allProjects", "approveDrafts", "correctTime", "seeRates", "manageInvoices"],
+    perms: ["allProjects", "approveDrafts", "correctTime", "seeRates", "manageInvoices", "manageCompany"],
   },
   {
     key: "operative",

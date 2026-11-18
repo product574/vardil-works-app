@@ -58,7 +58,7 @@ describe("the summary of the firm Ask AI is given", () => {
   });
 
   it("lists every screen it may link to, and the links to one record", () => {
-    for (const path of ["/invoicing/invoiced", "/dashboard", "/admin", "/people/certs", "/projects/C719", "/inbox?mail=mail-1", "/dashboard?open=ap-1"]) expect(text).toContain(`${path} |`);
+    for (const path of ["/invoicing/invoiced", "/dashboard", "/admin", "/compliance/personnel", "/compliance/machinery", "/projects/C719", "/inbox?mail=mail-1", "/dashboard?open=ap-1"]) expect(text).toContain(`${path} |`);
   });
 
   it("includes pay rates and margins, which only the managing director may ask about", () => {

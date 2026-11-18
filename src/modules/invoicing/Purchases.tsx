@@ -10,6 +10,7 @@ import { allocationBalance, jobRefMatches, suggestCategory } from "@/lib/job-cos
 import { money0, money2, r2 } from "@/lib/money";
 import { limitWords, needsAccounts, owedOut, partyOf, payBy, payWords, purchaseStage, type PurchaseStage, sitesOf, viaWords } from "@/lib/purchases";
 import { isPdf } from "@/lib/image";
+import { subInsuranceFlags } from "@/lib/compliance";
 import { Button, cx, Dialog, Empty, NumInput, PageBody, PageHead, Panel, Section, Segmented } from "@/ui";
 import { toast } from "@/ui/toast";
 import { ApproveDialog, CopyLink, PaidDialog, PurchaseBadge, SendBackDialog, usePurchases } from "./purchase-shared";
@@ -133,6 +134,8 @@ function PurchaseDetail({ s, pin }: { s: SupplierInvoice; pin: () => void }) {
     Math.abs(balance) > 0.02 && `The lines add up to ${money2(s.subtotal - balance, region)}, but the invoice subtotal is ${money2(s.subtotal, region)}.`,
     job && lines.some((l) => l.projectId && l.projectId !== job.id) && `The invoice says ${job.code}, but a line is going to another project.`,
     dup && `${s.supplier} ${s.invoiceNo} is already on file. Check it is not a duplicate.`,
+    // Flagged, not held (his pick, Compliance 18 Nov): whoever approves decides.
+    subbie && sub(s.subcontractorId) && subInsuranceFlags(sub(s.subcontractorId)!, day).length > 0 && `${subInsuranceFlags(sub(s.subcontractorId)!, day).join(". ")}. See Compliance, Subcontractors before approving.`,
   ].filter((w): w is string => !!w);
   const blocked = lines.length === 0 || lines.some((l) => !l.projectId) || Math.abs(balance) > 0.02;
   const editable = canEdit && open;

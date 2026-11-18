@@ -33,7 +33,12 @@ export type Cert = {
   proof?: Proof;
   /** Set when a ticket is recorded or renewed with no card or certificate attached yet. */
   proofNeeded?: boolean;
+  /** A photo of a new card sent from the site phone, waiting for the office to check it (18 Nov). */
+  sentPhoto?: { name: string; dataUrl: string; sentAt: Stamp };
 };
+
+/** A driver's licence, checked once a year (Compliance, Fleet). */
+export type Licence = { categories: string; expires: Day; checkedOn: Day; checkedBy: string; proof?: Proof; proofNeeded?: boolean };
 
 export type Person = {
   id: ID;
@@ -53,6 +58,8 @@ export type Person = {
   active: boolean;
   archivedAt?: Day;
   certs: Cert[];
+  /** Only for people who drive one of the firm's vehicles. */
+  licence?: Licence;
 };
 
 export type Holiday = {
@@ -312,7 +319,7 @@ export type PlanEntry = { id: ID; projectId: ID; personId: ID; date: Day; part?:
 
 // ── Plant and fleet ───────────────────────────────────────────────────────────
 
-export type Renewal = { id: ID; kind: string; expires: Day; doc?: string; proof?: Proof };
+export type Renewal = { id: ID; kind: string; expires: Day; doc?: string; proof?: Proof; /** Renewed with no certificate attached yet (18 Nov). */ proofNeeded?: boolean };
 export type ServiceRecord = { id: ID; date: Day; meter?: number; note: string };
 
 export type PlantItem = {
@@ -347,7 +354,7 @@ export type HiredPlant = {
   notes: string;
 };
 
-export type ComplianceItem = { paidDate: Day; expiryDate: Day; amount: number };
+export type ComplianceItem = { paidDate: Day; expiryDate: Day; amount: number; /** Renewed with no receipt or certificate attached yet (18 Nov). */ proofNeeded?: boolean };
 export type Vehicle = {
   id: ID;
   reg: string;
@@ -436,7 +443,56 @@ export type Subcontractor = {
   termsDays: number;
   /** The sites they are working on. */
   projectIds: ID[];
+  /** Their insurances, safety statement and method statements (Compliance, 18 Nov). */
+  papers: SubPaper[];
+  /** Their people who work on our sites, each with a Safe Pass. */
+  workers: SubWorker[];
 };
+
+/**
+ * A subcontractor's paper. Insurances and the safety statement run out on a date; a method
+ * statement (RAMS) is one per site they work on and has no expiry, only whether it came in.
+ */
+export type SubPaperKind = "Public liability" | "Employers' liability" | "Safety statement" | "Method statement";
+export type SubPaper = { id: ID; kind: SubPaperKind; projectId?: ID; reference?: string; cover?: string; expires?: Day; receivedOn: Day; via: "Portal" | "Email"; proof?: Proof; proofNeeded?: boolean };
+export type SubWorker = { id: ID; name: string; safePassExpires: Day; proof?: Proof; proofNeeded?: boolean };
+
+/** One of the firm's own papers: insurances, tax clearance, registrations (Compliance, Company). */
+export type CompanyPaper = { id: ID; name: string; provider: string; reference: string; cover?: string; expires: Day; proof?: Proof; proofNeeded?: boolean };
+
+/** A training course people are booked on. Marking it done renews the ticket for everyone booked. */
+export type Course = {
+  id: ID;
+  /** The training ticket it gives or renews. */
+  ticket: string;
+  provider: string;
+  venue: string;
+  date: Day;
+  places: number;
+  /** Cost a head, before VAT. */
+  cost: number;
+  bookedIds: ID[];
+  doneAt?: Stamp;
+  doneBy?: string;
+};
+
+/** A scaffold or tower on a site, inspected every 7 days and after any change (the project's scaffold register). */
+export type Scaffold = {
+  id: ID;
+  projectId: ID;
+  ref: string;
+  kind: "Scaffold" | "Tower";
+  description: string;
+  /** Who put it up: a subcontractor's name, or the firm itself. */
+  erectedBy: string;
+  erectedOn: Day;
+  struckOn?: Day;
+  /** A tower from the firm's own plant. */
+  plantId?: ID;
+  /** Newest first. */
+  inspections: ScaffoldInspection[];
+};
+export type ScaffoldInspection = { id: ID; date: Day; by: string; result: "Safe to use" | "Not safe to use"; note: string };
 
 /**
  * An invoice the firm has to pay: from a supplier of goods or hire, or from a subcontractor.
@@ -623,6 +679,7 @@ export type DepartmentKey =
   | "schedule"
   | "people"
   | "plant"
+  | "compliance"
   | "files"
   | "invoicing"
   | "reports"
@@ -658,7 +715,7 @@ export type AccessRow = {
 };
 
 /** Things a person may do. The list with its wording is in src/data/permissions.ts. */
-export type PermKey = "allProjects" | "manageProjects" | "priceQuotes" | "approveDrafts" | "answerRequests" | "planWeek" | "markTime" | "correctTime" | "manageStaff" | "approveLeave" | "seeRates" | "managePlant" | "manageInvoices" | "approveInvoices" | "approveSubInvoices";
+export type PermKey = "allProjects" | "manageProjects" | "priceQuotes" | "approveDrafts" | "answerRequests" | "planWeek" | "markTime" | "correctTime" | "manageStaff" | "approveLeave" | "seeRates" | "managePlant" | "manageInvoices" | "approveInvoices" | "approveSubInvoices" | "manageCompany" | "recordInspections";
 export type AccessKey = PermKey | "seeValues" | "seeMargins";
 
 /**
@@ -701,6 +758,9 @@ export type Db = {
   supplierInvoices: SupplierInvoice[];
   subcontractors: Subcontractor[];
   approvalLimits: ApprovalLimit[];
+  companyPapers: CompanyPaper[];
+  courses: Course[];
+  scaffolds: Scaffold[];
   salesInvoices: SalesInvoice[];
   invoiceComments: InvoiceComment[];
   invoiceQueries: InvoiceQuery[];

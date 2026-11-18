@@ -1,7 +1,8 @@
 import { type FormEvent, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useAccess } from "@/data/access";
-import { addFleetDoc, addVehicle, removeVehicle, renewVehicle, setVehicleDriver } from "@/data/actions";
+import { addFleetDoc, addVehicle, removeVehicle, setVehicleDriver } from "@/data/actions";
+import { vehicleBlocks } from "@/lib/compliance";
 import { useData, useDay, usePrefs } from "@/data/store";
 import type { FleetDoc, FleetDocCategory, Vehicle } from "@/data/types";
 import { addDays } from "@/lib/dates";
@@ -12,7 +13,7 @@ import { dueLabel, dueState, nextServiceDate } from "@/lib/status";
 import { Badge, Button, Dialog, Empty, Fact, Field, PageBody, PageHead, Panel, Section, Segmented, Switch } from "@/ui";
 import { ProofField, ProofLink, useProofPick } from "@/ui/files";
 import { toast } from "@/ui/toast";
-import { DUE_TONE, RenewDialog } from "./Plant";
+import { DUE_TONE } from "./Plant";
 
 type Item = "tax" | "test" | "insurance";
 const ITEMS: Item[] = ["tax", "test", "insurance"];
@@ -115,7 +116,6 @@ export function Vehicles() {
 function VehicleDialog({ v, onClose }: { v: Vehicle; onClose: () => void }) {
   const { db, day, region, seeValues, canEdit, driver } = useFleet();
   const label = useLabels();
-  const [renew, setRenew] = useState<Item | null>(null);
   const [removing, setRemoving] = useState(false);
   const [sell, setSell] = useState("");
   const [error, setError] = useState("");
@@ -191,7 +191,15 @@ function VehicleDialog({ v, onClose }: { v: Vehicle; onClose: () => void }) {
           </dl>
           <div className="grid content-start gap-4">
             <div>
-              <h3 className="mb-1 text-base">Documents</h3>
+              <h3 className="mb-1 flex items-baseline gap-2 text-base">
+                Documents
+                {v.active && (
+                  <Link to="/compliance/fleet" className="text-[0.93rem] font-normal text-accent-ink underline-offset-2 hover:underline">
+                    Renew in Compliance
+                  </Link>
+                )}
+              </h3>
+              {v.active && vehicleBlocks(v, day).length > 0 && <p className="mb-1.5 rounded-md bg-bad-soft px-2.5 py-1.5 text-[0.93rem] text-bad">Do not drive: {vehicleBlocks(v, day).map((k) => label[k].toLowerCase()).join(" and ")} ran out. {driver(v) ? `${driver(v)} is told on the site phone.` : ""}</p>}
               <ul className="divide-y divide-line rounded-md border border-line">
                 {ITEMS.map((i) => (
                   <li key={i} className="flex flex-wrap items-center gap-2 px-2.5 py-1.5">
@@ -202,12 +210,8 @@ function VehicleDialog({ v, onClose }: { v: Vehicle; onClose: () => void }) {
                         {seeValues && v.compliance[i].amount > 0 && `, ${money0(v.compliance[i].amount, region)} paid`}
                       </span>
                     </span>
+                    {v.compliance[i].proofNeeded && <Badge tone="warn">Proof needed</Badge>}
                     <Badge tone={DUE_TONE[dueState(v.compliance[i].expiryDate, day)]}>{dueLabel(v.compliance[i].expiryDate, day)}</Badge>
-                    {canEdit && v.active && (
-                      <Button size="sm" onClick={() => setRenew(i)}>
-                        Renew
-                      </Button>
-                    )}
                   </li>
                 ))}
               </ul>
@@ -236,19 +240,6 @@ function VehicleDialog({ v, onClose }: { v: Vehicle; onClose: () => void }) {
           </div>
         </div>
       </Dialog>
-      {renew && (
-        <RenewDialog
-          key={renew}
-          title={`Renew ${label[renew].toLowerCase()}, ${v.reg}`}
-          defaultExpires={addDays(v.compliance[renew].expiryDate > day ? v.compliance[renew].expiryDate : day, 365)}
-          withAmount={v.compliance[renew].amount}
-          onClose={() => setRenew(null)}
-          onSave={(expires, amount, proof) => {
-            renewVehicle(v.id, renew, expires, amount, proof);
-            toast(`${label[renew]} for ${v.reg} renewed to ${dFull(expires)}`);
-          }}
-        />
-      )}
     </>
   );
 }

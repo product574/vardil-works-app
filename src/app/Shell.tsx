@@ -335,10 +335,10 @@ function useNavCounts() {
 
 /** A department's sidebar groups, without the managing director's own screens for anyone else, or the staff's own for a client. */
 function useGroups(pathname: string) {
-  const role = useAccess().role;
+  const { role, may } = useAccess();
   const md = role === "md";
   return departmentFor(pathname)
-    .groups.map((g) => ({ ...g, items: g.items.filter((it) => (md || !it.mdOnly) && !(it.staffOnly && role === "client")) }))
+    .groups.map((g) => ({ ...g, items: g.items.filter((it) => (md || !it.mdOnly) && !(it.staffOnly && role === "client") && (!it.perm || may(it.perm))) }))
     .filter((g) => g.items.length > 0);
 }
 

@@ -73,13 +73,17 @@ def steps(page, ctx):
     check("Photos: the picture survives a refresh", data(page, "db.files.filter(f => f.dataUrl).length") == 1 and page.locator("main ul li img").count() == 1)
 
     # 4. Tickets: proof
-    page.goto(BASE + "/people/certs"); page.wait_for_selector("table")
+    # In Compliance since 18 Nov: the tickets that need attention, then everything.
+    page.goto(BASE + "/compliance?area=personnel"); page.wait_for_selector("table")
     n_att = page.locator("tbody tr").count()
     row = page.locator("tbody tr", has_text="Thiago Barbosa")
-    row.get_by_role("button", name="Record renewal").click()
+    row.get_by_role("button", name="Renew").click()
     page.locator("dialog[open]").get_by_role("button", name="Save renewal").click(); page.wait_for_timeout(300)
     check("Tickets: a renewal saved with no proof stays on the list as Proof needed", page.locator("tbody tr").count() == n_att and "Proof needed" in row.inner_text() and "In date" in row.inner_text(), row.inner_text())
-    check("Tickets: the header counts tickets waiting on proof", "1 waiting on proof" in main.inner_text())
+    proof_tile = page.locator("dl[aria-label='Compliance figures'] button", has_text="Proof needed").inner_text()
+    check("Tickets: the figures count what is waiting on proof", "3" in proof_tile, proof_tile)
+    page.goto(BASE + "/compliance/personnel?view=list&person=p-108"); page.wait_for_selector("table")
+    row = page.locator("tbody tr", has_text="Manual handling")
     row.get_by_role("button", name="Add proof").click()
     dlg = page.locator("dialog[open]")
     check("Tickets: proof cannot be attached without a file", dlg.get_by_role("button", name="Attach proof").is_disabled())
@@ -87,8 +91,9 @@ def steps(page, ctx):
     check("Tickets: only a photo or a PDF is accepted as proof", "photo of the card or a PDF" in dlg.inner_text())
     dlg.get_by_label("Choose a proof from this device").set_input_files(FIX + "cert.pdf"); page.wait_for_timeout(400)
     dlg.get_by_role("button", name="Attach proof").click(); page.wait_for_timeout(300)
+    page.goto(BASE + "/compliance?area=personnel"); page.wait_for_selector("table")
     check("Tickets: once proof is attached the ticket leaves the list", page.locator("tbody tr", has_text="Thiago Barbosa").count() == 0 and page.locator("tbody tr").count() == n_att - 1)
-    page.get_by_role("tab", name="All").click(); page.wait_for_timeout(300)
+    page.get_by_role("tab", name=re.compile("^Everything")).click(); page.wait_for_timeout(300)
     row = page.locator("tbody tr", has_text="Thiago Barbosa").filter(has_text="Manual handling")
     row.get_by_role("button", name="View proof").click(); page.wait_for_timeout(250)
     dlg = page.locator("dialog[open]")
@@ -172,11 +177,12 @@ def steps(page, ctx):
     check("Day planner: Take off this day clears just that site and day", f"{free_name} is on" not in main.inner_text() and len(plan()) == 2, plan())
     box.get_by_role("button", name="Close").click(); page.wait_for_timeout(200)
     check("Not placed: he is still listed, with Monday, Tuesday and Friday free and Wednesday half", any(t.startswith(free_name) for t in side.locator("li").all_inner_texts()), side.inner_text())
-    cell = block.locator("tr", has_text="Kevin Shortall").locator("button[aria-pressed=true]").first
+    # Kevin Shortall cannot work next week (his scaffolding ticket runs out first), so another of C719's crew.
+    cell = block.locator("tr", has_text="Marek Wiśniewski").locator("button[aria-pressed=true]").first
     cell.click(); page.wait_for_timeout(250)
     dlg = page.locator("dialog[open]").last
     dlg.get_by_role("tab", name="Half day").click(); dlg.get_by_role("button", name="Save change").click(); page.wait_for_timeout(300)
-    check("Week ahead: a day in the grid can be changed to a half day in place", block.locator("tr", has_text="Kevin Shortall").locator("button", has_text="Half day").count() == 1)
+    check("Week ahead: a day in the grid can be changed to a half day in place", block.locator("tr", has_text="Marek Wiśniewski").locator("button", has_text="Half day").count() == 1)
     check("Sample data: one half day is already planned next week (Krzysztof Nowicki, Tuesday)", data(page, "db.plan.filter(p => p.personId==='p-126' && p.part==='half').length") == 1)
     side.get_by_label("Show one trade").select_option(index=1); page.wait_for_timeout(150)
     shown = side.locator("li").all_inner_texts()
@@ -190,7 +196,7 @@ def steps(page, ctx):
     # 16 Nov: Roles and access moved from Settings to Admin.
     page.locator("nav[aria-label=Departments]").get_by_role("link", name="Admin").click(); page.wait_for_selector("text=Requests")
     page.get_by_role("link", name="Roles and access").click(); page.wait_for_selector("text=What they can do")
-    check("Access: by role lists fifteen permissions for three levels", page.locator("section", has_text="What they can do").locator("tbody tr").count() == 15 and page.get_by_role("switch", name="Site manager: Plan the week ahead").get_attribute("aria-checked") == "false")
+    check("Access: by role lists seventeen permissions for three levels (two for Compliance, 18 Nov)", page.locator("section", has_text="What they can do").locator("tbody tr").count() == 17 and page.get_by_role("switch", name="Site manager: Plan the week ahead").get_attribute("aria-checked") == "false")
     page.screenshot(path=f"{OUT}/88-access-by-role.png", full_page=True)
     page.get_by_role("tab", name="By person").click(); page.wait_for_timeout(300)
     lst = page.get_by_role("list", name="Office and management staff")
@@ -230,7 +236,7 @@ def steps(page, ctx):
     page.goto(BASE + "/people/holidays"); page.wait_for_selector("table")
     check("Access: a site manager cannot approve leave or record it", page.get_by_role("button", name="Approve").count() == 0 and page.get_by_role("button", name="Record leave").count() == 0)
     page.goto(BASE + "/people/certs"); page.wait_for_selector("table")
-    check("Access: or record tickets", page.get_by_role("button", name="Record renewal").count() == 0 and page.get_by_role("button", name="Record a new ticket").count() == 0)
+    check("Access: or record tickets", page.get_by_role("button", name="Renew").count() == 0 and page.get_by_role("button", name="Add proof").count() == 0 and page.get_by_role("button", name="Record a new ticket").count() == 0)
     page.goto(BASE + "/people"); page.wait_for_selector("table")
     check("Access: or add employees", page.get_by_role("button", name="Add employee").count() == 0)
 
@@ -270,7 +276,7 @@ errs = []
 try:
     errs = run(steps)
 except Exception as ex:
-    print("STOPPED EARLY:", str(ex).split("\n")[0][:400])
+    print("STOPPED EARLY:", str(ex).split("\n")[0][:400]); import traceback; traceback.print_exc()
 for name, ok, detail in results:
     print(("PASS " if ok else "FAIL ") + name + ("" if ok else f"  [{detail[:300]}]"))
 print("console problems:", errs)

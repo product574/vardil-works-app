@@ -1,11 +1,13 @@
-import { CalendarBlank, Camera, HandPalm, Phone, PlusCircle } from "@phosphor-icons/react";
+import { CalendarBlank, Camera, HandPalm, IdentificationCard, Phone, PlusCircle } from "@phosphor-icons/react";
 import { useState } from "react";
-import { actAs, addPhoto, addRequest, raiseExtra } from "@/data/actions";
+import { actAs, addPhoto, addRequest, raiseExtra, sendTicketPhoto } from "@/data/actions";
+import { bookingFor, stateOf, ticketBlocks, vehicleBlocks } from "@/lib/compliance";
 import { co } from "@/data/place";
 import { useData, useDay, usePrefs } from "@/data/store";
 import { type Language, LANGUAGE_NAME, type Person, type Project, type RequestKind } from "@/data/types";
 import { personWeek } from "@/lib/availability";
 import { addDays } from "@/lib/dates";
+import { REGION } from "@/lib/money";
 import { shrinkImage } from "@/lib/image";
 import { workWeek } from "@/lib/week";
 import { Button, cx, Dialog, Field, PageBody, PageHead, Segmented } from "@/ui";
@@ -13,7 +15,7 @@ import { PickFile } from "@/ui/files";
 import { toast } from "@/ui/toast";
 import { EXTRAS, INSTRUCTIONS, WORDS } from "./words";
 
-type Sheet = "photo" | "extra" | "ask" | "week" | null;
+type Sheet = "photo" | "extra" | "ask" | "week" | "tickets" | null;
 
 /**
  * What an operative sees on their own phone: one Today screen with large buttons, in their
@@ -73,6 +75,14 @@ function Phone_({ me, lang, day }: { me: Person; lang: Language; day: string }) 
   const translated = site ? INSTRUCTIONS[site.code]?.[lang] : undefined;
   const instructions = lang === "en" || showOriginal || !translated ? site?.siteInstructions : translated;
   const dateText = new Date(day + "T12:00:00Z").toLocaleDateString(lang === "en" ? "en-IE" : lang, { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" });
+  // Compliance on the phone (18 Nov): a ticket that stops work, and the van they drive.
+  const blocks = ticketBlocks(me, day);
+  const van = db.vehicles.find((v) => v.active && v.driverId === me.id);
+  const vanGone = van ? vehicleBlocks(van, day) : [];
+  const vanDue = van ? (["tax", "test", "insurance"] as const).filter((k) => stateOf(van.compliance[k].expiryDate, day) === "due") : [];
+  const region = REGION[usePrefs.getState().brand.region];
+  const vanLabel = (k: "tax" | "test" | "insurance") => (k === "tax" ? region.roadTax : k === "test" ? region.vehicleTest : "Insurance");
+  const short = (d: string) => new Date(d + "T12:00:00Z").toLocaleDateString(lang === "en" ? "en-IE" : lang, { day: "numeric", month: "short", timeZone: "UTC" });
   const big = "press flex min-h-16 w-full items-center gap-3 rounded-lg border border-line-strong bg-surface px-4 text-left text-[1.05rem] font-medium hover:border-accent hover:text-accent-ink";
   return (
     <div className="w-full max-w-[24rem] overflow-hidden rounded-2xl border border-line-strong bg-canvas" aria-label="Phone screen" lang={lang}>
@@ -88,6 +98,27 @@ function Phone_({ me, lang, day }: { me: Person; lang: Language; day: string }) 
         )}
       </div>
       <div className="grid gap-3 px-4 py-4">
+        {blocks.length > 0 && (
+          <div className="rounded-lg bg-bad-soft px-3 py-3 text-bad" role="status">
+            <p className="font-medium">
+              {blocks.map((b) => (b.expires ? `${b.ticket} ${t.ranOut} ${short(b.expires)}` : b.ticket)).join(", ")}
+            </p>
+            <p className="mt-0.5">{t.cannotWork}</p>
+            {bookingFor(db.courses, me.id, blocks[0]!.ticket) && (
+              <p className="mt-0.5">
+                {t.booked}: {short(bookingFor(db.courses, me.id, blocks[0]!.ticket)!.date)}
+              </p>
+            )}
+          </div>
+        )}
+        {van && (vanGone.length > 0 || vanDue.length > 0) && (
+          <div className={cx("rounded-lg px-3 py-3", vanGone.length ? "bg-bad-soft text-bad" : "bg-warn-soft text-warn")} role="status">
+            <p className="font-medium">
+              {t.van}, {van.reg}: {vanGone.length ? `${vanGone.map(vanLabel).join(", ")} ${t.ranOut}` : vanDue.map((k) => `${vanLabel(k)} ${t.dueBy} ${short(van.compliance[k].expiryDate)}`).join(", ")}
+            </p>
+            {vanGone.length > 0 && <p className="mt-0.5">{t.doNotDrive}</p>}
+          </div>
+        )}
         {!site ? (
           <p className="rounded-lg bg-warn-soft px-3 py-3 text-warn">{t.noSite}</p>
         ) : (
@@ -133,12 +164,104 @@ function Phone_({ me, lang, day }: { me: Person; lang: Language; day: string }) 
         <button type="button" className={big} onClick={() => setSheet("week")}>
           <CalendarBlank size={24} className="text-accent-ink" /> {t.week}
         </button>
+        <button type="button" className={big} onClick={() => setSheet("tickets")}>
+          <IdentificationCard size={24} className="text-accent-ink" /> {t.myTickets}
+        </button>
       </div>
       {site && sheet === "photo" && <PhotoSheet site={site} me={me} lang={lang} onClose={() => setSheet(null)} />}
       {site && sheet === "extra" && <ExtraSheet site={site} me={me} lang={lang} onClose={() => setSheet(null)} />}
       {site && sheet === "ask" && <AskSheet site={site} me={me} lang={lang} day={day} onClose={() => setSheet(null)} />}
       {sheet === "week" && <WeekSheet me={me} lang={lang} day={day} onClose={() => setSheet(null)} />}
+      {sheet === "tickets" && <TicketsSheet me={me} lang={lang} day={day} onClose={() => setSheet(null)} />}
     </div>
+  );
+}
+
+/** Their own tickets with the dates, and a photo of a new card to send to the office (Compliance, 18 Nov). */
+function TicketsSheet({ me, lang, day, onClose }: { me: Person; lang: Language; day: string; onClose: () => void }) {
+  const t = WORDS[lang];
+  const db = useData((s) => s.db);
+  const person = db.people.find((p) => p.id === me.id) ?? me;
+  const [sending, setSending] = useState<string | null>(null);
+  const [picture, setPicture] = useState<{ dataUrl: string; sizeKb: number } | null>(null);
+  const [error, setError] = useState("");
+  const short = (d: string) => new Date(d + "T12:00:00Z").toLocaleDateString(lang === "en" ? "en-IE" : lang, { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+  const cert = person.certs.find((c) => c.id === sending);
+  const sorted = [...person.certs].sort((a, b) => a.expires.localeCompare(b.expires));
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      title={cert ? t.sendCard : t.myTickets}
+      footer={
+        cert ? (
+          <>
+            <Button size="lg" onClick={() => { setSending(null); setPicture(null); }}>
+              {t.cancel}
+            </Button>
+            <Button
+              size="lg"
+              variant="primary"
+              disabled={!picture}
+              onClick={() => {
+                if (!picture) return;
+                actAs(me.id, () => sendTicketPhoto(me.id, cert.id, { name: `${cert.name}, ${me.name}.jpg`, dataUrl: picture.dataUrl }));
+                toast(t.cardSent);
+                setSending(null);
+                setPicture(null);
+              }}
+            >
+              {t.send}
+            </Button>
+          </>
+        ) : (
+          <Button size="lg" onClick={onClose}>
+            {t.cancel}
+          </Button>
+        )
+      }
+    >
+      <div className="grid gap-3" lang={lang}>
+        {cert ? (
+          <>
+            <p className="font-medium">{cert.name}</p>
+            <PickFile accept="image/*" what="card" onFile={(f) => { setError(""); shrinkImage(f).then(setPicture).catch((e: Error) => { setPicture(null); setError(e.message); }); }} />
+            {!picture && <p className="text-[0.93rem] text-muted">{t.takeOrChoose}</p>}
+            <p role="alert" className="text-bad">
+              {error}
+            </p>
+            {picture && <img src={picture.dataUrl} alt="" className="max-h-44 rounded-md border border-line" />}
+          </>
+        ) : (
+          <ul className="divide-y divide-line rounded-lg border border-line" aria-label={t.myTickets}>
+            {sorted.map((c) => {
+              const state = stateOf(c.expires, day);
+              const stops = ticketBlocks(person, day).some((b) => b.ticket === c.name);
+              return (
+                <li key={c.id} className="grid gap-1.5 px-3 py-2.5">
+                  <span className="flex items-baseline gap-2">
+                    <span className="min-w-0 flex-1 font-medium">{c.name}</span>
+                    <span className={cx("text-[0.93rem]", state === "expired" ? "font-medium text-bad" : state === "due" ? "font-medium text-warn" : "text-muted")}>
+                      {state === "expired" ? t.ranOut : t.runsOut} {short(c.expires)}
+                    </span>
+                  </span>
+                  {stops && <span className="text-[0.93rem] text-bad">{t.cannotWork}</span>}
+                  {c.sentPhoto ? (
+                    <span className="text-[0.93rem] text-accent-ink">{t.cardWaiting}</span>
+                  ) : (
+                    state !== "ok" && (
+                      <Button size="lg" className="justify-self-start" onClick={() => setSending(c.id)}>
+                        <Camera size={18} /> {t.sendCard}
+                      </Button>
+                    )
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+    </Dialog>
   );
 }
 

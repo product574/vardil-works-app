@@ -5,7 +5,7 @@ import type { PermKey } from "./types";
  * Admin > Roles and access. To add one: add the key to PermKey in types.ts, a row here,
  * the default in roles.ts, and ask `useAccess().may("theKey")` on the screen it controls.
  */
-export const PERMISSIONS: { key: PermKey; group: "Projects" | "Sales" | "People" | "Schedule" | "Approvals" | "Plant" | "Invoicing"; label: string; hint: string }[] = [
+export const PERMISSIONS: { key: PermKey; group: "Projects" | "Sales" | "People" | "Schedule" | "Approvals" | "Plant" | "Compliance" | "Invoicing"; label: string; hint: string }[] = [
   { key: "allProjects", group: "Projects", label: "See every project", hint: "Off means they see only the projects they run as site manager" },
   { key: "manageProjects", group: "Projects", label: "Clear invoice holds and deal with site requests", hint: "The office side of a project: releasing a held invoice, closing requests from site" },
   { key: "priceQuotes", group: "Sales", label: "Price and send quotes", hint: "Log enquiries, draft and edit quotes, send, chase, record acceptance or decline" },
@@ -18,6 +18,8 @@ export const PERMISSIONS: { key: PermKey; group: "Projects" | "Sales" | "People"
   { key: "approveLeave", group: "People", label: "Approve leave", hint: "Approve or decline holiday requests and record leave" },
   { key: "seeRates", group: "People", label: "See hourly rates", hint: "Pay rates on the employee register" },
   { key: "managePlant", group: "Plant", label: "Manage plant and fleet", hint: "Move plant, record services and renewals, collect hired plant, add and remove vehicles and their documents" },
+  { key: "manageCompany", group: "Compliance", label: "Manage company and subcontractor papers", hint: "Renew the firm's insurances, tax clearance and registrations; record subcontractors' insurances, safety statements, method statements and people" },
+  { key: "recordInspections", group: "Compliance", label: "Record scaffold inspections", hint: "The weekly inspection of scaffolds and towers, putting one on the register and taking it off, on the sites they can see" },
   { key: "manageInvoices", group: "Invoicing", label: "Handle invoices", hint: "Check supplier invoices and approve the small ones, send client invoices, mark invoices paid, export to Sage" },
   { key: "approveInvoices", group: "Invoicing", label: "Approve invoices of any size", hint: "Supplier invoices over the limit accounts may approve, and any subcontractor's invoice. Also sets that limit" },
   { key: "approveSubInvoices", group: "Invoicing", label: "Approve subcontractor invoices for their own sites", hint: "A subcontractor's invoice for a site they run, before accounts pay it (Projects, Subcontractor invoices)" },

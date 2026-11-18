@@ -1,7 +1,8 @@
 import { type FormEvent, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useAccess } from "@/data/access";
-import { addPlant, collectHire, movePlant, notifyHireReturn, recordPlantService, renewPlantCert, setPlantRepair } from "@/data/actions";
+import { addPlant, collectHire, movePlant, notifyHireReturn, recordPlantService, setPlantRepair } from "@/data/actions";
+import { plantBlocks } from "@/lib/compliance";
 import { co } from "@/data/place";
 import { useData, useDay, usePrefs } from "@/data/store";
 import type { Db, HiredPlant, PlantItem, Project } from "@/data/types";
@@ -11,7 +12,7 @@ import { hireEstimate } from "@/lib/job-costs";
 import { money0, money2 } from "@/lib/money";
 import { type DueState, dueLabel, dueState, nextServiceDate } from "@/lib/status";
 import { Badge, Button, cx, Dialog, Empty, Fact, Field, PageBody, PageHead, Panel, Section, Segmented, Tel, type Tone } from "@/ui";
-import { ProofField, ProofLink, useProofPick } from "@/ui/files";
+import { ProofLink } from "@/ui/files";
 import { toast } from "@/ui/toast";
 
 export const DUE_TONE: Record<DueState, Tone> = { overdue: "bad", soon: "warn", ok: "neutral" };
@@ -193,11 +194,12 @@ function HireAction({ h }: { h: HiredPlant }) {
 /** One item of the firm's own plant: where it is, its service clock, its certificates and its history. */
 function PlantDialog({ x, onClose }: { x: PlantItem; onClose: () => void }) {
   const { db, day, canEdit } = usePlant();
-  const [renew, setRenew] = useState<string | null>(null);
   const [note, setNote] = useState("");
   const svc = nextServiceDate(x.service, day);
   const sites = db.projects.filter((p) => p.status === "Live");
-  const cert = x.renewals.find((r) => r.id === renew);
+  // A machine whose examination, test, inspection or insurance has run out cannot go to a site (Compliance, 18 Nov).
+  const blocks = plantBlocks(x, day);
+  const blockText = blocks.map((r) => r.kind.toLowerCase()).join(" and ");
   return (
     <>
       <Dialog
@@ -233,13 +235,13 @@ function PlantDialog({ x, onClose }: { x: PlantItem; onClose: () => void }) {
                     className="field h-8"
                     value={x.projectId ?? ""}
                     onChange={(e) => {
-                      movePlant(x.id, e.target.value || null);
-                      toast(`${x.assetRef} moved to ${e.target.value ? db.projects.find((p) => p.id === e.target.value)?.code : "the yard"}`);
+                      const ok = movePlant(x.id, e.target.value || null);
+                      toast(ok ? `${x.assetRef} moved to ${e.target.value ? db.projects.find((p) => p.id === e.target.value)?.code : "the yard"}` : `${x.assetRef} cannot go to a site until its ${blockText} is renewed`);
                     }}
                   >
                     <option value="">Yard</option>
                     {sites.map((s) => (
-                      <option key={s.id} value={s.id}>
+                      <option key={s.id} value={s.id} disabled={blocks.length > 0 && s.id !== x.projectId}>
                         {s.code} {s.name}
                       </option>
                     ))}
@@ -249,6 +251,15 @@ function PlantDialog({ x, onClose }: { x: PlantItem; onClose: () => void }) {
                 )}
               </Fact>
             </dl>
+            {blocks.length > 0 && (
+              <p className="rounded-md bg-bad-soft px-2.5 py-2 text-[0.93rem] text-bad">
+                Its {blockText} ran out on {dFull(blocks[0]!.expires)}. {x.projectId ? "It may not be used on site, and should come back to the yard" : "It cannot go to a site"} until that is renewed in{" "}
+                <Link to="/compliance/machinery" className="font-medium underline">
+                  Compliance
+                </Link>
+                .
+              </p>
+            )}
             <div>
               <h3 className="mb-1 text-base">Service</h3>
               <p>
@@ -276,7 +287,12 @@ function PlantDialog({ x, onClose }: { x: PlantItem; onClose: () => void }) {
           </div>
           <div className="grid content-start gap-4">
             <div>
-              <h3 className="mb-1 text-base">Certificates</h3>
+              <h3 className="mb-1 flex items-baseline gap-2 text-base">
+                Checks and certificates
+                <Link to="/compliance/machinery" className="text-[0.93rem] font-normal text-accent-ink underline-offset-2 hover:underline">
+                  Renew in Compliance
+                </Link>
+              </h3>
               {x.renewals.length === 0 ? (
                 <p className="text-muted">None needed for this item.</p>
               ) : (
@@ -287,12 +303,8 @@ function PlantDialog({ x, onClose }: { x: PlantItem; onClose: () => void }) {
                         {r.kind}
                         <span className="block text-[0.87rem] text-muted">{r.proof ? <ProofLink proof={r.proof} title={`${x.assetRef} ${r.kind}`} /> : (r.doc ?? "No certificate on file")}</span>
                       </span>
+                      {r.proofNeeded && <Badge tone="warn">Proof needed</Badge>}
                       <Badge tone={DUE_TONE[dueState(r.expires, day)]}>{dueLabel(r.expires, day)}</Badge>
-                      {canEdit && (
-                        <Button size="sm" onClick={() => setRenew(r.id)}>
-                          Renew
-                        </Button>
-                      )}
                     </li>
                   ))}
                 </ul>
@@ -313,60 +325,7 @@ function PlantDialog({ x, onClose }: { x: PlantItem; onClose: () => void }) {
           </div>
         </div>
       </Dialog>
-      {cert && (
-        <RenewDialog
-          key={cert.id}
-          title={`Renew ${cert.kind.toLowerCase()}, ${x.assetRef}`}
-          defaultExpires={addDays(day, 365)}
-          onClose={() => setRenew(null)}
-          onSave={(expires, _amount, proof) => {
-            renewPlantCert(x.id, cert.id, expires, proof);
-            toast(`${cert.kind} renewed to ${dFull(expires)}${proof ? ", certificate attached" : ""}`);
-          }}
-        />
-      )}
     </>
-  );
-}
-
-/** New expiry date, an optional amount paid, and the certificate itself. Shared by plant and vehicles. */
-export function RenewDialog({ title, defaultExpires, withAmount, onSave, onClose }: { title: string; defaultExpires: string; withAmount?: number; onSave: (expires: string, amount: number, proof: { name: string; dataUrl: string } | null) => void; onClose: () => void }) {
-  const day = useDay();
-  const [expires, setExpires] = useState(defaultExpires);
-  const [amount, setAmount] = useState(String(withAmount ?? ""));
-  const { proof, error, pick } = useProofPick();
-  const paid = Number(amount.replace(/[€£,\s]/g, ""));
-  const badAmount = withAmount != null && (!Number.isFinite(paid) || paid < 0);
-  return (
-    <Dialog
-      open
-      onClose={onClose}
-      title={title}
-      footer={
-        <>
-          <Button onClick={onClose}>Cancel</Button>
-          <Button
-            variant="primary"
-            disabled={expires <= day || badAmount}
-            onClick={() => {
-              onSave(expires, withAmount != null ? paid : 0, proof);
-              onClose();
-            }}
-          >
-            Save renewal
-          </Button>
-        </>
-      }
-    >
-      <div className="grid gap-4">
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="New expiry date">{(id) => <input id={id} type="date" className="field" min={addDays(day, 1)} value={expires} onChange={(e) => setExpires(e.target.value)} />}</Field>
-          {withAmount != null && <Field label="Amount paid">{(id) => <input id={id} className="field" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} />}</Field>}
-        </div>
-        <ProofField pick={pick} proof={proof} error={error} hint="A photo or PDF of the certificate or receipt. It is kept against the record." />
-        {!proof && <p className="text-[0.93rem] text-muted">You can save without it; the record will say no certificate is on file.</p>}
-      </div>
-    </Dialog>
   );
 }
 

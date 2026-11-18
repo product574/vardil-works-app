@@ -19,7 +19,7 @@ export const APPROVAL_LIMIT = 500;
 
 /** The firms working on the live sites under their own names. Several share a site. */
 export function seedSubcontractors(): Subcontractor[] {
-  const sub = (n: number, name: string, trade: string, contactName: string, mailbox: string, phone: string, codes: string[]): Subcontractor => ({ id: `sub-${n}`, name, trade, contactName, email: `accounts@${mailbox}.example`, phone, accountRef: accountRefOf(name), termsDays: 30, projectIds: codes.map(pid) });
+  const sub = (n: number, name: string, trade: string, contactName: string, mailbox: string, phone: string, codes: string[]): Subcontractor => ({ id: `sub-${n}`, name, trade, contactName, email: `accounts@${mailbox}.example`, phone, accountRef: accountRefOf(name), termsDays: 30, projectIds: codes.map(pid), papers: [], workers: [] });
   return [
     sub(1, "Corrib Scaffolding", "Scaffolding", "Gearóid Flaherty", "corribscaffolding", "091 555 0142", ["C719", "C721"]),
     sub(2, "Kinvara Stone Carvers", "Stone carving", "Fiachra Naughton", "kinvarastone", "091 555 0177", ["C719", "C722"]),
