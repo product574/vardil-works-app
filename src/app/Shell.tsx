@@ -1,6 +1,6 @@
-import { ArrowCounterClockwise, GearSix, MagnifyingGlass, Moon, SignOut, Sun, UserSwitch } from "@phosphor-icons/react";
+import { ArrowCounterClockwise, ArrowLeft, GearSix, MagnifyingGlass, Moon, SignOut, Sun, UserSwitch } from "@phosphor-icons/react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Navigate, NavLink, Outlet, useLocation, useNavigate, useRouteError } from "react-router-dom";
+import { Navigate, NavLink, Outlet, useLocation, useNavigate, useNavigationType, useRouteError } from "react-router-dom";
 import { useAccess } from "@/data/access";
 import { ROLES, roleDef } from "@/data/roles";
 import { useData, useDay, useDb, usePrefs } from "@/data/store";
@@ -13,6 +13,54 @@ import { useAsk } from "@/ai/state";
 import { useGate } from "./AuthPages";
 import { signOut } from "./auth";
 import { DEPARTMENTS, departmentFor } from "./departments";
+import { clearScreenState } from "./screen-state";
+import { clearTrail, previous, saveScroll, scrollFor, stepBack, useTrail, visit } from "./trail";
+
+/** Whose trail it is: the role signed in as, and the person when signed in as someone else. */
+const useTrailUser = () => usePrefs((s) => `${s.role ?? "none"}-${s.asPersonId ?? ""}-${s.operativeId ?? ""}`);
+
+/**
+ * Keeps the Back button's trail (src/app/trail.ts) in step with where the person goes, and puts
+ * the page back at the height it was left at when they come back to it. A new screen starts at
+ * the top. From the Secure-All build, 18 Nov.
+ */
+function useTrailTracker(active: boolean) {
+  const location = useLocation();
+  const type = useNavigationType();
+  const user = useTrailUser();
+  const here = location.pathname + location.search;
+  const last = useRef<string | null>(null);
+  useEffect(() => {
+    if (!active || location.pathname === "/") return;
+    const viaBack = (location.state as { viaBack?: boolean } | null)?.viaBack === true;
+    // A step that replaces the last one (an old address sent on to its screen) only replaces a step taken in this visit.
+    const list = useTrail.getState().byUser[user] ?? [];
+    const how = type === "POP" ? "pop" : type === "REPLACE" && last.current && list.at(-1) === last.current ? "replace" : "push";
+    if (!viaBack) visit(user, here, how);
+    const samePage = !!last.current && last.current.split("?")[0] === location.pathname;
+    last.current = here;
+    // A step on the same screen (a filter, a tab, a row opened in place) keeps the screen where it is.
+    if (samePage && !viaBack && type !== "POP") return;
+    const top = viaBack || type === "POP" ? scrollFor(here) : 0;
+    // The screen's own code may still be loading, so the height is set again once it has drawn.
+    const timers = [0, 80, 250].map((ms) => window.setTimeout(() => document.getElementById("main")?.scrollTo({ top }), ms));
+    return () => timers.forEach((t) => window.clearTimeout(t));
+  }, [here, active]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const main = document.getElementById("main");
+    if (!active || !main) return;
+    let timer = 0;
+    const on = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => saveScroll(here, main.scrollTop), 150);
+    };
+    main.addEventListener("scroll", on, { passive: true });
+    return () => {
+      window.clearTimeout(timer);
+      main.removeEventListener("scroll", on);
+    };
+  }, [here, active]);
+}
 
 export function Shell() {
   const gate = useGate();
@@ -20,6 +68,7 @@ export function Shell() {
   const location = useLocation();
   const dept = departmentFor(location.pathname);
   const askOpen = useAsk((s) => s.open);
+  useTrailTracker(gate === true && !!access.def && access.can(dept.key));
 
   if (gate === null) return null;
   if (gate === false) return <Navigate to="/sign-in" replace />;
@@ -69,6 +118,7 @@ function TopBar() {
   const portalClientId = usePrefs((s) => s.portalClientId);
   const day = useDay();
   const reset = useData((s) => s.reset);
+  const trailUser = useTrailUser();
   const def = roleDef(role)!;
   const access = useAccess();
   const people = useDb((db) => db.people);
@@ -87,7 +137,10 @@ function TopBar() {
       </NavLink>
 
       {access.departments.length > 1 ? (
-        <div className={cx("mx-auto flex w-full min-w-0 flex-1 items-center justify-end gap-2 sm:justify-start", access.role === "md" ? "max-w-[33rem]" : "max-w-md", searching && "max-sm:max-w-none")}>
+        <div className={cx("mx-auto flex w-full min-w-0 flex-1 items-center justify-end gap-2 sm:justify-start", access.role === "md" ? "max-w-[38rem]" : "max-w-[32rem]", searching && "max-sm:max-w-none")}>
+          <span className={cx("shrink-0", away)}>
+            <BackButton />
+          </span>
           <div className={cx("min-w-0 flex-1 items-center gap-2", searching ? "flex" : "hidden sm:flex")}>
             <Search autoFocus={searching} onDone={() => setSearching(false)} />
             {searching && (
@@ -181,6 +234,9 @@ function TopBar() {
               variant="primary"
               onClick={() => {
                 reset();
+                // The sample records are new again, so the trail and each screen's filters start again too.
+                clearTrail(trailUser);
+                clearScreenState();
                 setConfirmReset(false);
               }}
             >
@@ -192,6 +248,52 @@ function TopBar() {
         <p>Every approval, edit and new record made in this browser is cleared, and the sample data goes back to how it started. Branding and theme stay as they are.</p>
       </Dialog>
     </header>
+  );
+}
+
+// ── Back ──────────────────────────────────────────────────────────────────────
+
+/** What a place on the trail is called, for the Back button's tooltip. */
+function placeName(path: string): string {
+  const p = path.split("?")[0]!;
+  for (const d of DEPARTMENTS) for (const g of d.groups) for (const i of g.items) if (i.to === p) return d.groups.length === 1 && g.items.length === 1 ? d.label : `${d.label}, ${i.label}`;
+  if (p.startsWith("/fleet/invoices/")) return "the garage invoice";
+  if (p.startsWith("/fleet/vehicles/")) return "the vehicle";
+  if (p.startsWith("/fleet/garages/")) return "the garage";
+  if (p.startsWith("/projects/")) return `project ${p.split("/")[2]}`;
+  if (p.startsWith("/sales/quotes/")) return `quote ${p.split("/")[3]}`;
+  if (p.startsWith("/inbox")) return "Email";
+  if (p.startsWith("/chat")) return "Team chat";
+  return "where you were";
+}
+
+/**
+ * Back (18 Nov, from the Secure-All build): one button, in the same place on every screen, that
+ * goes to exactly where the person was: the same screen, with the same tab, filters and open
+ * record, at the same height. It remembers across a reload and signing in again.
+ */
+function BackButton() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const user = useTrailUser();
+  const here = location.pathname + location.search;
+  // Read through the store so the button follows the trail as it changes.
+  useTrail((s) => s.byUser[user]);
+  const to = previous(user, here);
+  return (
+    <button
+      type="button"
+      disabled={!to}
+      title={to ? `Back to ${placeName(to)}` : "You have not been anywhere else yet"}
+      onClick={() => {
+        const target = stepBack(user, here);
+        if (target) navigate(target, { state: { viaBack: true } });
+      }}
+      className="press inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md border border-line-strong bg-surface px-2.5 font-medium text-ink hover:border-accent hover:text-accent-ink disabled:text-faint disabled:hover:border-line-strong disabled:hover:text-faint"
+    >
+      <ArrowLeft size={18} />
+      <span className="max-md:sr-only">Back</span>
+    </button>
   );
 }
 
@@ -218,6 +320,9 @@ function Search({ autoFocus = false, onDone }: { autoFocus?: boolean; onDone?: (
   const people = useDb((db) => db.people);
   const clients = useDb((db) => db.clients);
   const quotes = useDb((db) => db.quotes);
+  const vehicles = useDb((db) => db.vehicles);
+  const garages = useDb((db) => db.garages);
+  const fleetOk = useAccess().can("fleet");
 
   const hits = useMemo<Hit[]>(() => {
     const s = q.trim().toLowerCase();
@@ -228,8 +333,11 @@ function Search({ autoFocus = false, onDone }: { autoFocus?: boolean; onDone?: (
       ...quotes.filter((x) => has(x.ref, x.title)).map((x) => ({ key: x.id, label: `${x.ref} ${x.title}`, sub: `Quote, ${x.status.toLowerCase()}`, to: `/sales/quotes/${x.ref}` })),
       ...clients.filter((c) => has(c.name, c.contactName)).map((c) => ({ key: c.id, label: c.name, sub: `Client, ${c.contactName}`, to: `/sales/clients?client=${c.id}` })),
       ...people.filter((p) => has(p.name, p.trade)).map((p) => ({ key: p.id, label: p.name, sub: p.trade, to: `/people?person=${p.id}` })),
+      // Fleet (18 Nov): a registration typed any way ("231 g 44") finds the vehicle, and garages by name.
+      ...(fleetOk ? vehicles.filter((v) => has(v.make, v.model) || (s.replace(/[^a-z0-9]/g, "").length >= 2 && v.reg.toLowerCase().replace(/[^a-z0-9]/g, "").includes(s.replace(/[^a-z0-9]/g, "")))).map((v) => ({ key: v.id, label: v.reg, sub: `Vehicle, ${v.make} ${v.model}${v.active ? "" : ", removed"}`, to: `/fleet/vehicles/${v.id}` })) : []),
+      ...(fleetOk ? garages.filter((g) => has(g.name, g.town)).map((g) => ({ key: g.id, label: g.name, sub: `Garage, ${g.town}`, to: `/fleet/garages/${g.id}` })) : []),
     ].slice(0, 8);
-  }, [q, projects, people, clients, quotes]);
+  }, [q, projects, people, clients, quotes, vehicles, garages, fleetOk]);
 
   useEffect(() => {
     const away = (e: MouseEvent) => !box.current?.contains(e.target as Node) && setOpen(false);

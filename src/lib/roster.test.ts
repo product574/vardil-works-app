@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { buildSeed } from "@/data/seed";
 import { rollingWorkdays } from "./dates";
 import type { Holiday, Project } from "@/data/types";
-import { dayInstruction, dayRoster, dropOutcome, firstOnSite, leaveGroups, managerJobs, overlapping, perSite, periodDays, periodLabel, periodOptions, personDay, planSteps, siteOn, stepsToPlan, whereabouts, workingDays } from "./roster";
+import { dayInstruction, dayRoster, dropOutcome, firstOnSite, leaveGroups, managerJobs, overlapping, perSite, periodDays, periodLabel, periodOptions, personDay, plannedLabel, planSteps, siteOn, sitesRunning, stepsToPlan, whereabouts, whereDays, whereOn, workingDays, driverSiteOn } from "./roster";
 
 describe("dropOutcome", () => {
   it("plans someone free", () => expect(dropOutcome({ sites: [], load: 0, leave: false }, "a")).toBe("free"));
@@ -184,5 +184,76 @@ describe("where one person is on a day (their own week on the phone)", () => {
   it("a day to come is the plan, a split day on both sites, and only sites still running", () => {
     expect(personDay(att, plan, "p1", "2026-11-18", "2026-11-17", sites).rows.map((r) => [r.projectId, r.half])).toEqual([["a", true], ["b", true]]);
     expect(personDay(att, plan, "p1", "2026-11-19", "2026-11-17", sites).rows).toEqual([]);
+  });
+});
+
+describe("who is where on any day (18 Nov)", () => {
+  const people = [{ id: "a" }, { id: "b" }, { id: "c" }, { id: "d" }];
+  const input = {
+    people,
+    attendance: [{ projectId: "s1", personId: "a", date: "2026-11-16", status: "full" as const, overtimeHours: 2 }, { projectId: "s2", personId: "a", date: "2026-11-18", status: "half" as const, overtimeHours: 0 }],
+    plan: [
+      { projectId: "s1", personId: "b", date: "2026-11-16" },
+      { projectId: "s1", personId: "b", date: "2026-11-19", part: "half" as const },
+      { projectId: "s2", personId: "a", date: "2026-11-19", overtimeHours: 2 },
+    ],
+    assignments: [{ personId: "c", projectId: "s1" }],
+    holidays: [{ personId: "d", status: "Approved" as const, from: "2026-11-18", to: "2026-11-20" }],
+    liveIds: new Set(["s1", "s2"]),
+  };
+  const at = (date: string) => Object.fromEntries(whereOn(input, date, "2026-11-18").map((r) => [r.personId, r]));
+  it("reads a day gone from the timesheet, and someone planned but not marked as not marked in", () => {
+    const d = at("2026-11-16");
+    expect(d.a).toEqual({ personId: "a", where: "On site", sites: [{ projectId: "s1", note: "+2h x1.5" }] });
+    expect(d.b!.where).toBe("Planned");
+    expect(plannedLabel("2026-11-16", "2026-11-18")).toBe("Not marked in");
+    // Someone only on a site's list is not counted as planned on a day gone.
+    expect(d.c!.where).toBe("Not planned");
+  });
+  it("today: marked, on leave, or on a site's list with no plan", () => {
+    const d = at("2026-11-18");
+    expect(d.a!.sites).toEqual([{ projectId: "s2", note: "half day" }]);
+    expect(d.c).toEqual({ personId: "c", where: "Planned", sites: [{ projectId: "s1", note: "" }] });
+    expect(d.d!.where).toBe("On leave");
+    expect(plannedLabel("2026-11-18", "2026-11-18")).toBe("Not marked yet");
+  });
+  it("reads a day to come from the plan alone", () => {
+    const d = at("2026-11-19");
+    expect(d.b!.sites).toEqual([{ projectId: "s1", note: "half day" }]);
+    expect(d.a!.sites).toEqual([{ projectId: "s2", note: "+2h" }]);
+    expect(d.c!.where).toBe("Not planned");
+    expect(plannedLabel("2026-11-19", "2026-11-18")).toBe("Planned");
+  });
+  it("offers working days from 13 weeks back to 6 weeks ahead", () => {
+    const days = whereDays("2026-11-18");
+    expect(days[0]).toBe("2026-08-17");
+    expect(days.at(-1)).toBe("2027-01-01");
+    expect(days.every((d) => ![0, 6].includes(new Date(`${d}T12:00:00Z`).getUTCDay()))).toBe(true);
+    expect(days).toContain("2026-11-18");
+  });
+  it("lists the sites running on a day", () => {
+    const projects = [
+      { id: "l", status: "Live" as const, startDate: "2026-10-01", endDate: "2026-12-01" },
+      { id: "n", status: "Not started" as const, startDate: "2026-11-26", endDate: "2027-02-01" },
+      { id: "c", status: "Complete" as const, startDate: "2026-08-01", endDate: "2026-11-30", completedAt: "2026-11-10T16:00" },
+    ];
+    expect(sitesRunning(projects, "2026-11-18").map((p) => p.id)).toEqual(["l"]);
+    expect(sitesRunning(projects, "2026-11-26").map((p) => p.id)).toEqual(["l", "n"]);
+    expect(sitesRunning(projects, "2026-11-09").map((p) => p.id)).toEqual(["l", "c"]);
+  });
+});
+
+describe("the site a driver was on, for Fleet (18 Nov)", () => {
+  const projects = [
+    { id: "s1", code: "C721", siteManagerId: "sm", status: "Live" as const, startDate: "2026-10-01", endDate: "2026-12-20" },
+    { id: "s2", code: "C719", siteManagerId: "sm", status: "Live" as const, startDate: "2026-09-01", endDate: "2026-12-20" },
+  ];
+  it("is where they were marked in or planned, else the site they run (the first by code)", () => {
+    const attendance = [{ personId: "op", projectId: "s1", date: "2026-11-17" }];
+    expect(driverSiteOn("op", "2026-11-17", attendance, [], projects)).toBe("s1");
+    expect(driverSiteOn("op", "2026-11-18", attendance, [], projects)).toBeUndefined();
+    expect(driverSiteOn("sm", "2026-11-18", [], [], projects)).toBe("s2");
+    expect(driverSiteOn("sm", "2026-09-15", [], [], projects)).toBe("s2");
+    expect(driverSiteOn("sm", "2026-08-15", [], [], projects)).toBeUndefined();
   });
 });

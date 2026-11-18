@@ -19,6 +19,7 @@ const schedule = () => import("@/modules/schedule/Schedule");
 const leave = () => import("@/modules/schedule/Leave");
 const month = () => import("@/modules/schedule/Month");
 const plant = () => import("@/modules/plant");
+const fleet = () => import("@/modules/fleet");
 const files = () => import("@/modules/files/Files");
 const invoicing = () => import("@/modules/invoicing/Invoicing");
 const profit = () => import("@/modules/profit");
@@ -94,13 +95,25 @@ export const router = create([
           screen("plant/calendar", plant, (m) => m.PlantCalendar),
           screen("plant/register", plant, (m) => m.PlantRegister),
           screen("plant/hired", plant, (m) => m.HiredPlantList),
-          // Fleet is one page with three tabs since 17 Nov; the three old addresses still land right.
-          screen("plant/fleet", plant, (m) => m.Vehicles),
-          screen("plant/fleet/documents", plant, (m) => m.VehicleDocuments),
-          screen("plant/fleet/repairs", plant, (m) => m.RepairSpend),
-          { path: "plant/vehicles", element: <Moved to={keep("/plant/fleet")} /> },
-          { path: "plant/documents", element: <Moved to={() => "/plant/fleet/documents"} /> },
-          { path: "plant/repairs", element: <Moved to={() => "/plant/fleet/repairs"} /> },
+          // Fleet has a department of its own since 18 Nov (from the Secure-All build); the old addresses land on its screens.
+          screen("fleet", fleet, (m) => m.FleetOverview),
+          screen("fleet/invoices", fleet, (m) => m.Invoices),
+          screen("fleet/invoices/:invoiceId", fleet, (m) => m.InvoicePage),
+          screen("fleet/vehicles", fleet, (m) => m.Vehicles),
+          screen("fleet/vehicles/:vehicleId", fleet, (m) => m.VehiclePage),
+          screen("fleet/damage", fleet, (m) => m.DamageReported),
+          screen("fleet/renewals", fleet, (m) => m.Renewals),
+          screen("fleet/documents", fleet, (m) => m.VehicleDocuments),
+          screen("fleet/garages", fleet, (m) => m.Garages),
+          screen("fleet/garages/:garageId", fleet, (m) => m.GaragePage),
+          screen("fleet/drivers", fleet, (m) => m.Drivers),
+          screen("fleet/bases", fleet, (m) => m.Bases),
+          { path: "plant/fleet", element: <Moved to={() => "/fleet/vehicles"} /> },
+          { path: "plant/fleet/documents", element: <Moved to={() => "/fleet/documents"} /> },
+          { path: "plant/fleet/repairs", element: <Moved to={() => "/fleet"} /> },
+          { path: "plant/vehicles", element: <Moved to={() => "/fleet/vehicles"} /> },
+          { path: "plant/documents", element: <Moved to={() => "/fleet/documents"} /> },
+          { path: "plant/repairs", element: <Moved to={() => "/fleet"} /> },
           screen("files", files, (m) => m.ProjectFiles),
           screen("files/photos", files, (m) => m.AllPhotos),
           screen("files/unsorted", files, (m) => m.ToBeSorted),

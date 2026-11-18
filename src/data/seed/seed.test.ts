@@ -156,7 +156,8 @@ describe("sample data", () => {
         ...d.mails.map((m) => m.receivedAt),
         ...d.activity.map((a) => a.at),
         ...d.approvals.flatMap((a) => [a.createdAt, a.resolvedAt]),
-        ...d.fleetDocs.filter((f) => f.category === "repairs").map((f) => f.date),
+        ...d.garageInvoices.flatMap((i) => [i.date, i.enteredAt, i.checkedAt]),
+        ...d.damageReports.flatMap((x) => [x.at, x.dealtAt]),
       ].filter((x): x is string => !!x);
       for (const e of past) expect(e.slice(0, 10) <= today, `${real}: ${e}`).toBe(true);
     }

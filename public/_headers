@@ -4,8 +4,10 @@
 # address (Cloudflare Access answers /cdn-cgi/access/... on the same address). If you add an
 # outside service (a font host, an analytics script, the Ask AI endpoint on another domain),
 # it must be added to the Content-Security-Policy line or the browser will block it.
+# frame-src 'self' blob: (18 Nov) lets a PDF kept with a fleet record show in the browser's own
+# viewer inside the page, from a blob: address the page makes, typed as a PDF.
 /*
-  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; frame-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
   X-Frame-Options: DENY
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin

@@ -1,7 +1,7 @@
 import os, re, shutil, sys, tempfile
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from shots import run, BASE, OUT, FIX
+from shots import run, BASE, OUT, FIX, open_last_week
 
 # Round eight, 17 Nov (decisions 95 to 99): the Fleet page made easy, after Oisin's own Oldstone
 # fleet tool; and what came out of the call with Oldstone's managing director the same day: a
@@ -37,175 +37,10 @@ def steps(page, ctx):
     reset(page)
     day = data(page, "day")
 
-    # ── 1. Fleet: one page, three tabs, the same three buttons
-    go(page, "/plant/fleet", "table")
-    side = page.get_by_role("navigation", name="Plant screens")
-    overdue = data(page, "db.vehicles.filter(v => v.active && ['tax','test','insurance'].some(i => v.compliance[i].expiryDate < day)).length")
-    check("Fleet: one entry in Plant's sidebar, with how many vehicles have a paper out of date", side.get_by_role("link", name=re.compile("^Fleet")).count() == 1 and side.get_by_role("link", name="Vehicle documents").count() == 0 and side.get_by_role("link", name=re.compile("^Fleet")).inner_text().strip().endswith(str(overdue)) and overdue >= 1, side.inner_text())
-    tabs = page.get_by_role("navigation", name="Fleet sections").get_by_role("link")
-    check("Fleet: three tabs across the top", tabs.all_inner_texts() == ["Vehicle stats", "Vehicle documents", "Repair spend"] and tabs.nth(0).get_attribute("aria-current") == "page")
-    def buttons():
-        bs = [main.get_by_role("button", name=n, exact=True) for n in ["Upload document", "Add vehicle", "Edit vehicle"]]
-        boxes = [b.bounding_box() for b in bs]
-        return all(b.count() == 1 for b in bs) and all(x and x["y"] < 130 and x["x"] > 900 for x in boxes) and boxes[0]["x"] < boxes[1]["x"] < boxes[2]["x"]
-    ok = [buttons()]
-    for i in (1, 2):
-        tabs.nth(i).click(); page.wait_for_timeout(300); ok.append(buttons())
-    check("Fleet: Upload document, Add vehicle and Edit vehicle at the top right of every tab", ok == [True, True, True], ok)
-    check("Fleet: the tabs are addresses of their own", page.url.endswith("/plant/fleet/repairs"))
-    for old, new in [("/plant/vehicles", "/plant/fleet"), ("/plant/documents", "/plant/fleet/documents"), ("/plant/repairs", "/plant/fleet/repairs")]:
-        page.goto(BASE + old); page.wait_for_timeout(500)
-        check(f"Fleet: the old address {old} still lands right", page.url.rstrip("/").endswith(new), page.url)
-
-    # Vehicle stats
-    go(page, "/plant/fleet", "table")
-    rows = main.get_by_role("table", name="Vehicles on the road").locator("tbody tr")
-    check("Vehicle stats: every vehicle on the road, with its papers, service, driver's check and repairs", rows.count() == 12 and main.locator("thead th").all_inner_texts() == ["Vehicle", "Driver", "Mileage, km", "Motor tax", "CVRT", "Insurance", "Next service", "Driver's check", "Repairs, 12 months"], main.locator("thead th").all_inner_texts())
-    search = main.get_by_label("Search registration or model")
-    search.fill("231 g 44"); page.wait_for_timeout(200)
-    check("Vehicle stats: search by registration, however it is typed", rows.count() == 1 and "231-G-4471" in rows.first.inner_text())
-    search.fill("hilux"); page.wait_for_timeout(200)
-    check("Vehicle stats: search by model", rows.count() == 2 and all("Toyota Hilux" in t for t in rows.all_inner_texts()))
-    search.fill("volvo xc"); page.wait_for_timeout(200)
-    check("Vehicle stats: nothing found says so", rows.count() == 0 and "No matching vehicles" in main.inner_text())
-    search.fill(""); page.wait_for_timeout(200)
-    defects = data(page, "db.vehicles.filter(v => v.active).filter(v => { const c = db.vehicleChecks.filter(c => c.vehicleId === v.id).sort((a,b) => b.at.localeCompare(a.at))[0]; return c && c.defects.length > 0 }).map(v => v.reg)")
-    drow = rows.filter(has_text=defects[0])
-    check("Vehicle stats: a defect from a driver's check on the phone shows against the vehicle", len(defects) == 2 and "1 defect" in drow.inner_text() and f"{len(defects)} vehicles with a defect reported by its driver" in main.inner_text(), (defects, drow.inner_text()))
-    spend = data(page, "(() => { const v = db.vehicles.find(v => v.reg === '211-W-6052'); const since = (Number(day.slice(0,4)) - 1) + day.slice(4); const r = db.fleetDocs.filter(d => d.vehicleId === v.id && d.category === 'repairs' && d.date > since); return [r.length, Math.round(r.reduce((s,d) => s + d.amount, 0))] })()")
-    cell = rows.filter(has_text="211-W-6052").locator("td").last.inner_text()
-    check("Vehicle stats: repairs in the last 12 months match the documents", f"{spend[0]} repair" in cell and f"{spend[1]:,}" in cell, (spend, cell))
-    check("Vehicle stats: fits the page", page.evaluate(SCROLLS) == 0)
-    page.screenshot(path=f"{OUT}/800-fleet-stats.png")
-    rows.filter(has_text=defects[0]).click(); page.wait_for_timeout(300)
-    d = dlg()
-    check("Vehicle: opens with its papers, repairs and driver's checks, and the two ways on", d.get_by_role("list", name=re.compile("^Driver's checks on")).locator("> li").count() >= 1 and "defect" in d.inner_text() and d.get_by_role("button", name="Edit vehicle").count() == 1 and d.get_by_role("button", name=re.compile("^Upload a document for")).count() == 1 and d.get_by_role("button", name="Remove from fleet").count() == 0)
-    page.keyboard.press("Escape"); page.wait_for_timeout(200)
-
-    # Upload document: matched by the registration
-    main.get_by_role("button", name="Upload document", exact=True).click(); page.wait_for_timeout(300)
-    d = dlg()
-    check("Upload: one dialog, the file, the vehicle, what it is and what it cost", d.locator("h2").inner_text() == "Upload a document" and d.get_by_role("tablist", name="Kind of document").get_by_role("tab").all_inner_texts() == ["Repair invoice", "Motor tax", "CVRT", "Insurance"] and d.get_by_role("listbox", name="Vehicles").get_by_role("option").count() == 12)
-    d.locator("button[type=submit]").click(); page.wait_for_timeout(150)
-    check("Upload: a vehicle is needed", "Pick the vehicle this is for" in d.inner_text())
-    d.get_by_label("Choose a proof from this device").set_input_files(named("cert.pdf", "Invoice 231 G 4471 front brake pads.pdf")); page.wait_for_timeout(600)
-    picked = d.get_by_role("option", selected=True)
-    check("Upload: the registration in the file's name picks the vehicle, and says so", picked.count() == 1 and "231-G-4471" in picked.inner_text() and "The registration 231-G-4471 is in the file's name. Matched to 231-G-4471 Ford Transit Custom." in d.get_by_role("status").inner_text() and d.get_by_role("option").first.get_attribute("aria-selected") == "true", d.get_by_role("status").inner_text())
-    check("Upload: the kind of document is read from the name too", d.get_by_role("tab", name="Repair invoice").get_attribute("aria-selected") == "true")
-    page.screenshot(path=f"{OUT}/801-fleet-upload.png")
-    d.locator("button[type=submit]").click(); page.wait_for_timeout(150)
-    check("Upload: an amount is needed", "Enter the amount on the receipt" in d.inner_text())
-    d.get_by_label("Amount").fill("286.40"); d.locator("button[type=submit]").click(); page.wait_for_timeout(150)
-    check("Upload: a repair says what was done and where", "Say what was done and which garage did it" in d.inner_text())
-    d.get_by_label("Work done").fill("Front discs and pads, nearside caliper freed"); d.get_by_label("Garage").fill("Oranmore Commercials"); d.get_by_label("Town and county").fill("Oranmore, Galway")
-    before = data(page, "db.fleetDocs.length")
-    d.locator("button[type=submit]").click(); page.wait_for_timeout(400)
-    doc = data(page, "db.fleetDocs[0]")
-    check("Upload: the repair is filed against that vehicle with its file", data(page, "db.fleetDocs.length") == before + 1 and doc["category"] == "repairs" and doc["amount"] == 286.4 and doc["vehicleId"] == data(page, "db.vehicles.find(v => v.reg === '231-G-4471').id") and doc["proof"]["name"] == "Invoice 231 G 4471 front brake pads.pdf" and "Repair filed for 231-G-4471. It is in the repair spend" in toast(page), (doc.get("category"), toast(page)))
-    main.get_by_role("button", name="Upload document", exact=True).click(); page.wait_for_timeout(300)
-    d = dlg()
-    d.get_by_label("Choose a proof from this device").set_input_files(named("card.png", "insurance cert 201-CE-905 to 2027.png")); page.wait_for_timeout(700)
-    check("Upload: an insurance certificate is told from its name", d.get_by_role("tab", name="Insurance").get_attribute("aria-selected") == "true" and "201-CE-905" in d.get_by_role("option", selected=True).inner_text() and d.get_by_label("Expires").count() == 1)
-    d.get_by_label("Amount").fill("1,540"); d.get_by_label("Expires").fill("2027-11-20")
-    d.locator("button[type=submit]").click(); page.wait_for_timeout(400)
-    ins = data(page, "db.vehicles.find(v => v.reg === '201-CE-905').compliance.insurance")
-    check("Upload: a certificate moves the vehicle's date, so its paper is no longer due", ins["expiryDate"] == "2027-11-20" and ins["amount"] == 1540 and "Insurance filed for 201-CE-905" in toast(page) and "Due in" not in rows.filter(has_text="201-CE-905").locator("td").nth(5).inner_text(), (ins, rows.filter(has_text="201-CE-905").locator("td").nth(5).inner_text()))
-    main.get_by_role("button", name="Upload document", exact=True).click(); page.wait_for_timeout(300)
-    d = dlg()
-    d.get_by_label("Choose a proof from this device").set_input_files(named("site-photo.jpg", "IMG_2041.jpg")); page.wait_for_timeout(700)
-    check("Upload: with no registration in the name, it asks for the vehicle", "No registration from the fleet is in the file's name, so pick the vehicle." in d.get_by_role("status").inner_text() and d.get_by_role("option", selected=True).count() == 0)
-    d.get_by_label("Find the vehicle by registration or model").fill("sprinter"); page.wait_for_timeout(200)
-    check("Upload: the vehicle is found by typing its make", d.get_by_role("option").count() == 1 and "Mercedes Sprinter" in d.get_by_role("option").first.inner_text())
-    d.get_by_label("Find the vehicle by registration or model").fill("zzz"); page.wait_for_timeout(200)
-    check("Upload: a vehicle not on the fleet says to add it first", "No vehicle on the fleet matches. Add it first with Add vehicle." in d.inner_text())
-    d.get_by_role("button", name="Cancel").click(); page.wait_for_timeout(200)
-
-    # Vehicle documents
-    tabs.nth(1).click(); page.wait_for_selector("table[aria-label='Vehicle documents']"); page.wait_for_timeout(200)
-    docs = main.get_by_role("table", name="Vehicle documents").locator("tbody tr")
-    up = docs.filter(has_text="Front discs and pads, nearside caliper freed")
-    check("Documents: the uploads are at the top, each with its file to open", up.count() == 1 and up.get_by_role("button", name="View proof").count() == 1 and "Front discs and pads, nearside caliper freed" in " ".join(docs.all_inner_texts()[:2]) and "231-G-4471" in up.inner_text(), docs.all_inner_texts()[:2])
-    cat = main.get_by_label("Category")
-    check("Documents: a category box, as on the Oldstone tool", cat.locator("option").all_inner_texts() == ["All categories", "Repairs", "Motor tax", "CVRT", "Insurance"])
-    cat.select_option("insurance"); page.wait_for_timeout(200)
-    n_ins = data(page, "db.fleetDocs.filter(d => d.category === 'insurance').length")
-    check("Documents: filter by category", docs.count() == min(n_ins, 80) and all(t == "Insurance" for t in main.locator("tbody tr td:nth-child(3)").all_inner_texts()) and f"{n_ins} documents" in main.inner_text(), (docs.count(), n_ins))
-    main.get_by_label("Search registration or model").fill("201-ce"); page.wait_for_timeout(200)
-    n_one = data(page, "db.fleetDocs.filter(d => d.category === 'insurance' && d.vehicleId === db.vehicles.find(v => v.reg === '201-CE-905').id).length")
-    check("Documents: search by registration narrows it to that vehicle", docs.count() == n_one and all("201-CE-905" in t for t in docs.all_inner_texts()) and "2027" in docs.first.inner_text(), (docs.count(), n_one))
-    main.get_by_label("Search registration or model").fill("volvo xc"); page.wait_for_timeout(200)
-    check("Documents: nothing found says so", "No matching vehicles" in main.inner_text())
-
-    # Repair spend
-    tabs.nth(2).click(); page.wait_for_selector("table[aria-label^='Repair spend by vehicle']"); page.wait_for_timeout(200)
-    period = main.get_by_role("tablist", name="Period")
-    check("Repair spend: the six periods, a year to start", period.get_by_role("tab").all_inner_texts() == ["1 month", "3 months", "6 months", "1 year", "2 years", "5 years"] and period.get_by_role("tab", name="1 year").get_attribute("aria-selected") == "true")
-    def spend_since(months):
-        return data(page, f"(() => {{ const d = new Date(day + 'T12:00:00Z'); const y = d.getUTCFullYear(), m = d.getUTCMonth() - {months}; const first = new Date(Date.UTC(y, m, 1)); const last = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + 1, 0)).getUTCDate(); const since = first.toISOString().slice(0, 8) + String(Math.min(d.getUTCDate(), last)).padStart(2, '0'); const r = db.fleetDocs.filter(x => x.category === 'repairs' && x.date > since); return [r.length, Math.round(r.reduce((s, x) => s + x.amount, 0))] }})()")
-    foot = lambda: main.get_by_role("table", name=re.compile("^Repair spend by vehicle")).locator("tfoot td").all_inner_texts()
-    y = spend_since(12)
-    check("Repair spend: the year's total and count match the documents, the upload included", foot()[1] == str(y[0]) and num(foot()[2]) == y[1] and f"{y[0]} repairs in the last 12 months" in main.inner_text(), (foot(), y))
-    period.get_by_role("tab", name="1 month").click(); page.wait_for_timeout(250)
-    m = spend_since(1)
-    top = main.get_by_role("table", name=re.compile("^Repair spend by vehicle")).locator("tbody tr").first.inner_text()
-    check("Repair spend: one month counts only that month, dearest first", foot()[1] == str(m[0]) and num(foot()[2]) == m[1] and m[0] < y[0] and "in the last month" in main.inner_text() and "231-G-4471" in main.get_by_role("table", name=re.compile("^Repair spend by vehicle")).locator("tbody tr").nth(1).inner_text() + top, (foot(), m, top[:60], main.inner_text()[:300]))
-    period.get_by_role("tab", name="5 years").click(); page.wait_for_timeout(250)
-    f5 = spend_since(60)
-    garages = main.get_by_role("table", name=re.compile("^Repair spend by garage")).locator("tbody tr")
-    gsum = sum(num(t.split("\t")[2]) for t in garages.all_inner_texts())
-    check("Repair spend: five years takes in more, and the garages add up to it", num(foot()[2]) == f5[1] and f5[1] > y[1] and abs(gsum - f5[1]) <= garages.count(), (foot(), f5, gsum))
-    check("Repair spend: fits the page", page.evaluate(SCROLLS) == 0)
-    page.screenshot(path=f"{OUT}/802-fleet-repair-spend.png")
-
-    # Edit vehicle
-    go(page, "/plant/fleet", "table")
-    main.get_by_role("button", name="Edit vehicle", exact=True).click(); page.wait_for_timeout(300)
-    d = dlg()
-    check("Edit: asks which vehicle first", "Which vehicle?" in d.inner_text() and d.get_by_role("option").count() == 12)
-    d.get_by_label("Find the vehicle by registration or model").fill("242"); page.wait_for_timeout(200)
-    d.get_by_role("option").first.click(); page.wait_for_timeout(250)
-    check("Edit: opens the vehicle with everything that can be put right", d.locator("h2").inner_text() == "Edit 242-G-915" and all(d.get_by_label(l, exact=True).count() == 1 for l in ["Registration", "Make and model", "Kind", "Based in", "Driver", "Mileage, km"]))
-    d.get_by_label("Registration", exact=True).fill("231 g 4471"); d.get_by_role("button", name="Save changes").click(); page.wait_for_timeout(200)
-    check("Edit: a registration another vehicle has is refused", "already on the fleet" in d.inner_text() and data(page, "db.vehicles.filter(v => v.reg === '231-G-4471').length") == 1)
-    d.get_by_label("Registration", exact=True).fill("242 g 916"); d.get_by_label("Driver", exact=True).select_option(label="Fergal Noone"); d.get_by_label("Mileage, km").fill("61,250")
-    d.get_by_role("button", name="Save changes").click(); page.wait_for_timeout(400)
-    v = data(page, "db.vehicles.find(v => v.reg === '242-G-916')")
-    check("Edit: the registration is tidied and the driver and mileage saved", v and v["mileage"] == 61250 and v["driverId"] == data(page, "db.people.find(p => p.name === 'Fergal Noone').id") and "242-G-916 saved" in toast(page) and "Fergal Noone" in rows.filter(has_text="242-G-916").inner_text() and "61,250" in rows.filter(has_text="242-G-916").inner_text(), toast(page))
-    check("Edit: it is in the activity log with what changed", data(page, "[db.activity[0].what, db.activity[0].target]") == ["Changed a vehicle's details", "242-G-915 Mercedes Sprinter: registration, driver, mileage"])
-    rows.filter(has_text="212-D-18834").click(); page.wait_for_timeout(300)
-    dlg().get_by_role("button", name="Edit vehicle").click(); page.wait_for_timeout(300)
-    d = dlg()
-    check("Edit: from an open vehicle it goes straight to that one", d.locator("h2").inner_text() == "Edit 212-D-18834")
-    d.get_by_role("button", name="Remove from fleet").click(); page.wait_for_timeout(200)
-    d.get_by_label("Sold for").fill("lots"); d.get_by_role("button", name="Remove vehicle").click(); page.wait_for_timeout(200)
-    check("Edit: taking a vehicle off the fleet needs what it sold for, or NA", "or NA if it was not sold" in d.inner_text() and data(page, "db.vehicles.find(v => v.reg === '212-D-18834').active") is True)
-    d.get_by_label("Sold for").fill("4,200"); d.get_by_role("button", name="Remove vehicle").click(); page.wait_for_timeout(400)
-    check("Edit: removed, it leaves the road and keeps its documents", rows.count() == 11 and data(page, "(() => { const v = db.vehicles.find(v => v.reg === '212-D-18834'); return [v.active, v.sellPrice, db.fleetDocs.some(d => d.vehicleId === v.id)] })()") == [False, 4200, True])
-
-    # Add vehicle with its driver and mileage
-    main.get_by_role("button", name="Add vehicle", exact=True).click(); page.wait_for_timeout(300)
-    d = dlg()
-    d.get_by_label("Registration").fill("262 g 77"); d.get_by_label("Make and model").fill("Ford Ranger"); d.get_by_label("Kind").select_option("Pickup")
-    d.get_by_label("Driver", exact=True).select_option(label="Kevin Shortall"); d.get_by_label("Mileage, km").fill("350")
-    d.locator("button[type=submit]").click(); page.wait_for_timeout(400)
-    new = rows.filter(has_text="262-G-77")
-    check("Add: a new vehicle goes on with its driver and mileage", new.count() == 1 and "Ford Ranger" in new.inner_text() and "Kevin Shortall" in new.inner_text() and "350" in new.inner_text() and rows.count() == 12, new.all_inner_texts())
-
-    # The empty fleet, and someone who cannot change it
-    page.evaluate("(() => { const k = 'cod.data'; const s = JSON.parse(localStorage.getItem(k)); s.state.db.vehicles.forEach(v => v.active = false); localStorage.setItem(k, JSON.stringify(s)); })()")
-    go(page, "/plant/fleet/repairs", "main h1")
-    check("Fleet with no vehicles: says how to start, on every tab", "Start by adding your vehicles" in main.inner_text() and main.get_by_role("button", name="Add your first vehicle").count() == 1 and main.get_by_role("button", name="Edit vehicle", exact=True).is_disabled() and main.get_by_role("tablist", name="Period").count() == 0)
-    main.get_by_role("button", name="Add your first vehicle").click(); page.wait_for_timeout(300)
-    check("Fleet with no vehicles: the button opens Add a vehicle", dlg().locator("h2").inner_text() == "Add a vehicle")
-    page.keyboard.press("Escape"); page.wait_for_timeout(200)
-    reset(page)
-    as_role(page, "Site manager")
-    go(page, "/plant/fleet", "table")
-    check("Fleet: without Manage plant and fleet there are no buttons, only the lists", main.get_by_role("button", name="Upload document", exact=True).count() == 0 and main.get_by_role("button", name="Edit vehicle", exact=True).count() == 0 and rows.count() == 12)
-    as_role(page, "Managing director")
+    # ── 1. Fleet: since 18 Nov a department of its own, from the Secure-All build (s11_check.py)
 
     # ── 2. Payroll: a manager's check, then the export by hand
-    go(page, "/people/payroll", "table")
+    go(page, "/people/payroll", "table"); open_last_week(page)
     side = page.get_by_role("navigation", name="People screens")
     check("People: Payroll export and Reimbursements each show what is waiting", side.get_by_role("link", name=re.compile("^Payroll export")).inner_text().strip().endswith("1") and side.get_by_role("link", name=re.compile("^Reimbursements")).inner_text().strip().endswith("1"), side.inner_text())
     exp = main.get_by_role("button", name="Export hours to Sage Payroll")
@@ -251,7 +86,7 @@ def steps(page, ctx):
 
     # The to-do on the overview
     reset(page)
-    go(page, "/dashboard")
+    go(page, "/dashboard"); open_last_week(page)
     ai = main.locator("section", has_text="AI overview").first
     check("Overview: last week's hours are a to-do for whoever checks them, with the reimbursement to pay", "Last week's hours are in from every site and ready for you to check before they go to payroll. One approved reimbursement is waiting to be paid too." in ai.inner_text() and ai.get_by_role("link", name="ready for you to check").get_attribute("href").endswith("/people/payroll") and ai.get_by_role("link", name="waiting to be paid").get_attribute("href").endswith("/people/reimbursements"), ai.inner_text()[-400:])
     as_role(page, "Accounts")
@@ -337,21 +172,13 @@ def steps(page, ctx):
 
     # ── Phone width and dark mode
     page.set_viewport_size({"width": 390, "height": 800})
-    for path, sel in [("/plant/fleet", "table"), ("/plant/fleet/documents", "table"), ("/plant/fleet/repairs", "table"), ("/people/payroll", "table"), ("/people/reimbursements", "main h1"), ("/people/timesheet", "table")]:
+    for path, sel in [("/people/payroll", "table"), ("/people/reimbursements", "main h1"), ("/people/timesheet", "table")]:
         go(page, path, sel)
         w = page.evaluate("document.documentElement.scrollWidth")
         check(f"Phone width: {path} does not scroll the page sideways", w <= 391, w)
-    go(page, "/plant/fleet", "table")
-    boxes = [main.get_by_role("button", name=n, exact=True).bounding_box() for n in ["Upload document", "Add vehicle", "Edit vehicle"]]
-    check("Phone width: the three Fleet buttons are on screen", all(b and b["x"] >= 0 and b["x"] + b["width"] <= 390 and b["y"] < 320 for b in boxes), boxes)
-    main.get_by_role("button", name="Upload document", exact=True).click(); page.wait_for_timeout(300)
-    w = page.evaluate("document.documentElement.scrollWidth")
-    check("Phone width: the upload dialog fits", w <= 391 and dlg().get_by_role("option").count() == 12, w)
-    page.screenshot(path=f"{OUT}/805-fleet-upload-phone.png")
-    page.keyboard.press("Escape")
     page.set_viewport_size({"width": 1440, "height": 900})
     page.get_by_role("button", name=re.compile("dark|Dark")).first.click(); page.wait_for_timeout(300)
-    go(page, "/plant/fleet", "table"); page.screenshot(path=f"{OUT}/806-fleet-dark.png")
+    go(page, "/people/payroll", "table"); page.screenshot(path=f"{OUT}/806-payroll-dark.png")
     check("Dark mode: on", page.evaluate("document.documentElement.classList.contains('dark') || document.documentElement.dataset.theme === 'dark'"))
     page.get_by_role("button", name=re.compile("light|Light")).first.click(); page.wait_for_timeout(200)
 

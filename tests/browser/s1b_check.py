@@ -40,8 +40,8 @@ def steps(page, ctx):
     page.get_by_role("button", name="Reset demo data").click(); page.wait_for_timeout(400)
 
     # ── 1. The Files section is kept, with To be sorted
-    bar = [t.strip() for t in page.locator("nav[aria-label=Departments] a").all_inner_texts()]
-    check("Files: out of the bar since 17 Nov (Oisin), Plant then Invoicing", "Files" not in bar and bar.index("Invoicing") == bar.index("Plant") + 1, bar)
+    bar = [t.strip().split("\n")[-1] for t in page.locator("nav[aria-label=Departments] a").all_inner_texts()]
+    check("Files: out of the bar since 17 Nov (Oisin), Plant, Fleet (18 Nov), then Invoicing", "Files" not in bar and bar.index("Invoicing") == bar.index("Fleet") + 1 and bar.index("Fleet") == bar.index("Plant") + 1, bar)
     go(page, "/files/unsorted", "table")
     check("Files: To be sorted holds the six loose files again", page.locator("tbody tr").count() == 6 and "6" in page.locator("nav[aria-label$=screens]:visible").get_by_role("link", name="To be sorted").inner_text())
     go(page, "/files?project=C721&folder=Invoices", "table")

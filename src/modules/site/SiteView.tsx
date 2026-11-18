@@ -1,4 +1,4 @@
-import { CalendarBlank, Camera, Clock, HandPalm, Phone, PlusCircle, Receipt, Truck } from "@phosphor-icons/react";
+import { CalendarBlank, Camera, CarProfile, Clock, HandPalm, IdentificationCard, Phone, PlusCircle, Receipt, Truck } from "@phosphor-icons/react";
 import { useState } from "react";
 import { useAccess } from "@/data/access";
 import { co } from "@/data/place";
@@ -8,13 +8,15 @@ import { personWeek } from "@/lib/availability";
 import { dayInstruction, managerJobs, personDay, siteOn } from "@/lib/roster";
 import { overtimeText, overtimeTotal } from "@/lib/overtime";
 import { fullWeek, nextWorkWeek, overtimeNote, workWeek } from "@/lib/week";
-import { Badge, Dialog, PageBody, PageHead, Segmented } from "@/ui";
+import { Badge, cx, Dialog, PageBody, PageHead, Segmented } from "@/ui";
+import { CheckLine, DamageSheet, LicenceSheet } from "./fleet-sheets";
 import { HoursSheet } from "./hours";
+import { OfficeFeed } from "./OfficeFeed";
 import { ManagerPhone } from "./ManagerPhone";
 import { AskSheet, BIG, DrivingSheet, ExpenseSheet, ExtraSheet, longDate, ManagerCard, PhotoSheet, ProfileButton, ProfileSheet } from "./sheets";
 import { INSTRUCTIONS, MORE, WORDS } from "./words";
 
-type Sheet = "photo" | "extra" | "ask" | "week" | "hours" | "driving" | "profile" | "expense" | "manager" | null;
+type Sheet = "photo" | "extra" | "ask" | "week" | "hours" | "driving" | "damage" | "licence" | "profile" | "expense" | "manager" | null;
 
 type PhoneOf = "operative" | "manager";
 
@@ -81,16 +83,20 @@ export function SiteView() {
           )
         }
       />
-      <PageBody className="grid justify-items-center gap-3">
-        {kind === "operative" && me && (
-          <>
-            {me.language !== "en" && (
-              <Segmented label="Language shown" value={english ? "en" : "own"} onChange={(v) => setEnglish(v === "en")} options={[{ value: "en", label: "English" }, { value: "own", label: LANGUAGE_NAME[me.language] }]} />
-            )}
-            <Phone_ key={me.id} me={me} lang={lang} day={day} />
-          </>
-        )}
-        {kind === "manager" && (manager ? <ManagerPhone key={manager.id} me={manager} day={day} /> : <p className="text-muted">No site manager is running a job at the moment.</p>)}
+      {/* The phone on the left and, for the office, what it receives on the right, live (18 Nov, as on the Secure-All build). */}
+      <PageBody className={cx("grid items-start gap-6", office ? "xl:grid-cols-[24rem_minmax(0,1fr)]" : "justify-items-center")}>
+        <div className="grid w-full justify-items-center gap-3">
+          {kind === "operative" && me && (
+            <>
+              {me.language !== "en" && (
+                <Segmented label="Language shown" value={english ? "en" : "own"} onChange={(v) => setEnglish(v === "en")} options={[{ value: "en", label: "English" }, { value: "own", label: LANGUAGE_NAME[me.language] }]} />
+              )}
+              <Phone_ key={me.id} me={me} lang={lang} day={day} />
+            </>
+          )}
+          {kind === "manager" && (manager ? <ManagerPhone key={manager.id} me={manager} day={day} /> : <p className="text-muted">No site manager is running a job at the moment.</p>)}
+        </div>
+        {office && <OfficeFeed day={day} />}
       </PageBody>
     </>
   );
@@ -193,7 +199,18 @@ function Phone_({ me, lang, day }: { me: Person; lang: Language; day: string }) 
           <Receipt size={24} className="text-accent-ink" /> {m.expense}
         </button>
         <button type="button" className={BIG} onClick={() => setSheet("driving")}>
-          <Truck size={24} className="text-accent-ink" /> {m.driving}
+          <Truck size={24} className="shrink-0 text-accent-ink" />
+          <span className="min-w-0 flex-1">
+            {m.driving}
+            <CheckLine me={me} day={day} />
+          </span>
+        </button>
+        {/* From the Secure-All build's Ops phone (18 Nov): damage to a vehicle, and a new licence. */}
+        <button type="button" className={BIG} onClick={() => setSheet("damage")}>
+          <CarProfile size={24} className="text-accent-ink" /> {m.damage}
+        </button>
+        <button type="button" className={BIG} onClick={() => setSheet("licence")}>
+          <IdentificationCard size={24} className="text-accent-ink" /> {m.licence}
         </button>
         <button type="button" className={BIG} onClick={() => setSheet("week")}>
           <CalendarBlank size={24} className="text-accent-ink" /> {t.week}
@@ -212,6 +229,8 @@ function Phone_({ me, lang, day }: { me: Person; lang: Language; day: string }) 
       {sheet === "week" && <WeekSheet me={me} lang={lang} day={day} onClose={close} />}
       {sheet === "hours" && <HoursSheet me={me} day={day} onClose={close} />}
       {sheet === "driving" && <DrivingSheet me={me} day={day} onClose={close} />}
+      {sheet === "damage" && <DamageSheet me={me} onClose={close} />}
+      {sheet === "licence" && <LicenceSheet me={me} day={day} onClose={close} />}
       {sheet === "expense" && <ExpenseSheet me={me} day={day} siteId={site?.id ?? null} sites={mine} onClose={close} />}
       {sheet === "profile" && <ProfileSheet me={me} lang={lang} day={day} onClose={close} />}
     </div>

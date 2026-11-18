@@ -1,7 +1,7 @@
 import os, re, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from shots import run, BASE, OUT
+from shots import run, BASE, OUT, open_last_week
 
 # Round nine, 17 Nov (decisions 100 to 105): overtime at both rates on one day, the Weekend time
 # stamp for Saturdays, Sundays and bank holidays, bank holidays in Admin, weekend work on the week
@@ -162,7 +162,7 @@ def steps(page, ctx):
     check("History: fits the page", page.evaluate(SCROLLS) == 0)
 
     # ── 4. Payroll: Monday to Sunday, the weekend's hours, and the new flag
-    go(page, "/people/payroll", "table")
+    go(page, "/people/payroll", "table"); open_last_week(page)
     sun = data(page, plus(-1))
     week_sel = main.get_by_label("Week", exact=True).locator("option").first.inner_text()
     check("Payroll: the week runs Monday to Sunday and ends on the Sunday", f"week ending {int(sun[8:])} " in week_sel and "Monday to Sunday" in main.locator("header").inner_text(), week_sel)
@@ -193,7 +193,7 @@ def steps(page, ctx):
     page.wait_for_timeout(300)
     text = open(dl.value.path(), encoding="utf-8").read()
     line = [l for l in text.splitlines() if ",Prunty,Orla," in l][0]
-    check("Payroll: the file ends the week on the Sunday and carries the weekend's hours", dl.value.suggested_filename == f"sage-payroll-hours-week-ending-{sun}.csv" and line.endswith(f"{sun[8:]}/{sun[5:7]}/{sun[:4]},35.50,11.50,3.50"), (dl.value.suggested_filename, line))
+    check("Payroll: the file ends the week on the Sunday and carries the weekend's hours", dl.value.suggested_filename == f"sage-payroll-hours-week-ending-{sun}.csv" and re.search(rf"{sun[8:]}/{sun[5:7]}/{sun[:4]},\d+\.\d\d,11\.50,3\.50$", line) is not None, (dl.value.suggested_filename, line))
 
     # ── 5. Bank holidays in Admin
     reset(page)

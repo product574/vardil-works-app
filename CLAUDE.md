@@ -56,6 +56,11 @@ send him a fresh zip first, or bring his changes across with care, so the two do
 
 **Round ten, 17 Nov:** decisions 108 to 116, and 117 after it.
 
+**Round eleven, 18 Nov:** decisions 118 to 129. Fleet is now the Secure-All build's Fleet
+(`product574/vardil-works-security`, Vardil's own code, brought across with ABC's data), as a
+department of its own; the phones gained Report damage and Send a licence; Who is where reads
+any day, per site.
+
 **On Oisin's copy, from 16 Nov evening:** Oisin directs the work himself ("forget about
 Aodhan's steps for now, I will take control of the steps from now"). The list below is
 Aodhan's plan, kept for reference; on this copy, follow Oisin's own requests and ask him,
@@ -240,6 +245,18 @@ Two sources were merged (November 2026):
 | 115 | Month ahead in whole weeks | "for monday the 30th of November ... in November month planning and same for the other way for December". The grid runs from the Monday of the month's first week to the Sunday of its last (`monthWeeks` in `week.ts`), days from the months either side greyed and named (Mon 30 Nov in December, Fri 4 Dec in November). The site manager's phone month shows those days too |
 | 116 | Profitability, round ten | "Labour allowed in the quote" removed everywhere (the column, the warning, the site dialog line, `allowed`, `usedPct`, `labourState`). Finished jobs (only, his pick) show Contract value, Wages, Reimbursements, Subcontractor invoices, Supplier invoices, Net profit and Net profit %: net profit is the contract value, agreed extras included, less all of those (his pick, `netProfit`, `netPct`). The invoices are the checked ones posted to the job, subcontractors (the labour heading) apart from everything else (`jobInvoices` in `figures.ts`), so the two add up to Job costs less the firm's own labour. A line above the table names any job at a loss or under 10% (`profitState`, `THIN_PROFIT_PCT`; his pick). Live sites keep wages, reimbursements, contract value and what is left after employees |
 | 117 | Profitability: costs by heading | Oisin, 17 Nov (after round ten): "in the profitability in the by site include plant and hire, materials, and subcontractor for costs". Seven questions first; his picks: both tabs; a fourth column, Other, for carriage and anything else, so the columns add up; plant and hire from checked invoices only (plant still on hire and the firm's own plant count once invoiced); equipment (scaffold, generators, small tools) under Plant and hire, as on Job costs. `jobInvoices` in `figures.ts` now gives `plantHire` (plant and equipment), `materials`, `subcontractors` (the labour heading) and `other` (transport and other); "Supplier invoices" went. Live sites: Site, Wages, Reimbursements, Plant and hire, Materials, Subcontractors, Other, Total costs so far (replaces "Outgoings for employees"), Contract value, Left after all costs so far (replaces "Left after employees"; the same `netProfit` as a finished job's). Finished jobs: the same four in place of the two invoice columns, then Net profit and Net profit %. A site's box shows the costs line by line on both tabs. Headings and the wage lines wrap so both tables fit at 1280 pixels and wider; narrower, the table scrolls inside its panel |
+| 118 | Who is where, any day | Oisin, 18 Nov: "have a per site view as in the attendance history ... for the Who is where in the schedule tab so it is easy to flick through and see who is at what site for that day". Laid out like Attendance history: Everyone or Per site at the top right (Per site first), then a Day box with Previous day and Next day arrows either side (weekends skipped; his pick), a Today button, a Site box and a Status box (his pick). Any working day from 13 weeks back to 6 weeks ahead (his pick: days gone and to come): a day gone is read from the timesheet, a day to come from the plan, today as before (marked, else planned, else on a site's list), the same rule as the week and month ahead (`whereOn`, `plannedLabel`, `whereDays`, `sitesRunning` in `src/lib/roster.ts`). "Planned" is called Not marked in on a day gone, Not marked yet today, Planned ahead. Each site's table has Name (with trade), Status, Day (full, half, overtime) and Phone; on a phone the Day and Phone fold under the status and the name. The day, layout and boxes are remembered (`useScreenState`, decision 127) |
+| 119 | Fleet from Secure-All | Oisin, 18 Nov: "can we import in the fleet tab from the secure all with all the features". The Secure-All build's Fleet screens and rules (`src/modules/fleet/`, `fleet-spend.ts`, `renewals.ts`, `match.ts`, `sample-docs.ts`, `sample-pictures.ts`, `pdf.ts`, `ui/DocViewer.tsx`) replace ABC's Fleet page (decision 95). A department of its own in the bar after Plant (his pick), with its own sidebar: Repair spend (Overview, Invoices), Vehicles (Vehicles, Renewals, Damage reported, Vehicle documents), Lists (Garages, Drivers, Bases). Plant keeps plant only; the old `/plant/fleet` addresses go to the new screens. Garage invoices (`db.garageInvoices`) with a line per vehicle, To check or Checked, a note to put one back, warnings for a number entered twice and a repair again inside 30 days; a vehicle, an invoice and a garage each on a page of its own; renewals with the disc to tick on; damage reports with photos; garages with private notes; bases. ABC has no routes |
+| 120 | Repair spend by base, driver and site | His pick: each repair is filed under the van's base, its driver, and the site that driver was on that day (`InvoiceLine.siteId`): the timesheet, else the plan, else for a site manager the site he runs (`driverSiteOn` in `roster.ts`). The overview's filters and bars are base, garage, driver and site, with the periods 1 month to 5 years (kept from ABC's Fleet, his pick). Repairs are not charged to a job's Profitability (he did not pick that) |
+| 121 | Drivers are people | Drivers are people from People on the driver list (`Person.drives`, `drivesUntil`), worked out by `driversOf` in `src/lib/fleet.ts`; name, phone and email stay People's. Each has a driving licence and a Driver CPC (his pick; the CPC for the 7 tonne tippers), with an expiry and a copy, flagged in Renewals. Add a driver picks someone from People; Take off the list moves them to Left, history kept. A van's driver is picked from People in Add or Edit vehicle |
+| 122 | Who may do what in Fleet | Contracts managers and accounts have Fleet; site managers do not by default (their phone has the checks and damage; switch it on in Roles and access). Adding and changing anything needs "Manage plant and fleet"; checking a garage invoice also "Handle invoices" (his pick: fleet managers and accounts) (`useFleetCan` in `modules/fleet/shared.tsx`) |
+| 123 | Garage invoices stay in Fleet | His pick: not in Invoicing's Coming in list or the accounts export |
+| 124 | AI reading | His pick: built. On the hosted copy an uploaded garage invoice, tax, test, insurance or licence paper is read by the model and fills the form for checking (`src/ai/read.ts`, `src/ai/reading.ts`, `functions/api/read.ts`, behind Cloudflare Access like Ask AI). For anyone with "Manage plant and fleet" (his pick), checked on the page; the server checks the Access sign-in (a real build checks the person there too, marked REAL BUILD). On his preview and any copy with no server it says so, and the file's name is read instead for a registration and a kind (`readFleetFile`, `readingFromName` in `upload.tsx`; kept at his word). `public/_headers` allows frames from `blob:` so a kept PDF shows in the browser's own viewer |
+| 125 | Kept from ABC's Fleet | His picks, all four: the next service per vehicle (shown on its page and flagged in Coming up), the trailer section of the driving check, the periods 1 month to 5 years, and reading the file's name |
+| 126 | The phones | Both phones (his pick) have Report damage (where, what happened, up to 4 photos from the camera or the phone, or a drawn sample) and Send a licence (driving licence or Driver CPC, front and back, the date it runs to, or a sample sheet), on the operative's front page and under the site manager's Vehicle and expenses (`src/modules/site/fleet-sheets.tsx`). Damage goes to Fleet, Damage reported; a licence goes on the record at once, flagged until the office ticks Checked. The Driving check button says whether today's check on their van is done. The sheets are in English; the two button names are in all five languages. Not taken across, at his word: the wellness check and scan a checkpoint |
+| 127 | What the office receives | His pick: beside the phone, for the office (`src/modules/site/OfficeFeed.tsx`, rules in `src/lib/ops.ts`): everything the phones have sent since yesterday evening, newest first (checks, defects, damage, licences, requests, extras, photos, overtime and reimbursement claims), each opening its screen; on top, Needs a look: damage and defects, then vehicles with a driver and no driving check yet today once it is past 09:00. Sample data: every driven van checked this morning but two |
+| 128 | Back button and To do | His picks. Back in the top bar, left of the search box, for the whole app: to exactly where you were, screen, filters, tab and height, also after a reload (`src/app/trail.ts`, `src/app/screen-state.ts`, per role). To do on the Dashboard under the AI overview, across the page: the signed-in person's own list, what and when, ticked off when done; a renewal goes on it with "Add to my to-do" and is ticked off once recorded |
+| 129 | Sample fleet | About 20 vehicles (his pick): the twelve vans ABC had, with the same drivers, and eight more (the managing director's car, two more tippers, crew vans, a leadwork van, two pool vans), two removed; six bases (Oranmore yard, Head office, Clondalkin, Naas, Ennis, Waterford), eight garages, 18 months of garage invoices (at most ten repairs a vehicle; one duplicate; one repeat repair), a paper per renewal, five damage reports (three new), licences for 20 drivers (a CPC out of date, one due, a licence from the phone to check), garage notes and three to-dos. Drawn from its own random numbers, so nothing else in the sample data moved (`src/data/seed/fleet.ts`) |
 
 Standing preferences (these come from Aodhan and are not optional):
 
@@ -320,8 +337,11 @@ src/
                         chat.ts (Team chat), mail.ts (Email), roster.ts (17 Nov: the week
                         and month ahead, the phones, attendance per site), payroll.ts,
                         purchases.ts, driving.ts, overtime.ts, site-access.ts (which sites a site
-                        manager opens), fleet.ts (the Fleet page: search, repair spend by
-                        period, reading an uploaded file's name), reimbursements.ts (approved
+                        manager opens), fleet.ts (Fleet's drivers from People, reading an
+                        uploaded file's name), fleet-spend.ts, renewals.ts, match.ts, ops.ts
+                        (18 Nov, from Secure-All: repair spend, warnings, renewals, names and
+                        registrations on documents, what the office receives), sample-docs.ts
+                        and sample-pictures.ts (drawn sample papers and damage), reimbursements.ts (approved
                         claims for the office to pay), bank-holidays.ts (the built-in lists and
                         which days are rest days), profitability.ts (wages, invoices and net
                         profit by site), overtime-claims.ts (claims from the phone, My hours)
@@ -330,9 +350,11 @@ src/
                         overview plus ApprovalsPanel.tsx; admin/ (16 Nov) holds Requests,
                         Roles and access, Site access (17 Nov), Billing, Connections,
                         Automations, Bank holidays (17 Nov) and the Activity log; profit/ (17 Nov) is
-                        Profitability; a project's own Files tab is projects/ProjectFiles.tsx,
+                        Profitability; fleet/ (18 Nov, from the Secure-All build) is Fleet;
+                        a project's own Files tab is projects/ProjectFiles.tsx,
                         beside the Files section in files/Files.tsx
-functions/              Cloudflare Pages Functions: api/ask.ts (Ask AI) and ask-log.ts (the record)
+functions/              Cloudflare Pages Functions: api/ask.ts (Ask AI), api/read.ts (AI reading,
+                        18 Nov) and ask-log.ts (the record)
 server/                 their helpers: the Access token check, the D1 record, request checks
 ```
 
@@ -647,6 +669,28 @@ Email to match their Gmail layout and Team chat their Ping, dropping the AI in T
   invoices, adding up, fitting the page), `s9_check.py` and `preview_check10.py` for the new
   live columns. Not tested: below 1280 pixels the table scrolls inside its panel (checked by
   eye at 1100); a real phone.
+- 18 Nov, round eleven (decisions 118 to 129): Who is where per site and any day; Fleet from
+  the Secure-All build as a department of its own; Report damage, Send a licence and what the
+  office receives on the phones; the Back button; To do on the Dashboard. Sixteen questions
+  were put to Oisin first (four rounds of buttons). DATA_VERSION 23. 551 automated tests in 56
+  files (new `src/data/fleet-actions.test.ts` 19 and, from Secure-All, `fleet-spend`, `renewals`,
+  `match`, `ops`, `reading` tests; `fleet-page.test.ts` rewritten; `roster.test.ts` for
+  `whereOn`, `whereDays`, `sitesRunning`, `driverSiteOn`). 1,274 browser checks in
+  twenty-three suites (new `s11_check.py`, 67; `m4_check.py`'s Fleet part rewritten; `s8_check.py`
+  lost its old Fleet page part; `m1`, `m4b`, `m5`, `s1b`, `s5` and `review` updated for the new
+  bar and addresses). `csp_check.py` 51 screens, no violations (a kept PDF shows in the browser's
+  own viewer from a `blob:` frame). `preview_check11.py` opens the single-file preview from disk
+  on the new screens. Found and fixed: a new address on the same screen (a row opened in place,
+  a filter) scrolled the page to the top, so an approval opened from the AI overview landed out
+  of sight (`useTrailTracker` in `Shell.tsx` now leaves the height alone). Also fixed in the
+  suites, not the app: `s3`, `s8` and `s9` checked and exported last week, which the sample data
+  does by itself from its Tuesday on, so they failed from Wednesday to Friday; they now take
+  last week back to "not checked yet" first (`open_last_week` in `shots.py`). The night past
+  midnight on C724 now falls to Orla Prunty and Seán Dunphy when they were in that day. Worth
+  knowing: Chrome's own PDF viewer loads `chrome-extension://` files, which the preview check
+  lists as requests; they are the browser's, not the internet. Not tested: the AI reading with
+  the real model (the hosted copy is Aodhan's) and `/api/read` in `fn_check.py`; a real phone;
+  Safari and Firefox; the new Polish, Romanian, Portuguese and Lithuanian button names.
 - Tests: 235 automated tests (new `mail.test.ts`, 17; `chat.test.ts` rewritten, 20); 690
   browser checks in fourteen suites (`s2_check.py` rewritten for Team chat, 34; the Email
   part of `m5_check.py` rewritten, 69 in all; `m1_check.py` counts seven departments for a
@@ -1073,6 +1117,7 @@ Work is in milestones, with a stop for Aodhan's feedback after each.
       insurance; renew with amount and receipt; add and remove vehicles (sale amount or
       NA); vehicle documents; repair spend by vehicle, garage and quarter, as figures only.
       One page with three tabs since 17 Nov (decision 95): `/plant/fleet`.
+      Since 18 Nov Fleet is a department of its own, from the Secure-All build (decision 119).
       Files (`src/modules/files/Files.tsx`): folders per project with a search across all
       of them; add a picture or PDF; all photos; "To be sorted", where each arrival has a
       suggested project and folder with the reason (`src/lib/filing.ts`, tested).
@@ -1557,6 +1602,10 @@ each card is the way on a phone, and is tested at phone width).
   The Saturday and Sunday limits on a weekend time stamp are the only ones enforced.
 - Profitability counts plant only once its invoice is checked: hire still running and the
   firm's own plant cost nothing there until then (decision 117, his pick).
+- Fleet (18 Nov): the AI reading needs the hosted copy (Aodhan's) and has not been tried there
+  with the real model; `tests/functions/fn_check.py` does not cover `/api/read` yet. A garage
+  repair is not charged to a job. A driver's base is their van's. The phone's licence sheet does
+  not use the AI (the date is typed, or comes with the sample). A vehicle's mileage is typed.
 - Other sample events (emails, invoices, deliveries) are dated on working days by weekday
   only, so one can fall on a bank holiday on some demo days; timesheets and the plan cannot.
 

@@ -284,14 +284,14 @@ export function DrivingSheet({ me, day, onClose }: { me: Person; day: string; on
           </div>
           {mine ? (
             <p className="mt-1">
-              {mine.reg}, {mine.model}
+              {mine.reg}, {mine.make} {mine.model}
             </p>
           ) : (
             <select aria-label="Vehicle" className="field mt-2 h-11" value={vehicleId} onChange={(e) => setVehicleId(e.target.value)}>
               <option value="">Choose the vehicle</option>
               {vehicles.map((v) => (
                 <option key={v.id} value={v.id}>
-                  {v.reg}, {v.model}
+                  {v.reg}, {v.make} {v.model}
                 </option>
               ))}
             </select>

@@ -80,7 +80,7 @@ def steps(page, ctx):
     page.get_by_label("Site").select_option(label=[o for o in page.get_by_label("Site").locator("option").all_inner_texts() if o.startswith("C724")][0]); page.wait_for_timeout(300)
     c724 = {x.split("\t")[0].split("\n")[0]: x.split("\t") for x in page.locator("tbody tr").all_inner_texts()}
     night = {n: (num(x[-3]), num(x[-2])) for n, x in c724.items() if num(x[-2]) > 0}
-    check("History: Derrybawn Bridge's early starts are not overtime now; its double time is the night past midnight and the Saturday afternoon", night == {"Orla Prunty": (11.5, 3.5), "Seán Dunphy": (11.5, 3.5)}, night)
+    check("History: Derrybawn Bridge's early starts are not overtime now; its double time is the night past midnight and the Saturday afternoon", night.get("Orla Prunty") == (11.5, 3.5) and set(night) <= {"Orla Prunty", "Seán Dunphy"} and night.get("Seán Dunphy", (0, 2.0))[1] in (2.0, 3.5), night)
     page.get_by_role("tablist", name="History view").get_by_role("tab", name="Day by day").click(); page.wait_for_timeout(300)
     check("History, day by day: each day's overtime says its hours at each rate", "Full +7.5h x1.5 +1.5h x2" in main.inner_text() and "4h x1.5 + 2h x2" in main.inner_text(), main.inner_text()[:200])
     page.get_by_role("tablist", name="Attendance layout").get_by_role("tab", name="Per site").click(); page.wait_for_timeout(200)

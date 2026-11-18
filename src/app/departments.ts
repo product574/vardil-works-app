@@ -2,13 +2,16 @@
  * The map of the whole app: every department in the bottom bar, and the short sidebar each
  * one shows. Adding a screen means adding a line here and a route in router.tsx.
  */
-import { Browsers, CalendarDots, ChartLineUp, ChatsCircle, DeviceMobile, EnvelopeSimple, FolderOpen, Gauge, GearSix, Handshake, HardHat, type Icon, Receipt, Truck, UserGear, UsersThree } from "@phosphor-icons/react";
+import { Browsers, CalendarDots, ChartLineUp, ChatsCircle, DeviceMobile, EnvelopeSimple, FolderOpen, Gauge, GearSix, Handshake, HardHat, type Icon, Receipt, Truck, UserGear, UsersThree, Van } from "@phosphor-icons/react";
 import type { Brand } from "@/config/brand";
 import { totalUnread } from "@/lib/chat";
 import { openRequestCount, waitingOnDirector, overtimeClaimCount } from "@/lib/requests";
 import { lastWeekStart, payrollStage } from "@/lib/payroll";
 import { toPay } from "@/lib/reimbursements";
+import { driversOf } from "@/lib/fleet";
 import { dueState } from "@/lib/status";
+import { invoiceWarnings } from "@/lib/fleet-spend";
+import { discLate, renewalRows } from "@/lib/renewals";
 import type { Db, DepartmentKey, ID } from "@/data/types";
 
 /** `mdOnly`: shown to the managing director only, even when the department is switched on for another level. */
@@ -120,11 +123,29 @@ export const DEPARTMENTS: Department[] = [
         { to: "/plant/register", label: "Own plant" },
         { to: "/plant/hired", label: "Hired plant", count: (db) => db.hiredPlant.filter((h) => h.status === "Return notified").length, countTone: "warn" },
       ] },
-      // One Fleet page with three tabs across its top (17 Nov). The number is vehicles with a paper out of date.
+    ],
+  },
+  {
+    // Fleet (18 Nov): the Secure-All build's Fleet, at Oisin's word, as a button of its own after Plant.
+    key: "fleet", label: "Fleet", icon: Van, home: "/fleet", inBar: true,
+    groups: [
+      { label: "Repair spend", items: [
+        { to: "/fleet", label: "Overview", end: true },
+        { to: "/fleet/invoices", label: "Invoices", count: (db) => db.garageInvoices.filter((i) => i.status === "To check").length, countTone: "warn" },
+      ] },
       { label: "Vehicles", items: [
-        { to: "/plant/fleet", label: "Fleet", count: (db, today) => db.vehicles.filter((v) => v.active && (["tax", "test", "insurance"] as const).some((i) => dueState(v.compliance[i].expiryDate, today) === "overdue")).length, countTone: "bad", tabs: [{ to: "/plant/fleet/documents", label: "Fleet, vehicle documents" }, { to: "/plant/fleet/repairs", label: "Fleet, repair spend" }] },
+        { to: "/fleet/vehicles", label: "Vehicles" },
+        { to: "/fleet/renewals", label: "Renewals", count: (db, today) => renewalRows(db.vehicles, driversOf(db.people, db.vehicles), db.todos, today).filter((x) => x.state !== "ok" || discLate(x)).length, countTone: "bad" },
+        { to: "/fleet/damage", label: "Damage reported", count: (db) => db.damageReports.filter((d) => d.status === "New").length, countTone: "bad" },
+        { to: "/fleet/documents", label: "Vehicle documents" },
+      ] },
+      { label: "Lists", items: [
+        { to: "/fleet/garages", label: "Garages" },
+        { to: "/fleet/drivers", label: "Drivers", count: (db) => db.people.filter((p) => p.licences?.driving?.fromPhoneAt || p.licences?.cpc?.fromPhoneAt).length, countTone: "warn" },
+        { to: "/fleet/bases", label: "Bases" },
       ] },
     ],
+    badge: (db, today) => invoiceWarnings(db.garageInvoices, today).length,
   },
   {
     // Kept on 16 Nov after all ("we still need this files section"), for the loose files

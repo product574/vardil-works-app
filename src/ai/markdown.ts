@@ -22,13 +22,18 @@ const QUERY: Record<string, string[]> = {
   "/dashboard": ["open"],
   "/people": ["person"],
   "/plant": ["item"],
-  "/plant/fleet": ["vehicle"],
+  "/fleet/vehicles": ["vehicle"],
+  "/fleet/drivers": ["driver"],
+  "/fleet/damage": ["report"],
+  "/fleet/bases": ["base"],
   "/files": ["project", "folder"],
   "/invoicing/supplier": ["inv"],
   "/admin/access": ["person"],
 };
 const PROJECT = /^\/projects\/C\d{3,4}$/i;
 const QUOTE = /^\/sales\/quotes\/Q-\d{3,6}$/i;
+/** One fleet record's own page (18 Nov): a vehicle, a garage invoice or a garage. */
+const FLEET = /^\/fleet\/(invoices|vehicles|garages)\/[\w-]{1,40}$/;
 const TABS = new Set(["overview", "scope", "photos", "files", "plant", "requests", "extras", "costs", "history"]);
 
 /** The address to open inside the demo, or null when the link goes anywhere else. */
@@ -44,7 +49,7 @@ export function safeHref(href: string): string | null {
   if (u.origin !== "https://demo.invalid" || u.hash) return null;
   const path = u.pathname.length > 1 ? u.pathname.replace(/\/+$/, "") : u.pathname;
   const isProject = PROJECT.test(path);
-  if (!SCREENS.has(path) && !isProject && !QUOTE.test(path)) return null;
+  if (!SCREENS.has(path) && !isProject && !QUOTE.test(path) && !FLEET.test(path)) return null;
   for (const [k, v] of u.searchParams) {
     if (isProject ? k !== "tab" || !TABS.has(v) : !(QUERY[path] ?? []).includes(k) || !/^[\w .-]{1,60}$/.test(v)) return null;
   }

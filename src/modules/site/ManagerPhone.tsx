@@ -1,4 +1,4 @@
-import { ArrowLeft, CalendarBlank, CalendarDots, CalendarPlus, Camera, CaretRight, ClipboardText, Clock, HandPalm, Megaphone, PlusCircle, Receipt, Tray, Truck } from "@phosphor-icons/react";
+import { ArrowLeft, CalendarBlank, CalendarDots, CalendarPlus, Camera, CarProfile, CaretRight, ClipboardText, Clock, HandPalm, IdentificationCard, Megaphone, PlusCircle, Receipt, Tray, Truck } from "@phosphor-icons/react";
 import { useState } from "react";
 import { useAccess } from "@/data/access";
 import { actAs, addToRoster, correctAttendance, markAttendance, requestPerson, sendTimeStamps, setDayInstruction, stampRestDay } from "@/data/actions";
@@ -18,10 +18,11 @@ import { CorrectDialog } from "@/modules/people/Timesheet";
 import { CrewRequestButtons } from "@/modules/projects/CrewRequestButtons";
 import { Badge, Button, cx, DeclineNote, Dialog, Field, NumInput, Segmented } from "@/ui";
 import { toast } from "@/ui/toast";
+import { CheckLine, DamageSheet, LicenceSheet } from "./fleet-sheets";
 import { claimsLabel, claimsWaiting, OvertimeClaimsSheet } from "./hours";
 import { AskSheet, BIG, DrivingSheet, ExpenseSheet, ExtraSheet, longDate, PhotoSheet, ProfileButton, ProfileSheet } from "./sheets";
 
-type Sheet = "time" | "weekend" | "claims" | "week" | "month" | "notes" | "crew" | "photo" | "extra" | "ask" | "general" | "expense" | "driving" | "profile" | null;
+type Sheet = "time" | "weekend" | "claims" | "week" | "month" | "notes" | "crew" | "photo" | "extra" | "ask" | "general" | "expense" | "driving" | "damage" | "licence" | "profile" | null;
 
 const KIND: Record<string, string> = { personnel: "People", own_plant: "Our plant", hired_plant: "Plant to hire", other: "Something else" };
 
@@ -111,7 +112,18 @@ export function ManagerPhone({ me, day }: { me: Person; day: string }) {
           </button>
           <h2 className="mt-2 text-base">Vehicle and expenses</h2>
           <button type="button" className={BIG} onClick={() => setSheet("driving")}>
-            <Truck size={24} className="text-accent-ink" /> Driving check
+            <Truck size={24} className="shrink-0 text-accent-ink" />
+            <span className="min-w-0 flex-1">
+              Driving check
+              <CheckLine me={me} day={day} />
+            </span>
+          </button>
+          {/* From the Secure-All build's Ops phone (18 Nov): damage to a vehicle, and a new licence. */}
+          <button type="button" className={BIG} onClick={() => setSheet("damage")}>
+            <CarProfile size={24} className="text-accent-ink" /> Report damage
+          </button>
+          <button type="button" className={BIG} onClick={() => setSheet("licence")}>
+            <IdentificationCard size={24} className="text-accent-ink" /> Send a licence
           </button>
           <button type="button" className={BIG} onClick={() => setSheet("expense")}>
             <Receipt size={24} className="text-accent-ink" /> Claim a reimbursement
@@ -179,6 +191,8 @@ export function ManagerPhone({ me, day }: { me: Person; day: string }) {
       {sheet === "general" && <AskSheet site={null} me={me} lang="en" day={day} onClose={close} />}
       {sheet === "expense" && <ExpenseSheet me={me} day={day} siteId={null} sites={jobs} onClose={close} />}
       {sheet === "driving" && <DrivingSheet me={me} day={day} onClose={close} />}
+      {sheet === "damage" && <DamageSheet me={me} onClose={close} />}
+      {sheet === "licence" && <LicenceSheet me={me} day={day} onClose={close} />}
       {sheet === "profile" && <ProfileSheet me={me} lang="en" day={day} onClose={close} />}
     </div>
   );

@@ -35,7 +35,11 @@ export const RECORD_LINKS: [pattern: string, what: string][] = [
   ["/dashboard?open=ap-1", "one draft in Approvals, opened on the overview"],
   ["/people?person=p-101", "one person"],
   ["/plant?item=pl-MX1", "one item of own plant"],
-  ["/plant/fleet?vehicle=v-1", "one vehicle"],
+  ["/fleet/vehicles/v-1", "one vehicle"],
+  ["/fleet/invoices/ginv-1", "one garage invoice"],
+  ["/fleet/garages/g-01", "one garage"],
+  ["/fleet/damage?report=dmg-1", "one damage report"],
+  ["/fleet/drivers?driver=p-sm1", "one driver and their licences"],
   ["/files?project=C719", "one project's files in the Files section"],
 ];
 
@@ -308,11 +312,31 @@ export function buildSnapshot(db: Db, today: string, brand: Brand): string {
       }),
     ),
   );
+  // Fleet (18 Nov, from the Secure-All build): vehicles, garage invoices with spend by vehicle, base, driver and site, renewals and damage.
+  const baseName = (id: string | null) => db.bases.find((b) => b.id === id)?.name ?? "";
+  const garageName = (id: string) => db.garages.find((g) => g.id === id)?.name ?? "";
+  const reg = (id: string) => db.vehicles.find((v) => v.id === id)?.reg ?? "";
   out.push(
     table(
-      "Vehicles",
-      ["id", "registration", "model", "kind", "based at", "driver", "mileage", "tax", region.vehicleTest, "insurance", "status"],
-      db.vehicles.map((v) => [v.id, v.reg, v.model, v.kind, v.baseLocation, name(v.driverId) || "none", v.mileage, due(v.compliance.tax.expiryDate, today), due(v.compliance.test.expiryDate, today), due(v.compliance.insurance.expiryDate, today), v.active ? "in use" : `sold${v.sellPrice != null ? ` for ${n0(v.sellPrice)}` : ""}`]),
+      "Vehicles (Fleet, Vehicles)",
+      ["id", "registration", "make and model", "kind", "used for", "base", "driver", "mileage", "tax", region.vehicleTest, "insurance", "next service", "status"],
+      db.vehicles.map((v) => [v.id, v.reg, `${v.make} ${v.model}`, v.kind, v.division, baseName(v.baseId), name(v.driverId) || "pool", v.mileage, due(v.compliance.tax.expiryDate, today), due(v.compliance.test.expiryDate, today), due(v.compliance.insurance.expiryDate, today), nextServiceDate(v.service, today).date, v.active ? "on the fleet" : `removed ${v.removedAt ?? ""}${v.sellPrice != null ? `, sold for ${n0(v.sellPrice)}` : ", not sold"}`]),
+    ),
+  );
+  out.push(
+    table(
+      "Garage invoices (Fleet, Invoices). One line per vehicle; amounts include VAT",
+      ["id", "number", "garage", "date", "status", "vehicle", "base", "driver", "site that day", "category", "work", "amount"],
+      db.garageInvoices.flatMap((i) => i.lines.map((l) => [i.id, i.invoiceNo, garageName(i.garageId), i.date, i.status, reg(l.vehicleId), baseName(l.baseId), name(l.driverId), code(l.siteId), l.category, l.description, n2(l.amount)])),
+    ),
+  );
+  out.push(table("Garages", ["id", "name", "town", "county", "phone", "email"], db.garages.map((g) => [g.id, g.name, g.town, g.county, g.phone, g.email])));
+  out.push(table("Damage reported from the site phones (Fleet, Damage reported)", ["id", "vehicle", "reported", "by", "where", "what happened", "status"], db.damageReports.map((d) => [d.id, reg(d.vehicleId), d.at.slice(0, 16).replace("T", " "), name(d.driverId), d.where, d.note, d.status])));
+  out.push(
+    table(
+      "Drivers' licences (Fleet, Drivers)",
+      ["driver", "driving licence", "Driver CPC", "sent from the phone, to check"],
+      db.people.filter((p) => p.drives).map((p) => [p.name, p.licences?.driving ? due(p.licences.driving.expiryDate, today) : "none on file", p.licences?.cpc ? due(p.licences.cpc.expiryDate, today) : "", p.licences?.driving?.fromPhoneAt || p.licences?.cpc?.fromPhoneAt ? "yes" : ""]),
     ),
   );
 

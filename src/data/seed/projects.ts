@@ -531,7 +531,10 @@ export function seedProjects(r: Rng, today: string, quotes: Quote[], holidays: H
   // Derrybawn Bridge, Wednesday of last week: the parapet stones were lifted under a night road
   // closure, so two of the crew worked on from their day, time and a half up to midnight and
   // double time after it. (An early start is not overtime; working on past midnight is.)
-  for (const a of fullOn("C724", addDays(thisMonday, -5)).slice(0, 2)) {
+  // Orla Prunty and Seán Dunphy when they were in that day, so the story reads the same on any weekday.
+  const nightCrew = ["p-105", "p-128"];
+  const rank = (a: Attendance) => (nightCrew.includes(a.personId) ? nightCrew.indexOf(a.personId) : nightCrew.length);
+  for (const a of fullOn("C724", addDays(thisMonday, -5)).sort((x, y) => rank(x) - rank(y)).slice(0, 2)) {
     a.overtimeHours = 7.5;
     a.doubleHours = 1.5;
   }

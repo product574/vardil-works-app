@@ -54,3 +54,14 @@ if __name__ == "__main__":
         page.screenshot(path=f"{OUT}/07-activity.png")
     errs = run(steps)
     print("console:", errs)
+
+
+# The sample data checks and exports last week from its Tuesday on, so on a Wednesday to Friday
+# there is nothing left to check. The payroll steps take last week back to "not checked yet".
+OPEN_LAST_WEEK = """(() => { const k = 'cod.data'; const s = JSON.parse(localStorage.getItem(k)); const db = s.state.db;
+  const d = new Date(s.state.day + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7) - 7);
+  const mon = d.toISOString().slice(0, 10);
+  db.payrollChecks = db.payrollChecks.filter(c => c.weekStart !== mon); db.payrollExports = db.payrollExports.filter(x => x.weekStart !== mon);
+  localStorage.setItem(k, JSON.stringify(s)); })()"""
+def open_last_week(page):
+    page.evaluate(OPEN_LAST_WEEK); page.reload(); page.wait_for_selector("main h1"); page.wait_for_timeout(400)

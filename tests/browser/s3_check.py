@@ -1,7 +1,7 @@
 import os, re, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from shots import run, BASE, OUT
+from shots import run, BASE, OUT, open_last_week
 
 # Oisin's changes of 17 Nov: the site phone (two kinds, driving check, profile, reimbursements),
 # Schedule holidays, attendance per site and last week, the Oldstone call (Sage numbers, payroll
@@ -81,7 +81,7 @@ def steps(page, ctx):
     # ── Sage numbers and payroll export
     go(page, "/people", "table")
     check("Register: a Sage no. column, with Aoife Kinsella not in Sage yet", "Sage no." in page.locator("thead").inner_text() and "Not in Sage" in page.locator("tr", has_text="Aoife Kinsella").inner_text())
-    go(page, "/people/payroll", "table")
+    go(page, "/people/payroll", "table"); open_last_week(page)
     check("Payroll: last week by default, not exported yet, Aoife left out until she has a Sage number", "Not exported yet" in main.inner_text() and "Aoife Kinsella: no Sage number" in main.inner_text(), main.inner_text()[:400])
     pre = page.locator("pre").inner_text()
     check("Payroll: the file has hours only, matched on Sage numbers", pre.startswith("Employee No,Surname,Forename,Period end,Basic hours,Overtime hours") and "Kinsella" not in pre and re.search(r"\n00\d\d,", pre))

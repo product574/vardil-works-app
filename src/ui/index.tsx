@@ -168,7 +168,13 @@ export function Field({ label, hint, children, className }: { label: string; hin
 // ── Dialog ────────────────────────────────────────────────────────────────────
 
 /** A modal built on the browser's own <dialog>, so Escape, focus trapping and the backdrop come free. */
-export function Dialog({ open, onClose, title, children, footer, wide }: { open: boolean; onClose: () => void; title: string; children: ReactNode; footer?: ReactNode; wide?: boolean }) {
+/**
+ * `size` "xl" is the wide window for a document beside its form (from the Secure-All build, 18 Nov).
+ * With `split` the body has a fixed height and no padding or scrolling of its own: its two halves
+ * scroll separately.
+ */
+export function Dialog({ open, onClose, title, children, footer, wide, size, split }: { open: boolean; onClose: () => void; title: string; children: ReactNode; footer?: ReactNode; wide?: boolean; size?: "md" | "wide" | "xl"; split?: boolean }) {
+  const width = size ?? (wide ? "wide" : "md");
   const ref = useRef<HTMLDialogElement>(null);
   // A close we make ourselves is not the person's, so it is not reported as one. Two cases. The
   // screen says the dialog is shut (its own Close button, Cancel, Save): reporting that close as
@@ -199,12 +205,16 @@ export function Dialog({ open, onClose, title, children, footer, wide }: { open:
   return (
     <dialog
       ref={ref}
-      onClose={() => {
+      onClose={(e) => {
+        // React passes a dialog's close event up to the dialogs it sits inside, so a dialog
+        // opened from another one (a renewal from a vehicle, a file from an invoice) would shut
+        // its parent as it closed. Only this dialog's own close counts.
+        if (e.target !== ref.current) return;
         if (ours.current) ours.current = false;
         else onClose();
       }}
       onClick={(e) => e.target === ref.current && onClose()}
-      className={cx("rise-in m-auto w-[calc(100vw-2rem)] rounded-lg border border-line bg-surface p-0 text-ink shadow-pop backdrop:bg-black/40", wide ? "max-w-3xl" : "max-w-lg")}
+      className={cx("rise-in m-auto w-[calc(100vw-2rem)] rounded-lg border border-line bg-surface p-0 text-ink shadow-pop backdrop:bg-black/40", width === "xl" ? "max-w-[76rem]" : width === "wide" ? "max-w-3xl" : "max-w-lg")}
     >
       {open && (
         <>
@@ -214,7 +224,7 @@ export function Dialog({ open, onClose, title, children, footer, wide }: { open:
               <X size={18} />
             </button>
           </div>
-          <div className="max-h-[70dvh] overflow-y-auto px-4 py-4">{children}</div>
+          {split ? <div className="h-[min(74dvh,52rem)] overflow-hidden max-lg:h-auto max-lg:max-h-[74dvh] max-lg:overflow-y-auto">{children}</div> : <div className="max-h-[70dvh] overflow-y-auto px-4 py-4">{children}</div>}
           {footer && <div className="flex flex-wrap justify-end gap-2 border-t border-line px-4 py-3">{footer}</div>}
         </>
       )}

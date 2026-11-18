@@ -243,3 +243,72 @@ export function personDay(
   if (date < today || (date === today && marked.length > 0)) return { from: "timesheet", rows: marked.map((a) => ({ projectId: a.projectId, half: a.status === "half", ...(a.status === "restday" ? { restday: true } : {}), overtimeHours: a.overtimeHours, ...storedDouble(a.doubleHours) })) };
   return { from: "plan", rows: plan.filter((x) => x.personId === personId && x.date === date && siteIds.has(x.projectId)).map((x) => ({ projectId: x.projectId, half: x.part === "half", overtimeHours: x.overtimeHours ?? 0 })) };
 }
+
+// ── Who is where on any day (18 Nov) ───────────────────────────────────────
+
+/**
+ * Where one operative is on a day: "On site" (marked in on the timesheet), "Planned" (down for a
+ * site but not marked in: not yet today, not at all on a day gone, or simply planned on a day to
+ * come), "On leave" or "Not planned". The same rule as `dayRoster`: a day gone is read from the
+ * timesheet, a day to come from the plan. Today, someone on a site's list with no plan counts as
+ * planned there, as Who is where always did.
+ */
+export type WhereState = "On site" | "Planned" | "On leave" | "Not planned";
+export type WhereRow = { personId: ID; where: WhereState; sites: { projectId: ID; note: string }[] };
+
+export function whereOn(
+  input: {
+    people: { id: ID }[];
+    attendance: Pick<Attendance, "projectId" | "personId" | "date" | "status" | "overtimeHours" | "doubleHours">[];
+    plan: { projectId: ID; personId: ID; date: string; part?: "half"; overtimeHours?: number }[];
+    assignments: { personId: ID; projectId: ID }[];
+    holidays: Pick<Holiday, "personId" | "status" | "from" | "to">[];
+    /** The sites someone on a site's list counts as planned for today. */
+    liveIds: Set<ID>;
+  },
+  date: string,
+  today: string,
+): WhereRow[] {
+  return input.people.map((p) => {
+    const marked = input.attendance.filter((a) => a.personId === p.id && a.date === date);
+    if (marked.length) return { personId: p.id, where: "On site", sites: marked.map((a) => ({ projectId: a.projectId, note: a.status === "half" ? "half day" : a.status === "restday" ? overtimeText(a) : overtimeNote(a) })) };
+    if (input.holidays.some((h) => h.personId === p.id && h.status === "Approved" && date >= h.from && date <= h.to)) return { personId: p.id, where: "On leave", sites: [] };
+    const planned = input.plan.filter((x) => x.personId === p.id && x.date === date);
+    if (planned.length) return { personId: p.id, where: "Planned", sites: planned.map((x) => ({ projectId: x.projectId, note: x.part === "half" ? "half day" : x.overtimeHours ? `+${x.overtimeHours}h` : "" })) };
+    const onList = date === today ? input.assignments.filter((a) => a.personId === p.id && input.liveIds.has(a.projectId)) : [];
+    if (onList.length) return { personId: p.id, where: "Planned", sites: [...new Set(onList.map((a) => a.projectId))].map((projectId) => ({ projectId, note: "" })) };
+    return { personId: p.id, where: "Not planned", sites: [] };
+  });
+}
+
+/** What "Planned" is called on a day: not marked in on a day gone, not marked yet today, planned ahead. */
+export function plannedLabel(date: string, today: string): string {
+  return date < today ? "Not marked in" : date === today ? "Not marked yet" : "Planned";
+}
+
+/** The working days Who is where offers: 13 weeks back to 6 weeks ahead, weekends left out, newest last. */
+export function whereDays(today: string): string[] {
+  const from = addDays(weekStartOf(today), -7 * 13);
+  const to = addDays(weekStartOf(today), 7 * 6 + 4);
+  return datesBetween(from, to).filter((d) => !isWeekend(d));
+}
+
+/** The sites running on a day: started by then and not finished before it. */
+export function sitesRunning<T extends Pick<Project, "status" | "startDate" | "endDate"> & { completedAt?: string }>(projects: T[], date: string): T[] {
+  return projects.filter((p) => p.startDate <= date && (p.status === "Live" || p.status === "Not started" || (p.completedAt?.slice(0, 10) ?? p.endDate) >= date));
+}
+
+/**
+ * The site a driver was on, on a day, for filing a repair and for Fleet (18 Nov): where they were
+ * marked in or planned (`siteOn`), and for a site manager, who is not on the timesheet, the site
+ * they ran that day (the first by code, if they run more than one).
+ */
+export function driverSiteOn(
+  personId: ID,
+  date: string,
+  attendance: Pick<Attendance, "personId" | "projectId" | "date">[],
+  plan: { personId: ID; projectId: ID; date: string }[],
+  projects: (Pick<Project, "id" | "code" | "siteManagerId" | "status" | "startDate" | "endDate"> & { completedAt?: string })[],
+): ID | undefined {
+  return siteOn(personId, date, attendance, plan, new Set(projects.map((p) => p.id))) ?? sitesRunning(projects, date).filter((p) => p.siteManagerId === personId).sort((a, b) => a.code.localeCompare(b.code))[0]?.id;
+}

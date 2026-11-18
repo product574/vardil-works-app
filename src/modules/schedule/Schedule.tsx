@@ -1,12 +1,14 @@
+import { CaretLeft, CaretRight } from "@phosphor-icons/react";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { useScreenState } from "@/app/screen-state";
 import { useAccess } from "@/data/access";
 import { planDays, type PlanMark, planRestDay, removeFromRoster, sendWeekAhead, setPlanDay } from "@/data/actions";
 import { co } from "@/data/place";
 import { useData, useDay } from "@/data/store";
 import { type Db, LANGUAGE_NAME, type Person, type Project } from "@/data/types";
 import { type DayState, daysLabel, openDays, partLoad, personWeek, planClashes, planShort } from "@/lib/availability";
-import { dayRoster, dropOutcome, firstOnSite, planSteps, stepsToPlan } from "@/lib/roster";
+import { dayRoster, dropOutcome, firstOnSite, plannedLabel, planSteps, sitesRunning, stepsToPlan, whereDays, whereOn, type WhereState } from "@/lib/roster";
 import { bankHolidayOn, isBankHoliday, isRestDay } from "@/lib/bank-holidays";
 import { addDays } from "@/lib/dates";
 import { dShort, dWeekday, plural } from "@/lib/format";
@@ -925,41 +927,129 @@ function AddToDayDialog({ siteId, date, db, liveIds, onAdded, onClose }: { siteI
   );
 }
 
-type Where = "On site" | "Planned" | "On leave" | "Not planned";
-const WHERE_TONE: Record<Where, Tone> = { "On site": "ok", Planned: "accent", "On leave": "warn", "Not planned": "bad" };
+/** A day's note as words: a full day, a half day, a full day with overtime, or overtime hours on a rest day. */
+const dayText = (note: string) => (!note ? "Full day" : note.startsWith("+") ? `Full day ${note}` : note.charAt(0).toUpperCase() + note.slice(1));
+const WHERE_TONE: Record<WhereState, Tone> = { "On site": "ok", Planned: "accent", "On leave": "warn", "Not planned": "bad" };
 
-/** Every operative and where they are today. */
+/**
+ * Every operative and where they are on a day (Oisin, 18 Nov: laid out like Attendance history,
+ * "so it is easy to flick through and see who is at what site for that day"). A Day box with
+ * arrows either side (weekends skipped), Site and Status boxes, and Everyone or Per site at the
+ * top right, Per site first. A day gone is read from the timesheet and a day to come from the
+ * plan, the same rule as the week and month ahead (`whereOn` in src/lib/roster.ts).
+ */
 export function WhoIsWhere() {
   const db = useData((s) => s.db);
-  const day = useDay();
-  const [show, setShow] = useState<"All" | Where | "Per site">("All");
-  const rows = db.people
-    .filter((p) => p.active && p.kind === "Operative")
-    .map((p) => {
-      const marked = db.attendance.filter((a) => a.personId === p.id && a.date === day);
-      const plannedOn = db.plan.filter((x) => x.personId === p.id && x.date === day);
-      const roster = db.assignments.filter((a) => a.personId === p.id);
-      const where: Where = marked.length ? "On site" : onLeave(db, p.id, day) ? "On leave" : plannedOn.length || roster.length ? "Planned" : "Not planned";
-      const siteIds = marked.length ? marked.map((a) => a.projectId) : plannedOn.length ? plannedOn.map((x) => x.projectId) : roster.map((a) => a.projectId);
-      return { p, where, sites: where === "On leave" ? [] : [...new Set(siteIds)].map((id) => db.projects.find((x) => x.id === id)!).filter((x) => x && x.status === "Live") };
-    })
-    .sort((a, b) => (a.sites[0]?.code ?? "~").localeCompare(b.sites[0]?.code ?? "~") || a.p.name.localeCompare(b.p.name));
-  const n = (w: Where) => rows.filter((r) => r.where === w).length;
-  const shown = rows.filter((r) => show === "All" || r.where === show);
-  // Per site (Oisin, 17 Nov), laid out like the plant overview: a heading per live site, then who is there today.
-  const live = db.projects.filter((p) => p.status === "Live").sort((a, b) => a.code.localeCompare(b.code));
-  const onSite = (id: string) => rows.filter((r) => r.where !== "On leave" && r.where !== "Not planned" && r.sites.some((s) => s.id === id));
-  const elsewhere = rows.filter((r) => r.where === "On leave" || r.where === "Not planned" || r.sites.length === 0);
+  const today = useDay();
+  const days = useMemo(() => whereDays(today), [today]);
+  const [picked, setDay] = useScreenState<string>("where.day", today);
+  const day = days.includes(picked) ? picked : today;
+  const [layout, setLayout] = useScreenState<"sites" | "all">("where.layout", "sites");
+  const [siteId, setSiteId] = useScreenState<string>("where.site", "all");
+  const [show, setShow] = useScreenState<"All" | WhereState>("where.status", "All");
+  const name = (id: string) => db.people.find((p) => p.id === id)?.name ?? "";
+  const running = sitesRunning(db.projects, day).sort((a, b) => a.code.localeCompare(b.code));
+  const rows = whereOn(
+    { people: db.people.filter((p) => p.active && p.kind === "Operative"), attendance: db.attendance, plan: db.plan, assignments: db.assignments, holidays: db.holidays, liveIds: new Set(db.projects.filter((p) => p.status === "Live").map((p) => p.id)) },
+    day,
+    today,
+  )
+    .map((r) => ({ ...r, p: db.people.find((x) => x.id === r.personId)! }))
+    .sort((a, b) => {
+      const ca = db.projects.find((x) => x.id === a.sites[0]?.projectId)?.code ?? "~";
+      const cb = db.projects.find((x) => x.id === b.sites[0]?.projectId)?.code ?? "~";
+      return ca.localeCompare(cb) || a.p.name.localeCompare(b.p.name);
+    });
+  const planned = plannedLabel(day, today);
+  const statusName = (w: WhereState) => (w === "Planned" ? planned : w);
+  const n = (w: WhereState) => rows.filter((r) => r.where === w).length;
+  const inSite = (r: (typeof rows)[number]) => siteId === "all" || r.sites.some((s) => s.projectId === siteId);
+  const shown = rows.filter((r) => (show === "All" || r.where === show) && inSite(r));
+  const siteList = siteId === "all" ? running : running.filter((p) => p.id === siteId);
+  // A site that was not running that day but had someone on it (a weekend stamp, a late finish) still gets its heading.
+  const extra = siteId === "all" ? [...new Set(shown.flatMap((r) => r.sites.map((s) => s.projectId)))].filter((id) => !running.some((p) => p.id === id)).map((id) => db.projects.find((p) => p.id === id)!).filter(Boolean) : [];
+  const elsewhere = shown.filter((r) => r.sites.length === 0);
+  const at = days.indexOf(day);
+  const bank = bankHolidayOn(db.bankHolidays, day);
+  const when = day === today ? "Today" : dWeekday(day);
+  // On a phone the Day and Phone columns fold under the status and the name, so the table fits.
+  const cols = (
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th className="sm:w-40">Status</th>
+        <th className="w-44 max-sm:hidden">Day</th>
+        <th className="w-36 max-sm:hidden">Phone</th>
+      </tr>
+    </thead>
+  );
+  const nameCell = (p: Person) => (
+    <td>
+      <span className="font-medium">{p.name}</span>
+      <span className="block text-[0.87rem] text-muted">{p.trade}</span>
+      <span className="block text-[0.93rem] sm:hidden">
+        <Tel number={p.phone} />
+      </span>
+    </td>
+  );
 
   return (
     <>
-      <PageHead title="Who is where" note={`${dWeekday(day)}: ${n("On site")} marked on site, ${n("Planned")} expected but not marked yet, ${n("On leave")} on leave, ${n("Not planned")} with nowhere to be.`} actions={<Segmented label="Where people are" value={show} onChange={setShow} options={[{ value: "All", label: "All", count: rows.length }, { value: "On site", label: "On site", count: n("On site") }, { value: "Per site", label: "Per site" }, { value: "Planned", label: "Not marked yet", count: n("Planned") }, { value: "On leave", label: "On leave", count: n("On leave") }, { value: "Not planned", label: "Not planned", count: n("Not planned") }]} />} />
-      <PageBody className={show === "Per site" ? "grid max-w-5xl gap-6" : undefined}>
-        {show === "Per site" && (
+      <PageHead
+        title="Who is where"
+        note={`${when}${day === today ? `, ${dWeekday(day)}` : ""}${bank ? `, ${bank.name}` : ""}: ${n("On site")} marked on site, ${n("Planned")} ${planned.toLowerCase()}, ${n("On leave")} on leave, ${n("Not planned")} with nowhere to be.`}
+        actions={<Segmented label="Who is where layout" value={layout} onChange={setLayout} options={[{ value: "all", label: "Everyone" }, { value: "sites", label: "Per site" }]} />}
+      >
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-1">
+            <Button aria-label="Previous day" className="px-2" disabled={at <= 0} onClick={() => setDay(days[at - 1]!)}>
+              <CaretLeft size={16} />
+            </Button>
+            <select aria-label="Day" className="field w-auto max-w-full" value={day} onChange={(e) => setDay(e.target.value)}>
+              {days.map((d) => (
+                <option key={d} value={d}>
+                  {dWeekday(d)}
+                  {d === today ? " (today)" : ""}
+                </option>
+              ))}
+            </select>
+            <Button aria-label="Next day" className="px-2" disabled={at >= days.length - 1} onClick={() => setDay(days[at + 1]!)}>
+              <CaretRight size={16} />
+            </Button>
+          </div>
+          {day !== today && (
+            <Button variant="ghost" onClick={() => setDay(today)}>
+              Today
+            </Button>
+          )}
+          <select aria-label="Site" className="field w-auto max-w-full" value={siteId} onChange={(e) => setSiteId(e.target.value)}>
+            <option value="all">All sites</option>
+            {running.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.code} {p.name}
+              </option>
+            ))}
+            {siteId !== "all" && !running.some((p) => p.id === siteId) && <option value={siteId}>{db.projects.find((p) => p.id === siteId)?.code} (not running that day)</option>}
+          </select>
+          <select aria-label="Status" className="field w-auto max-w-full" value={show} onChange={(e) => setShow(e.target.value as typeof show)}>
+            <option value="All">Everyone ({rows.length})</option>
+            <option value="On site">On site ({n("On site")})</option>
+            <option value="Planned">
+              {planned} ({n("Planned")})
+            </option>
+            <option value="On leave">On leave ({n("On leave")})</option>
+            <option value="Not planned">Not planned ({n("Not planned")})</option>
+          </select>
+        </div>
+      </PageHead>
+      <PageBody className="grid max-w-5xl grid-cols-[minmax(0,1fr)] gap-6">
+        {day < today && <p className="text-muted">A day gone: who was marked in on the timesheet. Anyone planned who was not marked in shows as {planned.toLowerCase()}.</p>}
+        {day > today && <p className="text-muted">A day to come: who is planned, from the week and month ahead.</p>}
+        {layout === "sites" && (
           <>
-            {live.map((site) => {
-              const people = onSite(site.id);
-              const marked = people.filter((r) => r.where === "On site").length;
+            {[...siteList, ...extra].map((site) => {
+              const people = shown.filter((r) => r.sites.some((s) => s.projectId === site.id));
+              const on = people.filter((r) => r.where === "On site").length;
               return (
                 <Section
                   key={site.id}
@@ -968,37 +1058,37 @@ export function WhoIsWhere() {
                       {site.code} {site.name}
                     </Link>
                   }
-                  aside={`${db.people.find((p) => p.id === site.siteManagerId)?.name}, ${co(site.county)}. ${marked} on site${people.length > marked ? `, ${people.length - marked} not marked yet` : ""}`}
+                  aside={`${name(site.siteManagerId)}, ${co(site.county)}. ${on} on site${people.length > on ? `, ${people.length - on} ${planned.toLowerCase()}` : ""}`}
                 >
                   <Panel className="overflow-x-auto">
                     {people.length === 0 ? (
-                      <p className="px-3 py-3 text-muted">Nobody is on this site today.</p>
+                      <p className="px-3 py-3 text-muted">
+                        {show === "All" ? `Nobody ${day < today ? "was" : "is"} on this site ${day === today ? "today" : "that day"}.` : `Nobody in this group on this site ${day === today ? "today" : "that day"}.`}
+                      </p>
                     ) : (
-                      <table className="tbl table-fixed" aria-label={`${site.code} ${site.name} today`}>
-                        <thead>
-                          <tr>
-                            <th>Name</th>
-                            <th className="w-56">Trade</th>
-                            <th className="w-36">Status</th>
-                            <th className="w-36">Phone</th>
-                          </tr>
-                        </thead>
+                      <table className="tbl table-fixed" aria-label={`${site.code} ${site.name}, ${dWeekday(day)}`}>
+                        {cols}
                         <tbody>
-                          {people.map(({ p, where, sites }) => (
-                            <tr key={p.id}>
-                              <td className="font-medium">
-                                {p.name}
-                                {sites.length > 1 && <span className="block text-[0.87rem] font-normal text-muted">Also {sites.filter((x) => x.id !== site.id).map((x) => x.code).join(", ")} today</span>}
-                              </td>
-                              <td>{p.trade}</td>
-                              <td>
-                                <Badge tone={WHERE_TONE[where]}>{where === "Planned" ? "Not marked yet" : where}</Badge>
-                              </td>
-                              <td className="whitespace-nowrap">
-                                <Tel number={p.phone} />
-                              </td>
-                            </tr>
-                          ))}
+                          {people.map(({ p, where, sites }) => {
+                            const mine = sites.find((s) => s.projectId === site.id);
+                            const others = sites.filter((s) => s.projectId !== site.id);
+                            return (
+                              <tr key={p.id}>
+                                {nameCell(p)}
+                                <td>
+                                  <Badge tone={WHERE_TONE[where]}>{statusName(where)}</Badge>
+                                  <span className="block text-[0.87rem] text-muted sm:hidden">{dayText(mine?.note ?? "")}</span>
+                                </td>
+                                <td className="max-sm:hidden">
+                                  {dayText(mine?.note ?? "")}
+                                  {others.length > 0 && <span className="block text-[0.87rem] text-muted">Also {others.map((x) => db.projects.find((pr) => pr.id === x.projectId)?.code).join(", ")}</span>}
+                                </td>
+                                <td className="whitespace-nowrap max-sm:hidden">
+                                  <Tel number={p.phone} />
+                                </td>
+                              </tr>
+                            );
+                          })}
                         </tbody>
                       </table>
                     )}
@@ -1006,27 +1096,20 @@ export function WhoIsWhere() {
                 </Section>
               );
             })}
-            {elsewhere.length > 0 && (
-              <Section title="Not on a site today" aside={`${elsewhere.length} on leave or with nowhere to be`}>
+            {siteId === "all" && elsewhere.length > 0 && (
+              <Section title={`Not on a site ${day === today ? "today" : "that day"}`} aside={`${elsewhere.length} on leave or with nowhere to be`}>
                 <Panel className="overflow-x-auto">
-                  <table className="tbl table-fixed" aria-label="Not on a site today">
-                    <thead>
-                      <tr>
-                        <th>Name</th>
-                        <th className="w-56">Trade</th>
-                        <th className="w-36">Status</th>
-                        <th className="w-36">Phone</th>
-                      </tr>
-                    </thead>
+                  <table className="tbl table-fixed" aria-label={`Not on a site, ${dWeekday(day)}`}>
+                    {cols}
                     <tbody>
                       {elsewhere.map(({ p, where }) => (
                         <tr key={p.id}>
-                          <td className="font-medium">{p.name}</td>
-                          <td>{p.trade}</td>
+                          {nameCell(p)}
                           <td>
-                            <Badge tone={WHERE_TONE[where]}>{where === "Planned" ? "Not marked yet" : where}</Badge>
+                            <Badge tone={WHERE_TONE[where]}>{statusName(where)}</Badge>
                           </td>
-                          <td className="whitespace-nowrap">
+                          <td className="text-muted max-sm:hidden">-</td>
+                          <td className="whitespace-nowrap max-sm:hidden">
                             <Tel number={p.phone} />
                           </td>
                         </tr>
@@ -1038,50 +1121,54 @@ export function WhoIsWhere() {
             )}
           </>
         )}
-        {show !== "Per site" && (
-        <Panel className="max-w-5xl overflow-x-auto">
-          {shown.length === 0 ? (
-            <Empty title="Nobody in this group today" />
-          ) : (
-            <table className="tbl">
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Trade</th>
-                  <th>Site today</th>
-                  <th>Status</th>
-                  <th>Phone</th>
-                </tr>
-              </thead>
-              <tbody>
-                {shown.map(({ p, where, sites }) => (
-                  <tr key={p.id}>
-                    <td className="font-medium">{p.name}</td>
-                    <td>{p.trade}</td>
-                    <td>
-                      {sites.length === 0 ? (
-                        <span className="text-muted">-</span>
-                      ) : (
-                        sites.map((s, i) => (
-                          <span key={s.id}>
-                            {i > 0 && ", "}
-                            <Link to={`/projects/${s.code}`} className="underline-offset-2 hover:underline">
-                              {s.code} {s.name}
-                            </Link>
-                          </span>
-                        ))
-                      )}
-                    </td>
-                    <td>
-                      <Badge tone={WHERE_TONE[where]}>{where === "Planned" ? "Not marked yet" : where}</Badge>
-                    </td>
-                    <td className="whitespace-nowrap">{p.phone}</td>
+        {layout === "all" && (
+          <Panel className="overflow-x-auto">
+            {shown.length === 0 ? (
+              <Empty title={`Nobody in this group ${day === today ? "today" : "that day"}`} />
+            ) : (
+              <table className="tbl" aria-label={`Everyone, ${dWeekday(day)}`}>
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Site</th>
+                    <th>Status</th>
+                    <th className="max-sm:hidden">Phone</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </Panel>
+                </thead>
+                <tbody>
+                  {shown.map(({ p, where, sites }) => (
+                    <tr key={p.id}>
+                      {nameCell(p)}
+                      <td>
+                        {sites.length === 0 ? (
+                          <span className="text-muted">-</span>
+                        ) : (
+                          sites.map((s, i) => {
+                            const site = db.projects.find((x) => x.id === s.projectId);
+                            return (
+                              <span key={s.projectId} className="block">
+                                {i > 0 && <span className="sr-only">, </span>}
+                                <Link to={`/projects/${site?.code}`} className="underline-offset-2 hover:underline">
+                                  {site?.code} {site?.name}
+                                </Link>
+                                {s.note && <span className="text-muted">, {s.note}</span>}
+                              </span>
+                            );
+                          })
+                        )}
+                      </td>
+                      <td>
+                        <Badge tone={WHERE_TONE[where]}>{statusName(where)}</Badge>
+                      </td>
+                      <td className="whitespace-nowrap max-sm:hidden">
+                        <Tel number={p.phone} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </Panel>
         )}
       </PageBody>
     </>

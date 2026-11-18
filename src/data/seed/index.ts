@@ -16,6 +16,7 @@ import { REGION } from "@/lib/money";
 import { ROLES } from "../roles";
 import type { Db } from "../types";
 import { seedAssets, seedVehicleChecks } from "./assets";
+import { buildFleet, withLicences } from "./fleet";
 import { seedChat } from "./chat";
 import { quotedMargin, seedCommercial } from "./commercial";
 import { fillManagementDates, fillPurchases, seedDayInstructions, seedExpenses, seedOvertimeClaims, seedActivity, seedFiles, seedMail, seedManagement, seedMoney, seedPayrollChecks, seedPayrollExports, seedSiteAccess } from "./office";
@@ -47,7 +48,9 @@ function toUK(db: Db, day: string): Db {
   for (const v of out.vehicles) {
     const [yy = "24", letters = "AB", n = "1"] = v.reg.split("-");
     const reg = `${(letters + "K").slice(0, 2)}${yy.slice(0, 2)} ${(n + "XYZ").replace(/\d/g, (d) => "ABCDEFGHJK"[Number(d)]!).slice(0, 3)}`;
-    for (const d of out.fleetDocs) if (d.vehicleId === v.id) d.fileName = d.fileName.replace(v.reg, reg);
+    for (const d of out.fleetDocs) if (d.vehicleId === v.id) d.fileName = d.fileName.replace(v.reg, reg).replace(/\bCVRT\b|\bNCT\b/, "MOT");
+    for (const p of [...out.fleetDocs.map((d) => d.proof)]) if (p) p.name = p.name.replace(v.reg, reg).replace(/\bCVRT\b|\bNCT\b/, "MOT");
+    for (const t of out.todos) t.title = t.title.replace(v.reg, reg).replace("CVRT", "MOT");
     v.reg = reg;
   }
   return out;
@@ -64,15 +67,18 @@ function buildIrishSeed(realToday: string, opts: { emailDomain?: string; vatPct?
   const vatPct = opts.vatPct ?? REGION[DEFAULT_BRAND.region].vatPct;
   const r = rng(20261113);
 
-  const { people, holidays } = seedPeople(r, day, domain);
-  const names = new Map(people.map((p) => [p.id, p.name]));
-  const rates = new Map(people.map((p) => [p.id, p.hourlyRate]));
+  const { people: staff, holidays } = seedPeople(r, day, domain);
+  const names = new Map(staff.map((p) => [p.id, p.name]));
+  const rates = new Map(staff.map((p) => [p.id, p.hourlyRate]));
   // Won jobs were priced on the crews planned for them (projects.ts), so the quotes follow.
   const { clients, enquiries, quotes } = seedCommercial(r, day, quoteTargets(day, rates, holidays, quotedMargin));
   const { meta, ...proj } = seedProjects(r, day, quotes, holidays, names, rates);
-  // One driver per vehicle, matched to where it is based; the last was sold and has none.
+  // The drivers the vans had before 18 Nov: kept so the random numbers drawn after them do not change.
   const drivers = ["p-sm2", "p-cm1", "p-sm5", "p-sm1", "p-sm3", "p-sm4", "p-yard", "p-128", "p-114", "p-107", "p-cm2", "p-hs"];
   const assets = seedAssets(r, day, drivers);
+  // The fleet (18 Nov, from the Secure-All build) has its own random numbers, so it moves nothing else.
+  const fleet = buildFleet(day, rng(2207), staff, proj.attendance, proj.plan, proj.projects);
+  const people = withLicences(staff, fleet.vehicles, day);
   const { approvals, automations } = seedManagement(day);
   const handoverPending = new Set(approvals.filter((a) => a.kind === "handover" && a.status === "Pending" && a.projectId).map((a) => a.projectId!.replace("pr-", "")));
   const files = seedFiles(r, day, proj.projects, meta, names, handoverPending);
@@ -95,12 +101,13 @@ function buildIrishSeed(realToday: string, opts: { emailDomain?: string; vatPct?
     payrollExports: [],
     payrollChecks: [],
     bankHolidays: builtInBankHolidays(day, "IE"),
-    vehicleChecks: seedVehicleChecks(day, assets.vehicles),
+    vehicleChecks: seedVehicleChecks(day, fleet.vehicles),
     expenses: seedExpenses(day),
     overtimeClaims: [],
     dayInstructions: seedDayInstructions(day),
     attendanceChanges: [],
     ...assets,
+    ...fleet,
     files,
     ...money,
     mails,

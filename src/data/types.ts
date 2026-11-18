@@ -24,7 +24,12 @@ export const LANGUAGE_NAME: Record<Language, string> = {
 };
 
 /** A photo or scan kept as evidence, for example of a renewed ticket. Held in the browser in the demo. */
-export type Proof = { name: string; dataUrl: string; addedBy: string; addedAt: string };
+/**
+ * A file kept with a record. `sample` (sample data only) means the file is not stored but drawn
+ * when opened, from the record it belongs to ("invoice", "receipt", "licence", "damage/<name>"),
+ * and `dataUrl` is then empty. See src/lib/sample-docs.ts.
+ */
+export type Proof = { name: string; dataUrl: string; addedBy: string; addedAt: string; sample?: string };
 export type Cert = {
   id: ID;
   name: string;
@@ -55,6 +60,10 @@ export type Person = {
   certs: Cert[];
   /** The employee number Sage Payroll gave them (0001), so hours exported match the right person (Oldstone call, 16 Nov). */
   sageNo?: string;
+  /** On Fleet's driver list (18 Nov); `drivesUntil` is the day they were taken off it. */
+  drives?: boolean;
+  drivesUntil?: Day;
+  licences?: { driving?: Licence; cpc?: Licence };
 };
 
 export type Holiday = {
@@ -430,40 +439,160 @@ export type HiredPlant = {
   notes: string;
 };
 
-export type ComplianceItem = { paidDate: Day; expiryDate: Day; amount: number };
+// ── Fleet (18 Nov, brought across from the Secure-All build at Oisin's word) ───────
+
+/** A yard or office that vehicles are kept at. */
+export type BaseKind = "Yard" | "Office";
+export type Base = { id: ID; name: string; county: string; region: string; kind: BaseKind };
+
+export type Garage = { id: ID; name: string; town: string; county: string; phone: string; email: string; contact?: string; notes?: string };
+
+/**
+ * One renewal (tax, the CVRT or MOT, insurance). Recording a renewal sets `discPending` until
+ * someone ticks that the new disc is on the vehicle (`discOnAt`), a few days later; after 7 days
+ * without the tick it is flagged.
+ */
+export type ComplianceItem = { paidDate: Day; expiryDate: Day; amount: number; discPending?: boolean; discOnAt?: Day };
+
+export type VehicleKind = "Van" | "Crew van" | "Pickup" | "Tipper" | "Car";
+export type Fuel = "Diesel" | "Petrol" | "Hybrid" | "Electric";
+
 export type Vehicle = {
   id: ID;
   reg: string;
+  make: string;
   model: string;
-  kind: "Van" | "Crew van" | "Pickup" | "Tipper";
-  baseLocation: string;
+  kind: VehicleKind;
+  fuel: Fuel;
+  /** What the vehicle is used for, such as Site crew van or Muck away. */
+  division: string;
+  ownership: "Owned" | "Leased";
+  baseId: ID | null;
+  /** The person who drives it; null for a pool vehicle at the yard. */
   driverId: ID | null;
-  purchasePrice: number;
-  purchaseMonth: string;
-  sellPrice: number | null;
-  active: boolean;
+  purchasePrice: number | null;
+  /** "YYYY-MM". */
+  purchaseMonth: string | null;
   mileage: number;
+  /** When the mileage was last known to be right, and where it came from. */
+  mileageAt?: Day;
+  mileageFrom?: "typed" | "invoice";
+  active: boolean;
+  /** Set when the vehicle is removed from the fleet. */
+  removedAt?: Day;
+  /** What it was sold for; null means not sold (scrapped, returned to the lessor). */
+  sellPrice: number | null;
   compliance: { tax: ComplianceItem; test: ComplianceItem; insurance: ComplianceItem };
+  /** When the next service is due (kept from ABC's own Fleet, Oisin's pick). */
   service: ServicePlan;
 };
 
 /** A driver's daily walkaround check from the site phone (src/lib/driving.ts). */
 export type VehicleCheck = { id: ID; vehicleId: ID; personId: ID; at: Stamp; defects: { item: string; note: string }[] };
 
-export type FleetDocCategory = "repairs" | "tax" | "test" | "insurance";
+export type RepairCategory = "Service" | "Tyres" | "Brakes" | "Bodywork" | "Breakdown and recovery" | "Test preparation" | "Glass" | "Electrical" | "Other";
+
+/**
+ * One vehicle's part of a garage invoice. A garage statement that covers several vehicles is
+ * split into a line per vehicle. The base, the driver and the site that driver was on are kept
+ * as they were on the day of the work, so a vehicle that moves later does not take its costs with it.
+ */
+export type InvoiceLine = {
+  id: ID;
+  vehicleId: ID;
+  baseId: ID | null;
+  driverId: ID | null;
+  /** The site the driver was on that day, from the timesheet (or the plan); null when none. */
+  siteId: ID | null;
+  category: RepairCategory;
+  description: string;
+  mileage: number | null;
+  /** This vehicle's share, as charged (VAT included, as on the invoice). */
+  amount: number;
+};
+
+export type InvoiceStatus = "To check" | "Checked";
+
+export type RepairInvoice = {
+  id: ID;
+  invoiceNo: string;
+  garageId: ID;
+  /** The date on the invoice. */
+  date: Day;
+  lines: InvoiceLine[];
+  /** The invoice total, VAT included: the sum of the lines. */
+  total: number;
+  /** The VAT on it, when the invoice shows it. */
+  vat: number | null;
+  status: InvoiceStatus;
+  checkedBy?: string;
+  checkedAt?: Stamp;
+  file?: Proof;
+  /** More pages of the same invoice, when it was added as several files. */
+  extraFiles?: Proof[];
+  /** Each time a checked invoice was put back to check, with the note saying why. */
+  backNotes?: { at: Stamp; by: string; text: string }[];
+  poNumber?: string;
+  notes?: string;
+  enteredBy: string;
+  enteredAt: Stamp;
+  editedBy?: string;
+  editedAt?: Stamp;
+};
+
+export type FleetDocCategory = "tax" | "test" | "insurance" | "other";
 export type FleetDoc = {
   id: ID;
   vehicleId: ID;
   category: FleetDocCategory;
   date: Day;
   amount: number;
-  workDone?: string;
-  garage?: string;
-  garageLocation?: string;
   expiryDate?: Day;
+  note?: string;
   fileName: string;
   proof?: Proof;
+  extraProofs?: Proof[];
 };
+
+/** Damage to a vehicle, reported on the site phone: where, what happened, photos. Fleet, Damage reported. */
+export type DamageReport = {
+  id: ID;
+  vehicleId: ID;
+  /** The person who reported it. */
+  driverId: ID | null;
+  at: Stamp;
+  where: string;
+  note: string;
+  photos: Proof[];
+  status: "New" | "Dealt with";
+  dealtBy?: string;
+  dealtAt?: Stamp;
+  dealtNote?: string;
+};
+
+/** A private, dated note on a garage. Deleted with a confirm, never edited. */
+export type GarageNote = { id: ID; garageId: ID; at: Stamp; by: string; text: string };
+
+/** A licence on file for a driver: when it runs out, and a copy. */
+export type Licence = {
+  expiryDate: Day;
+  proof?: Proof;
+  /** More pages of the same licence, such as the back of the card. */
+  extraProofs?: Proof[];
+  /** Set when the driver sent it from the site phone: it shows at once, flagged until the office has checked it. */
+  fromPhoneAt?: Stamp;
+};
+export type LicenceKey = "driving" | "cpc";
+
+/**
+ * A driver, as Fleet sees them: a person from People who is on the driver list (`Person.drives`),
+ * with their licences. Worked out from the person (`driversOf` in src/lib/fleet.ts), never stored.
+ * "Left" means taken off the driver list, or gone from the firm.
+ */
+export type Driver = { id: ID; name: string; phone: string; email: string; trade: string; baseId: ID | null; active: boolean; leftAt?: Day; licences?: { driving?: Licence; cpc?: Licence } };
+
+/** A to-do on the Dashboard: what and when. A renewal put on the list carries the vehicle and which renewal it is. */
+export type Todo = { id: ID; title: string; due: Day; vehicleId?: ID; item?: "tax" | "test" | "insurance"; createdAt: Stamp; createdBy: string; doneAt?: Stamp; doneBy?: string };
 
 // ── Files ─────────────────────────────────────────────────────────────────────
 
@@ -669,6 +798,8 @@ export type DepartmentKey =
   | "schedule"
   | "people"
   | "plant"
+  /** Fleet (18 Nov): brought across from the Secure-All build, a button of its own after Plant. */
+  | "fleet"
   | "files"
   | "invoicing"
   /** Profitability (17 Nov): the managing director's alone. */
@@ -756,7 +887,15 @@ export type Db = {
   plant: PlantItem[];
   hiredPlant: HiredPlant[];
   vehicles: Vehicle[];
+  bases: Base[];
+  garages: Garage[];
+  /** Newest first. */
+  garageInvoices: RepairInvoice[];
   fleetDocs: FleetDoc[];
+  /** Newest first. */
+  damageReports: DamageReport[];
+  garageNotes: GarageNote[];
+  todos: Todo[];
   files: FileItem[];
   supplierInvoices: SupplierInvoice[];
   salesInvoices: SalesInvoice[];

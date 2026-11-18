@@ -1,16 +1,21 @@
-import type { ReactNode } from "react";
+import { CheckSquare, Plus } from "@phosphor-icons/react";
+import { type ReactNode, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { askFromSearch, Parts } from "@/ai/AskPanel";
 import { parseInline } from "@/ai/markdown";
 import { dashboardNumbers } from "@/data/kpis";
 import { useAccess } from "@/data/access";
+import { actorName, addTodo, setTodoDone } from "@/data/actions";
 import { useData, useDay, usePrefs } from "@/data/store";
 import type { DepartmentKey } from "@/data/types";
-import { dLong, plural, when } from "@/lib/format";
+import { addDays } from "@/lib/dates";
+import { dFull, dLong, plural, when } from "@/lib/format";
 import { money0 } from "@/lib/money";
 import { recordsOverview } from "@/lib/overview";
+import { todoLate } from "@/lib/renewals";
 import { dueWords, outstanding, portalFeed } from "@/lib/portal";
-import { Badge, Button, cx, PageBody, PageHead, Panel, Section, type Tone } from "@/ui";
+import { Badge, Button, cx, Dialog, Field, PageBody, PageHead, Panel, Section, type Tone } from "@/ui";
+import { toast } from "@/ui/toast";
 import { ApprovalsPanel } from "./ApprovalsPanel";
 
 /**
@@ -32,6 +37,7 @@ export function Overview() {
       <PageBody className="grid gap-6 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <AiOverview />
         <OnSiteToday />
+        <TodoPanel />
         <ApprovalsPanel />
         <PortalPanel />
 
@@ -323,5 +329,102 @@ function Glance({ heading, to, rows }: { heading: string; to?: string; rows: [la
         ))}
       </dl>
     </div>
+  );
+}
+
+/**
+ * To do (18 Nov, from the Secure-All build): the signed-in person's own list, what and when, ticked
+ * off when done. A renewal in Fleet can be put on it ("Add to my to-do"), and is ticked off by
+ * itself once the renewal is recorded. Under the AI overview, across the page.
+ */
+function TodoPanel() {
+  const db = useData((s) => s.db);
+  const day = useDay();
+  const me = actorName(db);
+  const [adding, setAdding] = useState(false);
+  const [showDone, setShowDone] = useState(false);
+  const mine = db.todos.filter((t) => t.createdBy === me);
+  const open = mine.filter((t) => !t.doneAt).sort((a, b) => a.due.localeCompare(b.due));
+  const done = mine.filter((t) => t.doneAt).sort((a, b) => b.doneAt!.localeCompare(a.doneAt!)).slice(0, 5);
+  const late = open.filter((t) => todoLate(t, day)).length;
+  return (
+    <Section
+      title={
+        <span className="inline-flex items-center gap-2">
+          <CheckSquare size={20} className="text-accent-ink" /> To do
+        </span>
+      }
+      aside={
+        <span className="inline-flex items-center gap-3">
+          <span className="text-[0.93rem] text-muted">{open.length ? `${plural(open.length, "thing")} on your list${late ? `, ${late} late` : ""}` : "Your own list"}</span>
+          <Button size="sm" onClick={() => setAdding(true)}>
+            <Plus size={16} /> Add
+          </Button>
+        </span>
+      }
+      className="xl:col-span-2"
+    >
+      <Panel>
+        <ul aria-label="To do" className="grid py-1 sm:grid-cols-2 xl:grid-cols-3">
+          {open.map((t) => (
+            <li key={t.id} className="flex items-start gap-3 px-4 py-2">
+              <input type="checkbox" aria-label={`Done: ${t.title}`} className="mt-1 size-5 shrink-0 accent-[var(--accent-strong)]" checked={false} onChange={() => { setTodoDone(t.id, true); toast("Ticked off"); }} />
+              <span className="min-w-0 flex-1">
+                <span className="block">{t.title}</span>
+                <span className={cx("text-[0.87rem]", todoLate(t, day) ? "font-medium text-bad" : "text-muted")}>{todoLate(t, day) ? "Was due" : "Due"} {dFull(t.due)}</span>
+                {t.vehicleId && (
+                  <Link to={`/fleet/vehicles/${t.vehicleId}`} className="ml-2 text-[0.87rem] font-medium text-accent-ink hover:underline">
+                    Open the vehicle
+                  </Link>
+                )}
+              </span>
+            </li>
+          ))}
+          {open.length === 0 && <li className="px-4 py-2 text-muted sm:col-span-2 xl:col-span-3">Nothing on your list. Add a job here, or use "Add to my to-do" on a renewal in Fleet.</li>}
+        </ul>
+        {done.length > 0 && (
+          <div className="border-t border-line px-4 py-2">
+            <button type="button" className="text-[0.93rem] font-medium text-accent-ink hover:underline" onClick={() => setShowDone((v) => !v)}>
+              {showDone ? "Hide" : "Show"} recently done ({done.length})
+            </button>
+            {showDone && (
+              <ul className="mt-1">
+                {done.map((t) => (
+                  <li key={t.id} className="flex items-start gap-3 py-1.5 text-muted">
+                    <input type="checkbox" aria-label={`Not done: ${t.title}`} className="mt-1 size-5 shrink-0 accent-[var(--accent-strong)]" checked onChange={() => setTodoDone(t.id, false)} />
+                    <span>
+                      <span className="line-through">{t.title}</span> <span className="text-[0.87rem]">by {t.doneBy}</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+      </Panel>
+      {adding && <AddTodo onClose={() => setAdding(false)} />}
+    </Section>
+  );
+}
+
+function AddTodo({ onClose }: { onClose: () => void }) {
+  const day = useDay();
+  const [title, setTitle] = useState("");
+  const [due, setDue] = useState(addDays(day, 7));
+  const [error, setError] = useState("");
+  const save = () => {
+    if (!title.trim()) return setError("Say what needs doing.");
+    addTodo({ title, due });
+    toast("Added to To do");
+    onClose();
+  };
+  return (
+    <Dialog open onClose={onClose} title="Add to To do" footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={save}>Add</Button></>}>
+      <div className="grid gap-3">
+        <Field label="What">{(id) => <input id={id} className="field" value={title} onChange={(e) => { setTitle(e.target.value); setError(""); }} placeholder="Book 231-G-4471 in for its service" />}</Field>
+        <Field label="Due">{(id) => <input id={id} type="date" className="field" value={due} onChange={(e) => e.target.value && setDue(e.target.value)} />}</Field>
+        <p role="alert" className="min-h-6 text-bad">{error}</p>
+      </div>
+    </Dialog>
   );
 }

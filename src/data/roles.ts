@@ -31,7 +31,7 @@ export const ROLES: RoleDef[] = [
     does: "Sees the whole firm: sales, sites, money and compliance.",
     home: "/dashboard",
     // Profitability shows what each person costs, so it is the managing director's alone and cannot be given to another level (17 Nov).
-    departments: ["dashboard", "inbox", "chat", "sales", "projects", "schedule", "people", "plant", "files", "invoicing", "profit", "portal", "site", "admin", "settings"],
+    departments: ["dashboard", "inbox", "chat", "sales", "projects", "schedule", "people", "plant", "fleet", "files", "invoicing", "profit", "portal", "site", "admin", "settings"],
     money: [true, true],
     perms: ALL_PERMS,
     locked: true,
@@ -42,7 +42,7 @@ export const ROLES: RoleDef[] = [
     personId: "p-cm1",
     does: "Prices work, runs the projects and plans who goes where.",
     home: "/projects",
-    departments: ["dashboard", "inbox", "chat", "sales", "projects", "schedule", "people", "plant", "files", "portal", "site"],
+    departments: ["dashboard", "inbox", "chat", "sales", "projects", "schedule", "people", "plant", "fleet", "files", "portal", "site"],
     money: [true, true],
     // Everything except answering requests, which waits for the managing director (16 Nov).
     // They check the week's hours (17 Nov); the export itself is the office's.
@@ -65,7 +65,7 @@ export const ROLES: RoleDef[] = [
     personId: "p-acc",
     does: "Checks supplier invoices, raises sales invoices, exports to the accounts package.",
     home: "/invoicing",
-    departments: ["dashboard", "inbox", "chat", "invoicing", "sales", "people", "plant", "files"],
+    departments: ["dashboard", "inbox", "chat", "invoicing", "sales", "people", "plant", "fleet", "files"],
     money: [true, true],
     perms: ["allProjects", "approveDrafts", "correctTime", "seeRates", "manageInvoices", "exportPayroll"],
   },

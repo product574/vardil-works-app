@@ -60,3 +60,16 @@ export async function readAttachment(file: File): Promise<{ name: string; dataUr
   const dataUrl = await readAsDataUrl(file);
   return { name: file.name, dataUrl, sizeKb: Math.max(1, kb(dataUrl)) };
 }
+
+/**
+ * An invoice, receipt or certificate for Fleet: PDF, photo, Word or Excel, as on the Lovable
+ * prototype. Photos are shrunk; other files are kept as they are within `limitKb`. The demo keeps
+ * files in the browser (small limit); a real build uploads them to storage.
+ */
+const FLEET_TYPES = ["application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"];
+export async function readUpload(file: File, limitKb: number): Promise<{ name: string; dataUrl: string }> {
+  if (file.type.startsWith("image/")) return { name: file.name, dataUrl: (await shrinkImage(file, 1800, 0.8)).dataUrl };
+  if (!FLEET_TYPES.includes(file.type) && !/\.(pdf|docx?|xlsx?)$/i.test(file.name)) throw new Error("Choose a PDF, a photo, or a Word or Excel file.");
+  if (file.size / 1024 > limitKb) throw new Error(`That file is over ${Math.round(limitKb / 100) / 10} MB, which is more than ${limitKb > 5000 ? "the limit" : "the demo can keep in the browser. A photo of it works"}.`);
+  return { name: file.name, dataUrl: await readAsDataUrl(file) };
+}

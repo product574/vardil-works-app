@@ -16,7 +16,8 @@ import { approvalEffect, claimHours, claimProblem } from "@/lib/overtime-claims"
 import { basicHours, weekEnd } from "@/lib/payroll";
 import { needsSignOff } from "@/lib/purchases";
 import { personWeek } from "@/lib/availability";
-import { dropOutcome } from "@/lib/roster";
+import { driverSiteOn, dropOutcome } from "@/lib/roster";
+import { money2, r2 } from "@/lib/money";
 import { quoteTotal } from "@/lib/quotes";
 import { attendanceShort, type DayMark, restDayMark } from "@/lib/week";
 import { levelOf, levelValue, signedInPersonId } from "./access";
@@ -25,7 +26,7 @@ import { ROLES } from "./roles";
 import { costingFor, linesFor, type WorkKind } from "./seed/commercial";
 import { rng } from "./seed/util";
 import { getDay, useData, usePrefs } from "./store";
-import type { AccessKey, AccessRow, Allocation, Attendance, Cert, Client, Db, Expense, DepartmentKey, Enquiry, ID, LevelKey, PermKey, Person, PhotoStage, Language, Mail, MailAttachment, MailIntent, Proof, RequestKind, RoleKey, FileCategory, FileKind, FleetDocCategory, Project, Variation, Vehicle } from "./types";
+import type { AccessKey, AccessRow, Allocation, Attendance, Cert, Client, Db, Expense, DepartmentKey, Enquiry, ID, LevelKey, PermKey, Person, PhotoStage, Language, Mail, MailAttachment, MailIntent, Proof, RequestKind, RoleKey, FileCategory, FileKind, FleetDocCategory, Project, Variation, Vehicle, Base, BaseKind, ComplianceItem, Day, Garage, InvoiceLine, InvoiceStatus, LicenceKey, RepairCategory, RepairInvoice, Todo } from "./types";
 
 const mutate = (fn: (db: Db) => void) => useData.getState().mutate(fn);
 
@@ -1486,110 +1487,481 @@ export function collectHire(id: ID) {
   });
 }
 
-// ── Fleet ─────────────────────────────────────────────────────────────────────
+// ── Fleet (18 Nov, brought across from the Secure-All build) ───────────────────
 
-const docName = (reg: string, what: string) => `${reg} ${what} ${getDay()}.pdf`;
+const clean = (s: string | undefined | null) => (s ?? "").trim().replace(/\s+/g, " ");
+const regOf = (db: Db, id: ID) => db.vehicles.find((v) => v.id === id)?.reg ?? "a vehicle";
+const cash = (n: number) => money2(n, usePrefs.getState().brand.region);
+const personName = (db: Db, id: ID | null | undefined) => db.people.find((p) => p.id === id)?.name;
 
-export function renewVehicle(id: ID, item: "tax" | "test" | "insurance", expiryDate: string, amount: number, proof: NewProof) {
-  mutate((db) => {
-    const v = db.vehicles.find((x) => x.id === id);
-    if (!v) return;
-    v.compliance[item] = { paidDate: getDay(), expiryDate, amount };
-    db.fleetDocs.unshift({ id: newId("fd"), vehicleId: id, category: item, date: getDay(), amount, expiryDate, fileName: proof?.name ?? docName(v.reg, item), ...(proof ? { proof: { ...proof, addedBy: actorName(db), addedAt: nowStamp() } } : {}) });
-    log(db, "Renewed a vehicle document", `${v.reg} ${item}`, "plant");
-  });
-}
-
-export function addFleetDoc(d: { vehicleId: ID; category: FleetDocCategory; date: string; amount: number; workDone?: string; garage?: string; garageLocation?: string; expiryDate?: string }, proof: NewProof) {
-  mutate((db) => {
-    const v = db.vehicles.find((x) => x.id === d.vehicleId);
-    if (!v) return;
-    db.fleetDocs.unshift({ ...d, id: newId("fd"), fileName: proof?.name ?? `${v.reg} ${d.garage ?? d.category} ${d.date}.pdf`, ...(proof ? { proof: { ...proof, addedBy: actorName(db), addedAt: nowStamp() } } : {}) });
-    if (d.category !== "repairs" && d.expiryDate) v.compliance[d.category] = { paidDate: d.date, expiryDate: d.expiryDate, amount: d.amount };
-    // A full service resets the service clock.
-    if (d.category === "repairs" && /service/i.test(d.workDone ?? "") && v.service.basis === "km") {
-      v.service.lastServiced = d.date;
-      v.service.lastMeter = v.service.meterNow;
-    }
-    log(db, "Filed a vehicle document", `${v.reg}: ${d.category === "repairs" ? (d.workDone ?? "repair") : d.category}`, "plant");
-  });
-}
-
-export function setVehicleDriver(id: ID, driverId: ID | null) {
-  mutate((db) => {
-    const v = db.vehicles.find((x) => x.id === id);
-    if (!v) return;
-    v.driverId = driverId;
-    log(db, "Changed a vehicle's driver", `${v.reg}: ${db.people.find((p) => p.id === driverId)?.name ?? "nobody"}`, "plant");
-  });
-}
-
-export function addVehicle({ driverId = null, mileage = 0, ...v }: Pick<Vehicle, "reg" | "model" | "kind" | "baseLocation" | "purchasePrice"> & { driverId?: ID | null; mileage?: number }) {
-  mutate((db) => {
-    const day = getDay();
-    const year = addDays(day, 365);
-    const km = Math.max(0, Math.round(mileage));
-    db.vehicles.unshift({
-      ...v,
-      reg: normaliseReg(v.reg),
-      id: newId("v"),
-      driverId,
-      purchaseMonth: day.slice(0, 7),
-      sellPrice: null,
-      active: true,
-      mileage: km,
-      compliance: { tax: { paidDate: day, expiryDate: year, amount: 0 }, test: { paidDate: day, expiryDate: year, amount: 0 }, insurance: { paidDate: day, expiryDate: year, amount: 0 } },
-      service: { basis: "km", intervalKm: 20000, lastServiced: day, lastMeter: km, meterNow: km, kmPerWeek: 500 },
-    });
-    log(db, "Added a vehicle", `${normaliseReg(v.reg)} ${v.model}`, "plant");
-  });
-}
-
-/** Take a vehicle off the fleet. Its documents and repair history are kept. */
+/** A file to keep with a fleet record: what was picked, before it is stamped with who and when. */
+export type FleetFile = Pick<Proof, "name" | "dataUrl" | "sample"> | null;
 /**
- * Fleet, Edit vehicle (Oisin, 17 Nov): put right a vehicle's registration, make and model, kind,
- * base, driver or mileage. A registration already on the fleet is refused. Returns whether it saved.
+ * The files kept with a record, in order: ones already kept (they carry who added them) stay as
+ * they are, and ones just picked are stamped. A record's first file is its main one; the rest
+ * are further pages (the back of a licence, page two of an invoice).
  */
-export function updateVehicle(id: ID, patch: Partial<Pick<Vehicle, "reg" | "model" | "kind" | "baseLocation" | "driverId" | "mileage">>): boolean {
-  let saved = false;
+export type FileIn = Proof | NonNullable<FleetFile>;
+const isKept = (f: FileIn): f is Proof => "addedBy" in f && !!(f as Proof).addedBy;
+const stampAll = (db: Db, files: FileIn[] | FleetFile | undefined): Proof[] => (Array.isArray(files) ? files : files ? [files] : []).map((f) => (isKept(f) ? f : { ...f, addedBy: actorName(db), addedAt: nowStamp() }));
+/** `{ file, extraFiles }` or `{ proof, extraProofs }` for a record, left out when there are none. */
+const filed = <A extends string, B extends string>(files: Proof[], first: A, rest: B) => ({ ...(files[0] ? { [first]: files[0] } : {}), ...(files.length > 1 ? { [rest]: files.slice(1) } : {}) }) as { [K in A]?: Proof } & { [K in B]?: Proof[] };
+
+export function addBase(b: Pick<Base, "name" | "county" | "region"> & { kind?: BaseKind }): ID {
+  const id = newId("b");
+  mutate((db) => {
+    db.bases.push({ id, name: clean(b.name), county: clean(b.county), region: clean(b.region), kind: b.kind ?? "Yard" });
+    log(db, "Added a base", `${clean(b.name)}${b.kind === "Office" ? ", an office" : ""}`, "fleet");
+  });
+  return id;
+}
+
+export function updateBase(id: ID, b: Partial<Pick<Base, "name" | "county" | "region" | "kind">>) {
+  mutate((db) => {
+    const x = db.bases.find((y) => y.id === id);
+    if (!x) return;
+    Object.assign(x, Object.fromEntries(Object.entries(b).map(([k, v]) => [k, typeof v === "string" && k !== "kind" ? clean(v) : v])));
+    log(db, "Changed a base's details", x.name, "fleet");
+  });
+}
+
+export function addGarage(g: Pick<Garage, "name" | "town" | "county"> & Partial<Pick<Garage, "phone" | "email" | "contact" | "notes">>): ID {
+  const id = newId("g");
+  mutate((db) => {
+    db.garages.push({ id, name: clean(g.name), town: clean(g.town), county: clean(g.county), phone: clean(g.phone), email: clean(g.email), ...(g.contact ? { contact: clean(g.contact) } : {}), ...(g.notes ? { notes: clean(g.notes) } : {}) });
+    log(db, "Added a garage", `${clean(g.name)}, ${clean(g.town)}`, "fleet");
+  });
+  return id;
+}
+
+export function updateGarage(id: ID, g: Partial<Omit<Garage, "id">>) {
+  mutate((db) => {
+    const x = db.garages.find((y) => y.id === id);
+    if (!x) return;
+    Object.assign(x, Object.fromEntries(Object.entries(g).map(([k, v]) => [k, typeof v === "string" ? clean(v) : v])));
+    log(db, "Changed a garage's details", x.name, "fleet");
+  });
+}
+
+/** Put someone from People on Fleet's driver list (their name, phone and email stay People's). */
+export function addDriver(personId: ID) {
+  mutate((db) => {
+    const p = db.people.find((x) => x.id === personId);
+    if (!p || p.drives) return;
+    p.drives = true;
+    p.drivesUntil = undefined;
+    log(db, "Added a driver", p.name, "fleet");
+  });
+}
+
+/**
+ * Record a driving licence or Driver CPC: when it runs out, and the copy or copies of it. With no
+ * new file the copy already kept stays. `fromPhone`: the driver sent it from the site phone, so it
+ * shows at once and is flagged until the office has checked it. `anyway` is the warning the person
+ * saved past (a name that did not match), kept in the log.
+ */
+export function setDriverLicence(id: ID, which: LicenceKey, expiryDate: Day, files: FileIn[] | FleetFile, opts: { fromPhone?: boolean; anyway?: string } = {}) {
+  mutate((db) => {
+    const x = db.people.find((y) => y.id === id);
+    if (!x) return;
+    const now = stampAll(db, files);
+    const was = x.licences?.[which];
+    const keep = now.length ? now : [...(was?.proof ? [was.proof] : []), ...(was?.extraProofs ?? [])];
+    x.licences = { ...x.licences, [which]: { expiryDate, ...filed(keep, "proof", "extraProofs"), ...(opts.fromPhone ? { fromPhoneAt: nowStamp() } : {}) } };
+    if (!x.drives && !x.drivesUntil) x.drives = true;
+    const what = which === "cpc" ? "Driver CPC" : "driving licence";
+    log(db, opts.fromPhone ? `Sent a ${what} from the phone` : `Recorded a ${what}`, `${x.name}, runs to ${expiryDate}${opts.anyway ? `. Saved although ${opts.anyway}` : ""}`, opts.fromPhone ? "site" : "fleet");
+  });
+}
+
+/** The office has looked at a licence a driver sent from the phone: the flag comes off. */
+export function confirmLicence(id: ID, which: LicenceKey) {
+  mutate((db) => {
+    const x = db.people.find((y) => y.id === id);
+    const l = x?.licences?.[which];
+    if (!x || !l?.fromPhoneAt) return;
+    const { fromPhoneAt: _f, ...rest } = l;
+    x.licences = { ...x.licences, [which]: rest };
+    log(db, "Checked a licence sent from the phone", `${x.name}, ${which === "cpc" ? "Driver CPC" : "driving licence"}`, "fleet");
+  });
+}
+
+/** Take a driver off the driver list (after a confirm): they move to "Left", with their history kept. */
+export function setDriverActive(id: ID, active: boolean) {
+  mutate((db) => {
+    const p = db.people.find((x) => x.id === id);
+    if (!p || !!p.drives === active) return;
+    p.drives = active;
+    p.drivesUntil = active ? undefined : getDay();
+    log(db, active ? "Brought a driver back" : "Took a driver off the list", p.name, "fleet");
+  });
+}
+
+export type VehicleFields = Pick<Vehicle, "reg" | "make" | "model" | "kind" | "fuel" | "division" | "ownership" | "baseId" | "driverId" | "purchasePrice" | "purchaseMonth" | "mileage">;
+/** What can change once a vehicle is added: everything but the registration, make and model. */
+export type VehicleChanges = Partial<Omit<VehicleFields, "reg" | "make" | "model" | "mileage">>;
+
+/** True if another vehicle already has this registration. */
+export function regTaken(db: Db, reg: string, exceptId?: ID) {
+  const r = normaliseReg(reg);
+  return db.vehicles.some((v) => v.id !== exceptId && normaliseReg(v.reg) === r);
+}
+
+/** Add a vehicle, with a service every 12 months from today. Returns its id, or null when the registration is already on the list. */
+export function addVehicle(f: VehicleFields, compliance?: Partial<Vehicle["compliance"]>): ID | null {
+  let id: ID | null = null;
+  mutate((db) => {
+    if (regTaken(db, f.reg)) return;
+    id = newId("v");
+    const blank: ComplianceItem = { paidDate: "", expiryDate: "", amount: 0 };
+    db.vehicles.push({ id, ...f, reg: normaliseReg(f.reg), make: clean(f.make), model: clean(f.model), division: clean(f.division), mileageAt: getDay(), mileageFrom: "typed", active: true, sellPrice: null, compliance: { tax: compliance?.tax ?? blank, test: compliance?.test ?? blank, insurance: compliance?.insurance ?? blank }, service: { basis: "months", intervalMonths: 12, lastServiced: getDay() } });
+    log(db, "Added a vehicle", `${normaliseReg(f.reg)}, ${clean(f.make)} ${clean(f.model)}`, "fleet");
+  });
+  return id;
+}
+
+/**
+ * Change a vehicle's details. The registration, make and model cannot change: a vehicle typed in
+ * wrongly is deleted and added again while it has no records (`deleteVehicle`). Past invoices
+ * keep the base, driver and site they had on the day.
+ */
+export function updateVehicle(id: ID, f: VehicleChanges): boolean {
+  let ok = false;
   mutate((db) => {
     const v = db.vehicles.find((x) => x.id === id);
     if (!v) return;
-    const reg = patch.reg !== undefined ? normaliseReg(patch.reg) : v.reg;
-    if (!reg || db.vehicles.some((x) => x.id !== id && x.reg === reg)) return;
-    const before = `${v.reg} ${v.model}`;
+    const { reg: _r, make: _m, model: _o, mileage: _k, ...safe } = f as Partial<VehicleFields>;
     const changed: string[] = [];
-    if (reg !== v.reg) {
-      // Documents already on file keep their names, with the new registration where the old one was.
-      for (const d of db.fleetDocs) if (d.vehicleId === id) d.fileName = d.fileName.replace(v.reg, reg);
-      v.reg = reg;
-      changed.push("registration");
-    }
-    if (patch.model !== undefined && patch.model.trim() && patch.model.trim() !== v.model) { v.model = patch.model.trim(); changed.push("model"); }
-    if (patch.kind !== undefined && patch.kind !== v.kind) { v.kind = patch.kind; changed.push("kind"); }
-    if (patch.baseLocation !== undefined && patch.baseLocation.trim() && patch.baseLocation.trim() !== v.baseLocation) { v.baseLocation = patch.baseLocation.trim(); changed.push("base"); }
-    if (patch.driverId !== undefined && patch.driverId !== v.driverId) { v.driverId = patch.driverId; changed.push("driver"); }
-    if (patch.mileage !== undefined && Number.isFinite(patch.mileage) && Math.round(patch.mileage) !== v.mileage && patch.mileage >= 0) {
-      v.mileage = Math.round(patch.mileage);
-      // The service clock runs on the same reading.
-      if (v.service.basis === "km") v.service.meterNow = Math.max(v.service.lastMeter, v.mileage);
-      changed.push("mileage");
-    }
-    saved = true;
-    if (changed.length) log(db, "Changed a vehicle's details", `${before}: ${changed.join(", ")}`, "plant");
+    if (safe.baseId !== undefined && safe.baseId !== v.baseId) changed.push(`base to ${db.bases.find((b) => b.id === safe.baseId)?.name ?? "none"}`);
+    if (safe.driverId !== undefined && safe.driverId !== v.driverId) changed.push(`driver to ${personName(db, safe.driverId) ?? "nobody (pool)"}`);
+    Object.assign(v, safe);
+    log(db, "Changed a vehicle's details", `${v.reg}${changed.length ? `: ${changed.join(", ")}` : ""}`, "fleet");
+    ok = true;
   });
-  return saved;
+  return ok;
 }
 
+/** What is filed against a vehicle. A vehicle with none of these can be deleted outright. */
+export function vehicleRecords(db: Db, id: ID) {
+  return {
+    invoices: db.garageInvoices.filter((i) => i.lines.some((l) => l.vehicleId === id)).length,
+    documents: db.fleetDocs.filter((d) => d.vehicleId === id).length,
+    checks: db.vehicleChecks.filter((c) => c.vehicleId === id).length,
+    damage: db.damageReports.filter((a) => a.vehicleId === id).length,
+  };
+}
+
+/** Delete a vehicle typed in by mistake. Refused (false) once anything is filed against it. */
+export function deleteVehicle(id: ID): boolean {
+  let ok = false;
+  mutate((db) => {
+    const v = db.vehicles.find((x) => x.id === id);
+    if (!v) return;
+    const r = vehicleRecords(db, id);
+    if (r.invoices + r.documents + r.checks + r.damage > 0) return;
+    db.vehicles = db.vehicles.filter((x) => x.id !== id);
+    db.todos = db.todos.filter((t) => t.vehicleId !== id);
+    log(db, "Deleted a vehicle added by mistake", `${v.reg}, ${v.make} ${v.model}`, "fleet");
+    ok = true;
+  });
+  return ok;
+}
+
+/** Someone types the mileage in; it is right as of today. */
+export function updateMileage(id: ID, km: number) {
+  mutate((db) => {
+    const v = db.vehicles.find((x) => x.id === id);
+    if (!v) return;
+    const before = v.mileage;
+    v.mileage = Math.round(km);
+    v.mileageAt = getDay();
+    v.mileageFrom = "typed";
+    log(db, "Updated the mileage", `${v.reg}: ${before.toLocaleString("en-IE")} to ${v.mileage.toLocaleString("en-IE")} km`, "fleet");
+  });
+}
+
+/** Take a vehicle off the fleet: sold (with the amount) or not sold (null). Its history is kept. */
 export function removeVehicle(id: ID, sellPrice: number | null) {
   mutate((db) => {
     const v = db.vehicles.find((x) => x.id === id);
-    if (!v) return;
+    if (!v || !v.active) return;
     v.active = false;
+    v.removedAt = getDay();
     v.sellPrice = sellPrice;
     v.driverId = null;
-    log(db, "Removed a vehicle from the fleet", `${v.reg}${sellPrice != null ? `, sold for ${sellPrice}` : ", not sold"}`, "plant");
+    log(db, "Removed a vehicle from the fleet", `${v.reg}${sellPrice != null ? `, sold for ${cash(sellPrice)}` : ", not sold"}`, "fleet");
   });
+}
+
+export function restoreVehicle(id: ID) {
+  mutate((db) => {
+    const v = db.vehicles.find((x) => x.id === id);
+    if (!v || v.active) return;
+    v.active = true;
+    v.removedAt = undefined;
+    v.sellPrice = null;
+    log(db, "Put a vehicle back on the fleet", v.reg, "fleet");
+  });
+}
+
+const DOC_WORD: Record<"tax" | "test" | "insurance", string> = { tax: "motor tax", test: "test", insurance: "insurance" };
+
+/**
+ * Record a renewal of motor tax, the test or insurance, with the payment receipt if there is one
+ * (filed with the vehicle's documents, apart from repair invoices). The new disc is then waiting
+ * to go on the vehicle until someone ticks it, and any to-do for this renewal is done. `anyway` is
+ * the warning the person saved past (a registration that did not match), kept in the log.
+ */
+export function renewVehicle(id: ID, item: "tax" | "test" | "insurance", expiryDate: string, amount: number, files: FileIn[] | FleetFile, opts: { anyway?: string } = {}) {
+  mutate((db) => {
+    const v = db.vehicles.find((x) => x.id === id);
+    if (!v) return;
+    const kept = stampAll(db, files);
+    v.compliance[item] = { paidDate: getDay(), expiryDate, amount: r2(amount), discPending: true };
+    db.fleetDocs.unshift({ id: newId("fd"), vehicleId: id, category: item, date: getDay(), amount: r2(amount), expiryDate, fileName: kept[0]?.name ?? `${v.reg} ${DOC_WORD[item]} receipt ${getDay()}`, ...filed(kept, "proof", "extraProofs") });
+    for (const t of db.todos) if (!t.doneAt && t.vehicleId === id && t.item === item) Object.assign(t, { doneAt: nowStamp(), doneBy: actorName(db) });
+    log(db, `Renewed ${DOC_WORD[item]}`, `${v.reg}, to ${expiryDate}${opts.anyway ? `. Saved although ${opts.anyway}` : ""}`, "fleet");
+  });
+}
+
+/** Tick that the new disc is on the vehicle's windscreen. */
+export function markDiscOn(id: ID, item: "tax" | "test" | "insurance") {
+  mutate((db) => {
+    const v = db.vehicles.find((x) => x.id === id);
+    if (!v) return;
+    v.compliance[item] = { ...v.compliance[item], discPending: false, discOnAt: getDay() };
+    log(db, "Ticked the new disc on", `${v.reg}, ${DOC_WORD[item]}`, "fleet");
+  });
+}
+
+export function addFleetDoc(d: { vehicleId: ID; category: FleetDocCategory; date: string; amount: number; expiryDate?: string; note?: string }, files: FileIn[] | FleetFile, opts: { anyway?: string } = {}) {
+  mutate((db) => {
+    const kept = stampAll(db, files);
+    db.fleetDocs.unshift({ id: newId("fd"), ...d, amount: r2(d.amount), fileName: kept[0]?.name ?? `${regOf(db, d.vehicleId)} ${d.category} ${d.date}`, ...filed(kept, "proof", "extraProofs") });
+    log(db, "Added a vehicle document", `${regOf(db, d.vehicleId)}: ${kept[0]?.name ?? d.category}${opts.anyway ? `. Saved although ${opts.anyway}` : ""}`, "fleet");
+  });
+}
+
+// ── To do (the Dashboard's own list) ───────────────────────────────────────────
+
+export function addTodo(t: Pick<Todo, "title" | "due"> & Partial<Pick<Todo, "vehicleId" | "item">>): ID {
+  const id = newId("td");
+  mutate((db) => {
+    db.todos.unshift({ id, title: clean(t.title), due: t.due, ...(t.vehicleId ? { vehicleId: t.vehicleId } : {}), ...(t.item ? { item: t.item } : {}), createdAt: nowStamp(), createdBy: actorName(db) });
+    log(db, "Added a to-do", `${clean(t.title)}, due ${t.due}`, "dashboard");
+  });
+  return id;
+}
+
+export function setTodoDone(id: ID, done: boolean) {
+  mutate((db) => {
+    const t = db.todos.find((x) => x.id === id);
+    if (!t || !!t.doneAt === done) return;
+    if (done) Object.assign(t, { doneAt: nowStamp(), doneBy: actorName(db) });
+    else Object.assign(t, { doneAt: undefined, doneBy: undefined });
+    log(db, done ? "Ticked off a to-do" : "Opened a to-do again", t.title, "dashboard");
+  });
+}
+
+export function deleteTodo(id: ID) {
+  mutate((db) => {
+    const t = db.todos.find((x) => x.id === id);
+    if (!t) return;
+    db.todos = db.todos.filter((x) => x.id !== id);
+    log(db, "Deleted a to-do", t.title, "dashboard");
+  });
+}
+
+// ── Garage notes ──────────────────────────────────────────────────────────────
+
+/** A private, dated note on a garage. Notes are never edited: a wrong one is deleted and written again. */
+export function addGarageNote(garageId: ID, text: string) {
+  mutate((db) => {
+    const g = db.garages.find((x) => x.id === garageId);
+    if (!g || !text.trim()) return;
+    db.garageNotes.unshift({ id: newId("gn"), garageId, at: nowStamp(), by: actorName(db), text: text.trim().slice(0, 1000) });
+    log(db, "Added a note on a garage", g.name, "fleet");
+  });
+}
+
+export function deleteGarageNote(id: ID) {
+  mutate((db) => {
+    const n = db.garageNotes.find((x) => x.id === id);
+    if (!n) return;
+    db.garageNotes = db.garageNotes.filter((x) => x.id !== id);
+    log(db, "Deleted a note on a garage", db.garages.find((g) => g.id === n.garageId)?.name ?? "a garage", "fleet");
+  });
+}
+
+// ── Damage reported ───────────────────────────────────────────────────────────
+
+/** Damage reported on the site phone: where, what happened and photos. The office sees it in Fleet. */
+export function reportDamage(r: { vehicleId: ID; driverId: ID | null; where: string; note: string }, photos: FileIn[]): ID {
+  const id = newId("dmg");
+  mutate((db) => {
+    db.damageReports.unshift({ id, vehicleId: r.vehicleId, driverId: r.driverId, at: nowStamp(), where: clean(r.where), note: r.note.trim().slice(0, 1000), photos: stampAll(db, photos), status: "New" });
+    log(db, "Reported damage to a vehicle", `${regOf(db, r.vehicleId)} by ${personName(db, r.driverId) ?? "a driver"}: ${r.note.trim().slice(0, 120)}`, "site");
+  });
+  return id;
+}
+
+/** Mark a damage report dealt with (with a note of what was done, if any), or put it back to new. */
+export function setDamageDealt(id: ID, dealt: boolean, note = "") {
+  mutate((db) => {
+    const d = db.damageReports.find((x) => x.id === id);
+    if (!d || (d.status === "Dealt with") === dealt) return;
+    d.status = dealt ? "Dealt with" : "New";
+    d.dealtBy = dealt ? actorName(db) : undefined;
+    d.dealtAt = dealt ? nowStamp() : undefined;
+    d.dealtNote = dealt && note.trim() ? note.trim().slice(0, 500) : undefined;
+    log(db, dealt ? "Marked damage as dealt with" : "Put a damage report back to new", `${regOf(db, d.vehicleId)}${dealt && note.trim() ? `: ${note.trim().slice(0, 120)}` : ""}`, "fleet");
+  });
+}
+
+// ── Garage invoices ───────────────────────────────────────────────────────────
+
+/** `id` is set for a line that is already on a saved invoice, when that invoice is being corrected. */
+export type LineDraft = { id?: ID; vehicleId: ID; category: RepairCategory; description: string; mileage: number | null; amount: number };
+export type InvoiceDraft = { invoiceNo: string; garageId: ID; date: string; lines: LineDraft[]; vat: number | null; poNumber?: string; notes?: string };
+
+/** Where a vehicle's cost is filed on a day: its base, its driver, and the site that driver was on (timesheet, else plan, else the site they run). */
+function filedUnder(db: Db, v: Vehicle | undefined, date: string): Pick<InvoiceLine, "baseId" | "driverId" | "siteId"> {
+  const driverId = v?.driverId ?? null;
+  return { baseId: v?.baseId ?? null, driverId, siteId: driverId ? (driverSiteOn(driverId, date, db.attendance, db.plan, db.projects) ?? null) : null };
+}
+
+function raiseMileage(v: Vehicle | undefined, mileage: number | null, date: string) {
+  if (v && mileage && mileage > v.mileage) {
+    v.mileage = mileage;
+    v.mileageAt = date;
+    v.mileageFrom = "invoice";
+  }
+}
+
+const byInvoiceDate = (a: RepairInvoice, b: RepairInvoice) => (a.date === b.date ? b.enteredAt.localeCompare(a.enteredAt) : b.date.localeCompare(a.date));
+
+/**
+ * Save an uploaded invoice, "to check". Each line takes its vehicle's base and driver as they
+ * are today, and the site that driver was on that day, so moving the vehicle later does not move
+ * this cost. A vehicle's mileage moves up to the reading on the invoice when that is higher.
+ */
+export function saveInvoice(d: InvoiceDraft, files: FileIn[] | FleetFile): ID {
+  const id = newId("inv");
+  mutate((db) => {
+    const lines: InvoiceLine[] = d.lines.map((l) => {
+      const v = db.vehicles.find((x) => x.id === l.vehicleId);
+      raiseMileage(v, l.mileage, d.date);
+      return { id: newId("l"), vehicleId: l.vehicleId, ...filedUnder(db, v, d.date), category: l.category, description: clean(l.description), mileage: l.mileage, amount: r2(l.amount) };
+    });
+    const total = r2(lines.reduce((t, l) => t + l.amount, 0));
+    const inv: RepairInvoice = { id, invoiceNo: clean(d.invoiceNo), garageId: d.garageId, date: d.date, lines, total, vat: d.vat, status: "To check", enteredBy: actorName(db), enteredAt: nowStamp(), ...filed(stampAll(db, files), "file", "extraFiles"), ...(d.poNumber?.trim() ? { poNumber: clean(d.poNumber) } : {}), ...(d.notes?.trim() ? { notes: d.notes.trim() } : {}) };
+    db.garageInvoices.unshift(inv);
+    db.garageInvoices.sort(byInvoiceDate);
+    const garage = db.garages.find((g) => g.id === d.garageId)?.name ?? "a garage";
+    log(db, "Uploaded a garage invoice", `${inv.invoiceNo || "No number"} from ${garage}, ${cash(total)}, ${lines.map((l) => regOf(db, l.vehicleId)).join(", ")}`, "fleet");
+  });
+  return id;
+}
+
+/**
+ * Correct a saved invoice: anything on it can change. A line that keeps its vehicle keeps the
+ * base, driver and site it was first filed under; a line moved to another vehicle, and a new line,
+ * take that vehicle's. A checked invoice goes back to "To check". `files`: the whole list of files
+ * to keep from now on; leaving it out keeps what is there. The activity log says what changed.
+ * Returns "unchecked" when it had been checked, "saved" otherwise, null when there is no such invoice.
+ */
+export function updateInvoice(id: ID, d: InvoiceDraft, files?: FileIn[]): "saved" | "unchecked" | null {
+  let result: "saved" | "unchecked" | null = null;
+  mutate((db) => {
+    const inv = db.garageInvoices.find((x) => x.id === id);
+    if (!inv) return;
+    const garageName = (gid: ID) => db.garages.find((g) => g.id === gid)?.name ?? "a garage";
+    const workOf = (ls: { category: string; description: string; mileage: number | null; amount: number }[]) => ls.map((l) => `${l.category}|${l.description}|${l.mileage ?? ""}|${l.amount}`).join(";");
+    const before = { no: inv.invoiceNo, garageId: inv.garageId, date: inv.date, total: inv.total, regs: inv.lines.map((l) => regOf(db, l.vehicleId)).join(", "), work: workOf(inv.lines), vat: inv.vat, notes: inv.notes ?? "" };
+    const lines: InvoiceLine[] = d.lines.map((l) => {
+      const was = l.id ? inv.lines.find((x) => x.id === l.id) : undefined;
+      const v = db.vehicles.find((x) => x.id === l.vehicleId);
+      raiseMileage(v, l.mileage, d.date);
+      const same = was && was.vehicleId === l.vehicleId;
+      return { id: was?.id ?? newId("l"), vehicleId: l.vehicleId, ...(same ? { baseId: was.baseId, driverId: was.driverId, siteId: was.siteId } : filedUnder(db, v, d.date)), category: l.category, description: clean(l.description), mileage: l.mileage, amount: r2(l.amount) };
+    });
+    inv.invoiceNo = clean(d.invoiceNo);
+    inv.garageId = d.garageId;
+    inv.date = d.date;
+    inv.lines = lines;
+    inv.total = r2(lines.reduce((t, l) => t + l.amount, 0));
+    inv.vat = d.vat;
+    inv.notes = d.notes?.trim() ? d.notes.trim() : undefined;
+    const hadFiles = [inv.file, ...(inv.extraFiles ?? [])].filter(Boolean).length;
+    if (files !== undefined) {
+      const kept = stampAll(db, files);
+      inv.file = kept[0];
+      inv.extraFiles = kept.length > 1 ? kept.slice(1) : undefined;
+    }
+    inv.editedBy = actorName(db);
+    inv.editedAt = nowStamp();
+    result = inv.status === "Checked" ? "unchecked" : "saved";
+    if (inv.status === "Checked") {
+      inv.status = "To check";
+      inv.checkedBy = undefined;
+      inv.checkedAt = undefined;
+    }
+    db.garageInvoices.sort(byInvoiceDate);
+    const changed: string[] = [];
+    const regs = lines.map((l) => regOf(db, l.vehicleId)).join(", ");
+    if (before.no !== inv.invoiceNo) changed.push(`number ${before.no || "none"} to ${inv.invoiceNo || "none"}`);
+    if (before.garageId !== inv.garageId) changed.push(`garage ${garageName(before.garageId)} to ${garageName(inv.garageId)}`);
+    if (before.date !== inv.date) changed.push(`date ${before.date} to ${inv.date}`);
+    if (before.total !== inv.total) changed.push(`total ${cash(before.total)} to ${cash(inv.total)}`);
+    if (before.regs !== regs) changed.push(`vehicles ${before.regs} to ${regs}`);
+    else if (before.work !== workOf(lines) && before.total === inv.total) changed.push("the work done, category or mileage");
+    if (before.vat !== inv.vat) changed.push("the VAT");
+    if (before.notes !== (inv.notes ?? "")) changed.push("the notes");
+    if (files !== undefined && (files.some((f) => !isKept(f)) || files.length !== hadFiles)) changed.push(files.length === 0 ? "the file taken off" : files.some((f) => !isKept(f)) ? "a file added or replaced" : "a file taken off");
+    log(db, "Corrected an invoice", `${inv.invoiceNo || "No number"} from ${garageName(inv.garageId)}: ${changed.length ? changed.join("; ") : "saved with no change"}${result === "unchecked" ? ". Back to check" : ""}`, "fleet");
+  });
+  return result;
+}
+
+/**
+ * Mark a garage invoice checked, or put a checked one back to check. Putting it back needs a note
+ * saying why: it is kept on the invoice and in the log. Returns false when the note is missing.
+ */
+export function setInvoiceStatus(id: ID, status: InvoiceStatus, note = ""): boolean {
+  let ok = false;
+  mutate((db) => {
+    const inv = db.garageInvoices.find((x) => x.id === id);
+    if (!inv || inv.status === status) return;
+    if (status === "To check" && !note.trim()) return;
+    inv.status = status;
+    if (status === "Checked") {
+      inv.checkedBy = actorName(db);
+      inv.checkedAt = nowStamp();
+    } else {
+      inv.checkedBy = undefined;
+      inv.checkedAt = undefined;
+      inv.backNotes = [...(inv.backNotes ?? []), { at: nowStamp(), by: actorName(db), text: note.trim().slice(0, 500) }];
+    }
+    log(db, status === "Checked" ? "Marked a garage invoice checked" : "Put a garage invoice back to check", status === "Checked" ? inv.invoiceNo : `${inv.invoiceNo}: ${note.trim().slice(0, 200)}`, "fleet");
+    ok = true;
+  });
+  return ok;
+}
+
+/** Delete a garage invoice entered by mistake, such as a duplicate. */
+export function deleteInvoice(id: ID) {
+  mutate((db) => {
+    const i = db.garageInvoices.findIndex((x) => x.id === id);
+    if (i < 0) return;
+    const inv = db.garageInvoices[i]!;
+    db.garageInvoices.splice(i, 1);
+    log(db, "Deleted a garage invoice", `${inv.invoiceNo}, ${cash(inv.total)}`, "fleet");
+  });
+}
+
+/** A document read by the AI model to fill in a form: what was read, never the figures. */
+export function logAiRead(what: string, fileName: string) {
+  mutate((db) => log(db, "Read a document with AI", `${what}: ${fileName}`.slice(0, 300), "fleet"));
 }
 
 // ── Files ─────────────────────────────────────────────────────────────────────
@@ -1743,7 +2115,7 @@ export function submitVehicleCheck(vehicleId: ID, defects: { item: string; note:
     const v = db.vehicles.find((x) => x.id === vehicleId);
     const by = myId(db) ?? "";
     db.vehicleChecks.unshift({ id: newId("vc"), vehicleId, personId: by, at: nowStamp(), defects });
-    log(db, defects.length ? "Reported vehicle defects" : "Completed a vehicle check", `${v?.reg}${defects.length ? `: ${defects.map((d) => `${d.item} (${d.note})`).join("; ")}` : ", all OK"}`, "plant");
+    log(db, defects.length ? "Reported vehicle defects" : "Completed a vehicle check", `${v?.reg}${defects.length ? `: ${defects.map((d) => `${d.item} (${d.note})`).join("; ")}` : ", all OK"}`, "fleet");
   });
 }
 
