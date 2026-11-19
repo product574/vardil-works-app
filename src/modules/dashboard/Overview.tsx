@@ -108,7 +108,7 @@ function AiOverview() {
     money: (n) => money0(n, region),
     seeValues: access.seeValues,
     seeMargins: access.seeMargins,
-    canAsk: access.role === "md",
+    canAsk: access.askAi,
     answersRequests: access.can("admin") && access.may("answerRequests"),
     checksPayroll: access.can("people") && access.may("checkPayroll"),
     exportsPayroll: access.can("people") && access.may("exportPayroll"),

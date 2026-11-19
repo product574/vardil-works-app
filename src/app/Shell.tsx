@@ -13,6 +13,7 @@ import { useAsk } from "@/ai/state";
 import { useGate } from "./AuthPages";
 import { signOut } from "./auth";
 import { DEPARTMENTS, departmentFor } from "./departments";
+import { staff } from "./staff";
 import { clearScreenState } from "./screen-state";
 import { clearTrail, previous, saveScroll, scrollFor, stepBack, useTrail, visit } from "./trail";
 
@@ -80,10 +81,11 @@ export function Shell() {
   const allowed = DEPARTMENTS.filter((d) => d.inBar && access.can(d.key));
   const showBar = allowed.length > 1;
   // Ask AI is for the managing director only (decision 46), never for anyone they sign in as.
-  const showAsk = access.role === "md" && askOpen;
+  const showAsk = access.askAi && askOpen;
 
   return (
     <div className="flex h-dvh flex-col bg-canvas">
+      {staff.ui && <staff.ui.Bar />}
       <TopBar />
       <div className="flex min-h-0 flex-1">
         {dept.key !== "site" && !dept.ownLayout && <Sidebar />}
@@ -139,7 +141,7 @@ function TopBar() {
       </NavLink>
 
       {access.departments.length > 1 ? (
-        <div className={cx("mx-auto flex w-full flex-1 items-center justify-end gap-2 sm:min-w-0 sm:justify-start", access.role === "md" ? "max-w-[33rem]" : "max-w-md", searching ? "min-w-0 max-sm:max-w-none" : "max-sm:w-auto max-sm:shrink-0")}>
+        <div className={cx("mx-auto flex w-full flex-1 items-center justify-end gap-2 sm:min-w-0 sm:justify-start", access.askAi ? "max-w-[33rem]" : "max-w-md", searching ? "min-w-0 max-sm:max-w-none" : "max-sm:w-auto max-sm:shrink-0")}>
           <div className={cx("min-w-0 flex-1 items-center gap-2", searching ? "flex" : "hidden sm:flex")}>
             <Search autoFocus={searching} onDone={() => setSearching(false)} />
             {searching && (
@@ -153,7 +155,7 @@ function TopBar() {
               <MagnifyingGlass size={18} />
             </button>
           )}
-          {access.role === "md" && (
+          {access.askAi && (
             <span className={cx("shrink-0", away)}>
               <AskButton />
             </span>
@@ -309,7 +311,7 @@ type Hit = { key: string; label: string; sub: string; to: string };
 function Search({ autoFocus = false, onDone }: { autoFocus?: boolean; onDone?: () => void }) {
   const navigate = useNavigate();
   const location = useLocation();
-  const canAsk = useAccess().role === "md";
+  const canAsk = useAccess().askAi;
   const db = useData((s) => s.db);
   const input = useRef<HTMLInputElement>(null);
   const [q, setQ] = useState("");

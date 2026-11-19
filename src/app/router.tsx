@@ -2,6 +2,7 @@ import type { ComponentType } from "react";
 import { createBrowserRouter, createMemoryRouter, Navigate, type RouteObject, useLocation } from "react-router-dom";
 import { RolePage, SignInPage } from "./AuthPages";
 import { LoadFailed, NotFound, Shell } from "./Shell";
+import { type StaffModule, staffEntry } from "./staff";
 
 /**
  * Every address in the app. Department screens sit under the Shell, which checks the shared
@@ -55,6 +56,14 @@ function Moved({ to }: { to: (search: URLSearchParams) => string }) {
 const keep = (path: string) => (q: URLSearchParams) => (q.toString() ? `${path}?${q}` : path);
 /** Sales, Clients and its pop-up became Customers (18 Nov): a link to one client opens their page. */
 const ToCustomer = () => <Moved to={(q) => (q.get("client") ? `/customers/${q.get("client")}` : "/customers")} />;
+
+/**
+ * Vardil Works screens (19 Nov). The files are built only where they are meant to be (see
+ * src/app/staff.ts); anywhere else these addresses are plain not-found pages.
+ */
+function staffScreen(path: string, pick: (m: StaffModule) => ComponentType): RouteObject {
+  return { path, lazy: async () => ({ Component: staffEntry ? pick(await staffEntry()) : NotFound }) };
+}
 
 export const router = create([
   { path: "/sign-in", element: <SignInPage /> },
@@ -181,6 +190,9 @@ export const router = create([
           screen("admin/connections", admin, (m) => m.Connections),
           screen("admin/automations", admin, (m) => m.Automations),
           screen("admin/activity", admin, (m) => m.ActivityLog),
+          staffScreen("vardil", (m) => m.Overview),
+          staffScreen("vardil/features", (m) => m.Features),
+          staffScreen("vardil/demo", (m) => m.DemoTools),
           { path: "*", element: <NotFound /> },
         ],
       },

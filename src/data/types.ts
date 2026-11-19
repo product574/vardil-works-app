@@ -971,7 +971,9 @@ export type DepartmentKey =
   | "portal"
   | "site"
   | "admin"
-  | "settings";
+  | "settings"
+  /** Vardil Works (19 Nov): Vardil staff only. Never part of any level's access; see src/app/staff.ts. */
+  | "vardil";
 
 export type Automation = {
   id: ID;
@@ -1088,3 +1090,11 @@ export type Db = {
 export type RoleKey = "md" | "contracts" | "site" | "accounts" | "operative" | "client";
 /** The access levels an office or management person can hold. */
 export type LevelKey = "md" | "contracts" | "site" | "accounts";
+
+/** What Vardil staff have changed about the managing director's own access (the level Roles and access cannot edit). Missing means unchanged. */
+export type MdOverride = {
+  departments: Partial<Record<DepartmentKey, boolean>>;
+  perms: Partial<Record<PermKey, boolean>>;
+  seeValues?: boolean;
+  seeMargins?: boolean;
+};

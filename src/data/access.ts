@@ -10,11 +10,12 @@
  * `useAccess()`; they never check a role name themselves.
  */
 import { DEPARTMENTS } from "@/app/departments";
+import { staff } from "@/app/staff";
 import { opensSite } from "@/lib/site-access";
 import { ALL_PERMS } from "./permissions";
 import { ROLES, type RoleDef, roleDef } from "./roles";
 import { useDb, usePrefs } from "./store";
-import type { AccessKey, AccessRow, DepartmentKey, ID, LevelKey, PermKey, Person, PersonAccess, Project, RoleKey } from "./types";
+import type { AccessKey, AccessRow, DepartmentKey, ID, LevelKey, MdOverride, PermKey, Person, PersonAccess, Project, RoleKey } from "./types";
 
 /** The rule itself, kept free of React so it can be tested. */
 export function resolveAccess(def: RoleDef | null, row: AccessRow | undefined, person?: PersonAccess) {
@@ -65,16 +66,48 @@ export function signedInPersonId(role: RoleKey | null, asPersonId: ID | null, op
   return roleDef(role)?.personId ?? null;
 }
 
+/**
+ * What Vardil staff have changed, applied on top of a level's own access: the managing director's
+ * own switches, then the departments switched off for the whole company. Pure, so it can be tested.
+ */
+export function applyStaffChanges(
+  resolved: ReturnType<typeof resolveAccess>,
+  role: RoleKey | null,
+  def: RoleDef | null,
+  changes: { mdOverride: MdOverride; companyOff: DepartmentKey[] },
+) {
+  let { departments, perms, seeValues, seeMargins } = resolved;
+  if (role === "md") {
+    const o = changes.mdOverride;
+    departments = DEPARTMENTS.map((d) => d.key).filter((k) => (o.departments[k] ?? departments.includes(k)) && k !== "vardil");
+    perms = ALL_PERMS.filter((k) => o.perms[k] ?? perms.includes(k));
+    seeValues = o.seeValues ?? seeValues;
+    seeMargins = seeValues && (o.seeMargins ?? seeMargins);
+  }
+  departments = departments.filter((k) => !changes.companyOff.includes(k));
+  // If the usual landing department is off, land on the first one left, or on the role page when nothing is left.
+  const home = def && departments.includes(DEPARTMENTS.find((d) => d.home.split("/")[1] === def.home.split("/")[1])?.key ?? "dashboard") ? def.home : (DEPARTMENTS.find((d) => departments.includes(d.key))?.home ?? "/who");
+  return { ...resolved, departments, perms, seeValues, seeMargins, home };
+}
+
 export function useAccess() {
   const role = usePrefs((s) => s.role);
   const operativeId = usePrefs((s) => s.operativeId);
   const asPersonId = usePrefs((s) => s.asPersonId);
+  const staffPref = usePrefs((s) => s.staffMode);
+  const companyOff = usePrefs((s) => s.companyOff);
+  const mdOverride = usePrefs((s) => s.mdOverride);
+  const askAiOff = usePrefs((s) => s.askAiOff);
   const people = useDb((db) => db.people);
   const row = useDb((db) => db.access.find((a) => a.id === role));
   const def = roleDef(role);
   const personId = signedInPersonId(role, asPersonId, operativeId, people);
   const person = useDb((db) => db.personAccess.find((a) => a.id === personId));
-  const resolved = resolveAccess(def, row, person);
+  // Vardil Works counts only for people the staff check passed. Everyone else is never in it, whatever is saved in their browser.
+  const staffMode = staffPref && staff.is && role === "md";
+  const base = resolveAccess(def, row, person);
+  // In Vardil Works nothing Vardil has switched off applies: it sees the whole firm, plus its own department.
+  const resolved = staffMode ? { ...base, departments: [...base.departments, "vardil" as DepartmentKey] } : applyStaffChanges(base, role, def, { mdOverride, companyOff });
   const allProjects = resolved.perms.includes("allProjects");
   const siteAccess = useDb((db) => db.siteAccess);
   return {
@@ -82,6 +115,10 @@ export function useAccess() {
     def,
     ...resolved,
     personId,
+    /** Signed in as Vardil Works (staff only). */
+    staffMode,
+    /** Ask AI: the managing director's, unless Vardil has switched it off for this demo. */
+    askAi: role === "md" && (staffMode || !askAiOff),
     /** May they open this department? */
     can: (d: DepartmentKey) => resolved.departments.includes(d),
     /** May they do this? See src/data/permissions.ts for the list. */

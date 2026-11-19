@@ -40,7 +40,17 @@ export default defineConfig(({ mode }) => {
     plugins: [loginCheck(mode), react(), tailwindcss(), ...(preview ? [viteSingleFile({ removeViteModuleLoader: true })] : [])],
     resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
     base: preview ? "./" : "/",
-    build: preview ? { outDir: "dist-preview", assetsInlineLimit: 100_000_000, cssCodeSplit: false } : {},
+    build: preview
+      ? { outDir: "dist-preview", assetsInlineLimit: 100_000_000, cssCodeSplit: false }
+      : {
+          rollupOptions: {
+            output: {
+              // Vardil Works (19 Nov): every file that holds only staff screens goes in /staff/, which a second
+              // Cloudflare Access application guards (README, "Vardil Works"). Shared code stays in /assets/.
+              chunkFileNames: (chunk) => (chunk.facadeModuleId?.includes("/src/staff/") || chunk.name === "entry" ? "staff/[name]-[hash].js" : "assets/[name]-[hash].js"),
+            },
+          },
+        },
     test: { environment: "node", include: ["src/**/*.test.ts", "server/**/*.test.ts"] },
   };
 });

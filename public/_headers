@@ -16,6 +16,10 @@
   Cross-Origin-Opener-Policy: same-origin
   X-Robots-Tag: noindex, nofollow
 
+# Vardil Works files (19 Nov). Cloudflare Access guards this folder; never let a shared cache keep them.
+/staff/*
+  Cache-Control: private, no-store
+
 # Built files have a fingerprint in their name, so they can be cached for a year.
 /assets/*
   Cache-Control: public, max-age=31536000, immutable

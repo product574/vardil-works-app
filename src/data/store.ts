@@ -20,7 +20,7 @@ import { DEFAULT_EMAIL, defaultDesign, type EmailTemplate, type InvoiceDesign } 
 import { REGION } from "@/lib/money";
 import { toast } from "@/ui/toast";
 import { buildSeed, demoDay } from "./seed";
-import type { Db, ID, RoleKey } from "./types";
+import type { Db, DepartmentKey, ID, MdOverride, RoleKey } from "./types";
 
 /** Bump when the shape of Db or the sample data changes. Old saved sample data is thrown away, preferences are kept. */
 const DATA_VERSION = 24;
@@ -76,6 +76,19 @@ type PrefsState = {
   invoiceDesignEdits: Partial<InvoiceDesign>;
   /** The wording of the email that carries an invoice. Null means the standard wording. */
   invoiceEmail: EmailTemplate | null;
+  /** Vardil staff only: signed in as Vardil Works, a level above the managing director. Counts only for people the staff check passes (src/app/staff.ts). */
+  staffMode: boolean;
+  /** Vardil staff only: departments switched off for the whole demo, every level included. */
+  companyOff: DepartmentKey[];
+  /** Vardil staff only: changes to the managing director's own access, which Roles and access cannot reach. */
+  mdOverride: MdOverride;
+  /** Vardil staff only: Ask AI switched off for the managing director. */
+  askAiOff: boolean;
+  setStaffMode: (on: boolean) => void;
+  setCompanyOff: (dept: DepartmentKey, off: boolean) => void;
+  setMdOverride: (o: Partial<MdOverride>) => void;
+  setAskAiOff: (off: boolean) => void;
+  clearStaffChanges: () => void;
   setInvoiceDesign: (d: Partial<InvoiceDesign>) => void;
   resetInvoiceDesign: () => void;
   setInvoiceEmail: (t: EmailTemplate | null) => void;
@@ -100,14 +113,24 @@ export const usePrefs = create<PrefsState>()(
       portalClientId: "c-02",
       invoiceDesignEdits: {},
       invoiceEmail: null,
+      staffMode: false,
+      companyOff: [],
+      mdOverride: { departments: {}, perms: {} },
+      askAiOff: false,
+      setStaffMode: (staffMode) => set({ staffMode }),
+      setCompanyOff: (dept, off) => set((s) => ({ companyOff: off ? [...new Set([...s.companyOff, dept])] : s.companyOff.filter((d) => d !== dept) })),
+      setMdOverride: (o) => set((s) => ({ mdOverride: { ...s.mdOverride, ...o } })),
+      setAskAiOff: (askAiOff) => set({ askAiOff }),
+      clearStaffChanges: () => set({ companyOff: [], mdOverride: { departments: {}, perms: {} }, askAiOff: false }),
       setInvoiceDesign: (d) => set((s) => ({ invoiceDesignEdits: { ...s.invoiceDesignEdits, ...d } })),
       resetInvoiceDesign: () => set({ invoiceDesignEdits: {} }),
       setInvoiceEmail: (invoiceEmail) => set({ invoiceEmail }),
       setTheme: (theme) => set({ theme }),
       setBrand: (b) => set((s) => ({ brandEdits: { ...s.brandEdits, ...b }, brand: { ...DEFAULT_BRAND, ...s.brandEdits, ...b } })),
       resetBrand: () => set({ brandEdits: {}, brand: DEFAULT_BRAND }),
-      setRole: (role) => set({ role, asPersonId: null }),
-      signInAs: (role, asPersonId) => set({ role, asPersonId }),
+      // Signing in as any level, or out, ends Vardil Works mode: staff come back to it from the strip at the top.
+      setRole: (role) => set({ role, asPersonId: null, staffMode: false }),
+      signInAs: (role, asPersonId) => set({ role, asPersonId, staffMode: false }),
       setOperative: (operativeId) => set({ operativeId }),
       setPortalClient: (portalClientId) => set({ portalClientId }),
     }),
@@ -117,7 +140,7 @@ export const usePrefs = create<PrefsState>()(
       storage: safeStorage,
       // Only live edits are saved, so changing src/config/brand.ts reaches every browser,
       // including ones that have opened an earlier version of the demo.
-      partialize: (s) => ({ theme: s.theme, brandEdits: s.brandEdits, role: s.role, asPersonId: s.asPersonId, operativeId: s.operativeId, portalClientId: s.portalClientId, invoiceDesignEdits: s.invoiceDesignEdits, invoiceEmail: s.invoiceEmail }),
+      partialize: (s) => ({ theme: s.theme, brandEdits: s.brandEdits, role: s.role, asPersonId: s.asPersonId, staffMode: s.staffMode, companyOff: s.companyOff, mdOverride: s.mdOverride, askAiOff: s.askAiOff, operativeId: s.operativeId, portalClientId: s.portalClientId, invoiceDesignEdits: s.invoiceDesignEdits, invoiceEmail: s.invoiceEmail }),
       // Version 1 saved the whole brand, which froze the old defaults in place. Drop it, keep the rest.
       migrate: (saved, version) => {
         const s = (saved ?? {}) as Record<string, unknown>;

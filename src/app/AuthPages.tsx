@@ -5,6 +5,7 @@ import { DEMO_BUILT_BY, DEMO_BUILT_BY_URL } from "@/config/brand";
 import { ROLES } from "@/data/roles";
 import { useDb, usePrefs } from "@/data/store";
 import { Avatar, Button, cx, useOnce } from "@/ui";
+import { staff } from "./staff";
 import { authMode, isSignedIn, signedInEmail, signIn, signOut, usingDefaultLogin } from "./auth";
 
 /** Asks the gate once whether this browser is already signed in. Null while it is checking. */
@@ -139,6 +140,11 @@ export function RolePage() {
         {email && <p className="mt-1 text-muted">You are signed in to the demo as {email}.</p>}
 
         <ul className="mt-5 divide-y divide-line border-y border-line">
+          {staff.ui && (
+            <li>
+              <staff.ui.RoleEntry onPick={() => navigate("/vardil", { replace: true })} />
+            </li>
+          )}
           {ROLES.map((r) => {
             const person = people.find((p) => p.id === r.personId);
             return (
