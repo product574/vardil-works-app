@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { buildSeed } from "@/data/seed";
 import type { Person } from "@/data/types";
 import { addDays } from "./dates";
-import { blocksText, bookingFor, complianceRows, countRows, courseStage, isCheck, licenceDue, mondayReminder, neededTickets, openCourse, planBlocks, plantBlocks, renewedTo, rowsInScope, scaffoldDue, scaffoldUnsafe, stateOf, stateWords, subFlags, subInsuranceFlags, ticketBlocks, ticketMatrix, vehicleBlocks } from "./compliance";
+import { blocksText, bookingFor, complianceRows, countRows, courseStage, isCheck, mondayReminder, nextLicenceCheck, neededTickets, openCourse, planBlocks, plantBlocks, renewedTo, rowsInScope, scaffoldDue, scaffoldUnsafe, stateOf, stateWords, subFlags, subInsuranceFlags, ticketBlocks, ticketMatrix, vehicleBlocks } from "./compliance";
 import { nextWorkWeek } from "./week";
 
 const DAY = "2026-11-18";
@@ -16,7 +16,7 @@ describe("where a date stands (good through its expiry day, due inside 30 days)"
     expect(stateWords("2026-11-15", day)).toBe("Ran out 3 days ago");
     expect(stateWords(day, day)).toBe("Due today");
     expect(stateWords("2026-11-27", day)).toBe("Due in 9 days");
-    expect(isCheck("Weekly inspection") && isCheck("Service, every 250 hrs") && isCheck("Driving licence check") && !isCheck("Safe Pass")).toBe(true);
+    expect(isCheck("Weekly inspection") && isCheck("Service, every 250 hrs") && isCheck("Yearly licence check") && !isCheck("Safe Pass")).toBe(true);
   });
 });
 
@@ -122,9 +122,8 @@ describe("machinery, vans, scaffolds and licences", () => {
     for (const sc of db.scaffolds) for (let i = 0; i + 1 < sc.inspections.length; i++) expect(sc.inspections[i]!.date <= addDays(sc.inspections[i + 1]!.date, 7), sc.id).toBe(true);
   });
 
-  it("checks a licence once a year, or sooner if it runs out first", () => {
-    expect(licenceDue({ checkedOn: "2026-01-10", expires: "2030-01-01" })).toEqual({ date: addDays("2026-01-10", 365), what: "Yearly check" });
-    expect(licenceDue({ checkedOn: "2026-06-01", expires: "2026-12-10" })).toEqual({ date: "2026-12-10", what: "Licence runs out" });
+  it("checks a licence once a year (the licence and CPC themselves are Fleet's)", () => {
+    expect(nextLicenceCheck({ checkedOn: "2026-01-10", checkedBy: "Declan Furey" })).toBe(addDays("2026-01-10", 365));
   });
 });
 
@@ -146,7 +145,8 @@ describe("every row in one list", () => {
     expect(rows.filter((r) => r.ref.kind === "cert").length).toBe(certs);
     expect(rows.filter((r) => r.area === "company").length).toBe(db.companyPapers.length);
     expect(rows.filter((r) => r.ref.kind === "scaffold").length).toBe(db.scaffolds.filter((s) => !s.struckOn).length);
-    expect(rows.filter((r) => r.ref.kind === "licence").length).toBe(db.people.filter((p) => p.active && p.licence).length);
+    expect(rows.filter((r) => r.ref.kind === "licence").length).toBe(db.people.filter((p) => p.active && p.drives).length);
+    expect(rows.filter((r) => r.ref.kind === "driverLicence" && r.ref.which === "driving").length).toBe(db.people.filter((p) => p.active && p.drives).length);
   });
 
   it("puts missing papers first, then soonest first", () => {
@@ -156,11 +156,12 @@ describe("every row in one list", () => {
     expect(dated.map((r) => r.due)).toEqual([...dated.map((r) => r.due)].sort());
   });
 
-  it("counts what stops work: tickets, machines, vans and scaffolds", () => {
+  it("counts what stops work: tickets, machines, vans, a tipper driver's CPC and scaffolds", () => {
     const c = countRows(rows);
     const blocks = rows.filter((r) => r.blocks).map((r) => r.who.split(" ")[0]).sort();
-    expect(blocks).toEqual(["191-G-7730", "212-D-18834", "C719", "C723", "HAR4", "HS2", "SC1", "ST3", "TR3", "Tomás"]);
-    expect(c.blocks).toBe(10);
+    // Kevin Shortall drives a tipper and his Driver CPC (Fleet's record) has run out.
+    expect(blocks).toEqual(["191-G-7730", "212-D-18834", "C719", "C723", "HAR4", "HS2", "Kevin", "SC1", "ST3", "TR3", "Tomás"]);
+    expect(c.blocks).toBe(11);
     expect(c.proof).toBe(2);
   });
 

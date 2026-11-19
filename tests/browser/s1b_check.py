@@ -40,8 +40,8 @@ def steps(page, ctx):
     page.get_by_role("button", name="Reset demo data").click(); page.wait_for_timeout(400)
 
     # ── 1. The Files section is kept, with To be sorted
-    bar = [t.strip() for t in page.locator("nav[aria-label=Departments] a").all_inner_texts()]
-    check("Files: back in the bar, after Plant and Compliance (18 Nov) and before Invoicing", bar.index("Compliance") == bar.index("Plant") + 1 and bar.index("Files") == bar.index("Compliance") + 1 and bar.index("Invoicing") == bar.index("Files") + 1, bar)
+    bar = [t.strip().split("\n")[-1] for t in page.locator("nav[aria-label=Departments] a").all_inner_texts()]
+    check("Files: out of the bar since 17 Nov (Oisin), Plant, Fleet, Compliance, then Invoicing", "Files" not in bar and bar.index("Fleet") == bar.index("Plant") + 1 and bar.index("Compliance") == bar.index("Fleet") + 1 and bar.index("Invoicing") == bar.index("Compliance") + 1, bar)
     go(page, "/files/unsorted", "table")
     check("Files: To be sorted holds the six loose files again", page.locator("tbody tr").count() == 6 and "6" in page.locator("nav[aria-label$=screens]:visible").get_by_role("link", name="To be sorted").inner_text())
     go(page, "/files?project=C721&folder=Invoices", "table")
@@ -72,7 +72,7 @@ def steps(page, ctx):
 
     # Admin switched on for the contracts managers: Billing and Roles and access stay the managing director's.
     go(page, "/admin/access")
-    page.get_by_role("switch", name="Contracts manager: Admin").click(); page.wait_for_timeout(300)
+    page.get_by_role("checkbox", name="Contracts manager: Admin").click(); page.wait_for_timeout(300)
     as_role(page, "Contracts manager")
     go(page, "/admin")
     side = page.locator("nav[aria-label$=screens]:visible")

@@ -1,7 +1,7 @@
 import { type FormEvent, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { exceptionCount, levelOf, useAccess } from "@/data/access";
-import { addEmployee, addHoliday, decideHoliday, setEmployeeActive } from "@/data/actions";
+import { addEmployee, addHoliday, decideHoliday, setEmployeeActive, setSageNo } from "@/data/actions";
 import { blocksText, ticketBlocks } from "@/lib/compliance";
 import { ROLES } from "@/data/roles";
 import { useData, useDay, usePrefs } from "@/data/store";
@@ -10,7 +10,7 @@ import { addDays } from "@/lib/dates";
 import { dFull, dShort, plural } from "@/lib/format";
 import { money2 } from "@/lib/money";
 import { dueLabel, dueState } from "@/lib/status";
-import { Badge, Button, Dialog, Empty, Fact, Field, Mail, NumInput, PageBody, PageHead, Panel, Segmented, Switch, Tel, type Tone } from "@/ui";
+import { Badge, Button, type DeclineAsk, DeclineDialog, DeclineNote, Dialog, Empty, Fact, Field, Mail, NumInput, PageBody, PageHead, Panel, Segmented, Switch, Tel, type Tone } from "@/ui";
 import { ProofLink } from "@/ui/files";
 import { toast } from "@/ui/toast";
 
@@ -74,6 +74,7 @@ export function EmployeeRegister() {
               <thead>
                 <tr>
                   <th>Name</th>
+                  <th>Sage no.</th>
                   <th>Trade or role</th>
                   <th>Category</th>
                   {seeRates && <th className="num">Hourly rate</th>}
@@ -87,6 +88,7 @@ export function EmployeeRegister() {
                 {rows.map((p) => (
                   <tr key={p.id} className="rowlink" onClick={() => setParams({ person: p.id })}>
                     <td className="font-medium">{p.name}</td>
+                    <td className="tabular-nums">{p.sageNo ?? <Badge tone="warn">Not in Sage</Badge>}</td>
                     <td>{p.trade}</td>
                     <td>{p.category ?? <span className="text-muted">-</span>}</td>
                     {seeRates && <td className="num">{p.hourlyRate ? money2(p.hourlyRate, region) : "-"}</td>}
@@ -140,6 +142,9 @@ function PersonDialog({ person, onClose }: { person: Person; onClose: () => void
       <div className="grid gap-5 sm:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
         <dl>
           <Fact label="Trade or role">{person.trade}</Fact>
+          <Fact label="Sage employee no.">
+            <SageNo person={person} canEdit={may("manageStaff")} />
+          </Fact>
           <Fact label="Type">{person.kind}</Fact>
           <Fact label="Category">{person.category ?? "-"}</Fact>
           {may("seeRates") && <Fact label="Hourly rate">{person.hourlyRate ? `${money2(person.hourlyRate, region)} from ${dFull(person.rateAsOf)}` : "Salaried"}</Fact>}
@@ -196,6 +201,7 @@ function PersonDialog({ person, onClose }: { person: Person; onClose: () => void
                   <li key={h.id} className="flex items-center gap-2 px-2.5 py-1.5">
                     <span className="flex-1">
                       {dShort(h.from)} to {dShort(h.to)}
+                      {h.status === "Declined" && <DeclineNote note={h.declineNote} />}
                     </span>
                     <Badge tone={h.status === "Approved" ? "ok" : h.status === "Declined" ? "bad" : "accent"}>{h.status}</Badge>
                   </li>
@@ -206,6 +212,42 @@ function PersonDialog({ person, onClose }: { person: Person; onClose: () => void
         </div>
       </div>
     </Dialog>
+  );
+}
+
+/** The employee number from Sage Payroll, which links this person's hours to their pay (Oldstone call, 16 Nov). */
+function SageNo({ person, canEdit }: { person: Person; canEdit: boolean }) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(person.sageNo ?? "");
+  if (editing)
+    return (
+      <form
+        className="flex items-center gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          setSageNo(person.id, value);
+          toast(value.trim() ? `Sage number ${value.trim()} saved for ${person.name}` : `Sage number cleared for ${person.name}`);
+          setEditing(false);
+        }}
+      >
+        <input aria-label="Sage employee number" className="field h-9 w-24" inputMode="numeric" value={value} onChange={(e) => setValue(e.target.value)} autoFocus />
+        <Button size="sm" type="submit" variant="primary">
+          Save
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>
+          Cancel
+        </Button>
+      </form>
+    );
+  return (
+    <span className="inline-flex items-center gap-2">
+      {person.sageNo ? <span className="tabular-nums">{person.sageNo}</span> : <span className="text-warn">Not set up in Sage yet. Hours cannot be exported until it is added.</span>}
+      {canEdit && (
+        <Button size="sm" variant="ghost" onClick={() => setEditing(true)}>
+          {person.sageNo ? "Change" : "Add"}
+        </Button>
+      )}
+    </span>
   );
 }
 
@@ -221,14 +263,16 @@ function AddEmployeeDialog({ open, onClose }: { open: boolean; onClose: () => vo
   const [rate, setRate] = useState(25);
   const [language, setLanguage] = useState<Language>("en");
   const [level, setLevel] = useState<LevelKey>("site");
+  const [sageNo, setSageNoField] = useState("");
   const [error, setError] = useState("");
   const submit = (e: FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !phone.trim()) return setError("Name and phone number are needed.");
     if (kind === "Management" && !role.trim()) return setError("Add their job title.");
-    addEmployee({ name, phone: phone.trim(), kind, trade: kind === "Operative" ? trade : role.trim(), category: kind === "Operative" ? category : null, hourlyRate: kind === "Operative" ? rate : 0, language, ...(kind === "Management" ? { level } : {}) });
+    addEmployee({ name, phone: phone.trim(), kind, trade: kind === "Operative" ? trade : role.trim(), category: kind === "Operative" ? category : null, hourlyRate: kind === "Operative" ? rate : 0, language, ...(kind === "Management" ? { level } : {}), ...(sageNo.trim() ? { sageNo: sageNo.trim() } : {}) });
     toast(`${name.trim()} added to the register`);
     setName("");
+    setSageNoField("");
     setPhone("");
     setRole("");
     setError("");
@@ -287,6 +331,9 @@ function AddEmployeeDialog({ open, onClose }: { open: boolean; onClose: () => vo
             <Field label="Hourly rate">{() => <NumInput label="Hourly rate" className="h-9 w-full" value={rate} onChange={setRate} />}</Field>
           </>
         )}
+        <Field label="Sage employee no." hint="Set them up in Sage Payroll first (PPS number, address, bank details), then copy the number Sage gives them here. It can be added later.">
+          {(id) => <input id={id} className="field" inputMode="numeric" placeholder="0031" value={sageNo} onChange={(e) => setSageNoField(e.target.value)} />}
+        </Field>
         <Field label="Language for site instructions">
           {(id) => (
             <select id={id} className="field" value={language} onChange={(e) => setLanguage(e.target.value as Language)}>
@@ -319,6 +366,7 @@ export function Holidays() {
   const canDecide = useAccess().may("approveLeave");
   const [show, setShow] = useState<"Requested" | "Approved" | "Declined">("Requested");
   const [adding, setAdding] = useState(false);
+  const [no, setNo] = useState<DeclineAsk | null>(null);
   const count = (s: typeof show) => db.holidays.filter((h) => h.status === s).length;
   const rows = db.holidays.filter((h) => h.status === show).sort((a, b) => a.from.localeCompare(b.from));
   const person = (id: string) => db.people.find((p) => p.id === id);
@@ -342,6 +390,7 @@ export function Holidays() {
                   <th>Came in by</th>
                   <th>Note</th>
                   {show === "Requested" && <th>Clashes with plan</th>}
+                  {show === "Declined" && <th>Why it was declined</th>}
                   {show === "Requested" && canDecide && <th />}
                 </tr>
               </thead>
@@ -360,9 +409,31 @@ export function Holidays() {
                       <td>{h.via}</td>
                       <td className="text-muted">{h.note ?? "-"}</td>
                       {show === "Requested" && <td>{clash > 0 ? <Badge tone="warn">{plural(clash, "day")} already planned</Badge> : <span className="text-muted">None</span>}</td>}
+                      {show === "Declined" && (
+                        <td>
+                          {h.declineNote ?? <span className="text-muted">No note left</span>}
+                          {h.decidedBy && <span className="block text-[0.87rem] text-muted">{h.decidedBy}</span>}
+                        </td>
+                      )}
                       {show === "Requested" && canDecide && (
                         <td className="text-right whitespace-nowrap">
-                          <Button size="sm" variant="ghost" onClick={() => { decideHoliday(h.id, false); toast(`Leave declined for ${p?.name}`); }}>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            aria-label={`Decline leave for ${p?.name}`}
+                            onClick={() =>
+                              setNo({
+                                title: `Decline leave for ${p?.name}?`,
+                                about: `${h.from === h.to ? dFull(h.from) : `${dFull(h.from)} to ${dFull(h.to)}`}.`,
+                                hint: `Say why, if it helps. ${p?.name?.split(" ")[0]} sees it with the answer on the site phone.`,
+                                confirm: "Decline leave",
+                                run: (note) => {
+                                  decideHoliday(h.id, false, note);
+                                  toast(`Leave declined for ${p?.name}${note ? ", with your note" : ""}`);
+                                },
+                              })
+                            }
+                          >
                             Decline
                           </Button>{" "}
                           <Button
@@ -385,11 +456,12 @@ export function Holidays() {
         </Panel>
       </PageBody>
       {adding && <RecordLeaveDialog onClose={() => setAdding(false)} told={told} />}
+      <DeclineDialog ask={no} onClose={() => setNo(null)} />
     </>
   );
 }
 
-function RecordLeaveDialog({ onClose, told }: { onClose: () => void; told: (n: number) => string }) {
+export function RecordLeaveDialog({ onClose, told }: { onClose: () => void; told: (n: number) => string }) {
   const db = useData((s) => s.db);
   const day = useDay();
   const people = db.people.filter((p) => p.active).sort((a, b) => a.name.localeCompare(b.name));

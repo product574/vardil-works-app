@@ -23,7 +23,7 @@ import { buildSeed, demoDay } from "./seed";
 import type { Db, ID, RoleKey } from "./types";
 
 /** Bump when the shape of Db or the sample data changes. Old saved sample data is thrown away, preferences are kept. */
-const DATA_VERSION = 15;
+const DATA_VERSION = 24;
 
 let storageFull = false;
 

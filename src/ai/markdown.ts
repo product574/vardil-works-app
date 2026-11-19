@@ -12,7 +12,7 @@ import { DEPARTMENTS } from "@/app/departments";
 export type Inline = { kind: "text"; text: string } | { kind: "bold"; text: string } | { kind: "link"; text: string; to: string; bold?: boolean };
 export type Block = { kind: "p"; lines: Inline[][] } | { kind: "ul" | "ol"; items: Inline[][] } | { kind: "table"; head: Inline[][]; rows: Inline[][][] };
 
-const SCREENS = new Set(DEPARTMENTS.flatMap((d) => d.groups.flatMap((g) => g.items.map((i) => i.to))));
+const SCREENS = new Set(DEPARTMENTS.flatMap((d) => d.groups.flatMap((g) => g.items.flatMap((i) => [i.to, ...(i.tabs ?? []).map((t) => t.to)]))));
 /** Query settings each screen understands. */
 const QUERY: Record<string, string[]> = {
   "/reports/margin": ["sort"],
@@ -25,7 +25,10 @@ const QUERY: Record<string, string[]> = {
   "/dashboard": ["open"],
   "/people": ["person"],
   "/plant": ["item"],
-  "/plant/vehicles": ["vehicle"],
+  "/fleet/vehicles": ["vehicle"],
+  "/fleet/drivers": ["driver"],
+  "/fleet/damage": ["report"],
+  "/fleet/bases": ["base"],
   "/files": ["project", "folder"],
   "/invoicing/supplier": ["inv"],
   "/invoicing/subcontractor": ["inv"],
@@ -42,6 +45,8 @@ const CUSTOMER = /^\/customers\/c-[a-z0-9-]{1,30}$/i;
 const CUSTOMER_TABS = new Set(["projects", "tenders", "invoices", "emails", "files"]);
 /** One client invoice on its own page (18 Nov), by the number it goes by. */
 const INVOICE = /^\/invoicing\/client\/(SI|INV)-\d{3,6}$/i;
+/** One fleet record's own page (18 Nov): a vehicle, a garage invoice or a garage. */
+const FLEET = /^\/fleet\/(invoices|vehicles|garages)\/[\w-]{1,40}$/;
 const TABS = new Set(["overview", "scope", "photos", "files", "plant", "requests", "extras", "costs", "history"]);
 
 /** The address to open inside the demo, or null when the link goes anywhere else. */
@@ -58,7 +63,7 @@ export function safeHref(href: string): string | null {
   const path = u.pathname.length > 1 ? u.pathname.replace(/\/+$/, "") : u.pathname;
   const isProject = PROJECT.test(path);
   const isCustomer = CUSTOMER.test(path);
-  if (!SCREENS.has(path) && !isProject && !isCustomer && !QUOTE.test(path) && !INVOICE.test(path)) return null;
+  if (!SCREENS.has(path) && !isProject && !isCustomer && !QUOTE.test(path) && !INVOICE.test(path) && !FLEET.test(path)) return null;
   for (const [k, v] of u.searchParams) {
     if (isProject ? k !== "tab" || !TABS.has(v) : isCustomer ? k !== "tab" || !CUSTOMER_TABS.has(v) : !(QUERY[path] ?? []).includes(k) || !/^[\w .-]{1,60}$/.test(v)) return null;
   }

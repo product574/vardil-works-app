@@ -18,11 +18,16 @@ describe("sample data", () => {
     expect(demoDay("2026-11-14")).toBe("2026-11-13");
     expect(demoDay("2026-11-15")).toBe("2026-11-13");
     expect(isWeekend(day)).toBe(false);
+    // Nor on a bank holiday: nobody is marked a normal day on one (17 Nov).
+    expect(demoDay("2026-10-26")).toBe("2026-10-23");
+    expect(demoDay("2026-12-27")).toBe("2026-12-24");
   });
 
   it("has unique ids in every table", () => {
     for (const [table, rows] of Object.entries(db)) {
-      const ids = (rows as { id: string }[]).map((r) => r.id);
+      // Bank holidays are known by their date: there is one a day at most.
+      const ids = (rows as { id?: string; date?: string }[]).map((r) => r.id ?? r.date);
+      expect(ids.every(Boolean), table).toBe(true);
       expect(new Set(ids).size, table).toBe(ids.length);
     }
   });
@@ -47,9 +52,23 @@ describe("sample data", () => {
     for (const v of db.vehicles) if (v.driverId) expect(people.has(v.driverId)).toBe(true);
   });
 
-  it("never records attendance or plans work at a weekend", () => {
-    expect(db.attendance.some((a) => isWeekend(a.date))).toBe(false);
-    expect(db.plan.some((p) => isWeekend(p.date))).toBe(false);
+  it("never marks a normal day at a weekend or on a bank holiday: only weekend time stamps and weekend plans", () => {
+    const holidays = new Set(db.bankHolidays.map((h) => h.date));
+    expect(db.attendance.some((a) => (isWeekend(a.date) || holidays.has(a.date)) && a.status !== "restday")).toBe(false);
+    // A time stamp is only ever on a rest day, and never today or later.
+    expect(db.attendance.some((a) => a.status === "restday" && !(isWeekend(a.date) || holidays.has(a.date)))).toBe(false);
+    expect(db.attendance.some((a) => a.status === "restday" && a.date >= day)).toBe(false);
+    // Weekend work is planned one day at a time (17 Nov): Derrybawn Bridge, this Saturday and next.
+    const weekend = db.plan.filter((p) => isWeekend(p.date));
+    expect(weekend.map((p) => p.date).sort()).toEqual(["2026-11-14", "2026-11-14", "2026-11-21", "2026-11-21"]);
+    expect(new Set(weekend.map((p) => p.projectId))).toEqual(new Set([db.projects.find((p) => p.code === "C724")!.id]));
+    expect(db.plan.some((p) => holidays.has(p.date) && !isWeekend(p.date))).toBe(false);
+  });
+
+  it("has the public holidays for last year, this year and next", () => {
+    expect(db.bankHolidays.filter((h) => h.date.startsWith("2026")).map((h) => h.date)).toEqual(["2026-01-01", "2026-02-02", "2026-03-17", "2026-04-06", "2026-05-04", "2026-06-01", "2026-08-03", "2026-10-26", "2026-12-25", "2026-12-26"]);
+    expect(new Set(db.bankHolidays.map((h) => h.date)).size).toBe(db.bankHolidays.length);
+    expect(db.bankHolidays.length).toBe(30);
   });
 
   it("never plans someone on approved leave", () => {
@@ -77,6 +96,20 @@ describe("sample data", () => {
     expect(db.personAccess.map((a) => a.id).sort()).toEqual(["p-hs", "p-yard"]);
     expect(db.people.filter((p) => p.kind === "Management").every((p) => p.level)).toBe(true);
     expect(db.people.filter((p) => p.kind === "Operative").some((p) => p.level)).toBe(false);
+  });
+
+  it("gives sites only to site managers who do not run them, on a working day gone, and puts them in the site's group chat", () => {
+    expect(db.siteAccess.length).toBeGreaterThan(0);
+    for (const g of db.siteAccess) {
+      const who = db.people.find((p) => p.id === g.personId)!;
+      const site = db.projects.find((p) => p.id === g.projectId)!;
+      expect(who.kind === "Management" && who.level === "site" && who.active).toBe(true);
+      expect(site.status === "Live" || site.status === "Not started").toBe(true);
+      expect(site.siteManagerId).not.toBe(g.personId);
+      expect(g.at.slice(0, 10) < day).toBe(true);
+      expect([0, 6]).not.toContain(new Date(g.at.slice(0, 10) + "T12:00:00Z").getUTCDay());
+      expect(db.chatChannels.find((c) => c.projectId === site.id)?.memberIds).toContain(g.personId);
+    }
   });
 
   it("prices every won project from its quote, plus the extras agreed since", () => {
@@ -125,7 +158,8 @@ describe("sample data", () => {
         ...d.mails.map((m) => m.receivedAt),
         ...d.activity.map((a) => a.at),
         ...d.approvals.flatMap((a) => [a.createdAt, a.resolvedAt]),
-        ...d.fleetDocs.filter((f) => f.category === "repairs").map((f) => f.date),
+        ...d.garageInvoices.flatMap((i) => [i.date, i.enteredAt, i.checkedAt]),
+        ...d.damageReports.flatMap((x) => [x.at, x.dealtAt]),
       ].filter((x): x is string => !!x);
       for (const e of past) expect(e.slice(0, 10) <= today, `${real}: ${e}`).toBe(true);
     }

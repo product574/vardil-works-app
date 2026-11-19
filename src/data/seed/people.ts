@@ -115,6 +115,10 @@ export function seedPeople(r: Rng, today: string, domain: string) {
   add(MANAGEMENT, "Management", false);
   add(SITE_MANAGERS, "Management", true);
   add(OPERATIVES, "Operative", false);
+  // Sage Payroll numbers in the order people were set up there. Aoife Kinsella started this
+  // month and is not in Sage yet, so the payroll export has something to flag.
+  let sage = 0;
+  for (const p of people) if (p.id !== "p-129") p.sageNo = String(++sage).padStart(4, "0");
 
   // A deliberate spread of expired and nearly expired tickets, so the certs screen has work in it.
   const nudge = (personId: string, certName: string, days: number) => {
@@ -166,7 +170,7 @@ export function seedPeople(r: Rng, today: string, domain: string) {
     { id: "hol-5", personId: "p-117", from: workdays(today, 8), to: workdays(today, 9), status: "Approved", via: "Email" },
     { id: "hol-6", personId: "p-sm4", from: workdays(today, 15), to: workdays(today, 19), status: "Approved", via: "Form" },
     { id: "hol-7", personId: "p-114", from: workdays(today, -8), to: workdays(today, -4), status: "Approved", via: "Form" },
-    { id: "hol-8", personId: "p-125", from: workdays(today, 2), to: workdays(today, 4), status: "Declined", via: "Phone", note: "Short notice, and Ardmullen needs the full crew that week" },
+    { id: "hol-8", personId: "p-125", from: workdays(today, 2), to: workdays(today, 4), status: "Declined", via: "Phone", note: "A few days at home", decidedBy: "Tadhg Morrissey", declineNote: "Short notice, and Ardmullen needs the full crew that week" },
   ];
 
   return { people, holidays };

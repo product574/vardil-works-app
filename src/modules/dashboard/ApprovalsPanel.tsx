@@ -9,7 +9,7 @@ import { rankApprovals } from "@/lib/approvals";
 import { when } from "@/lib/format";
 import { money2, pct1 } from "@/lib/money";
 import { costBreakdown, lineValue, marginFlag, marginPct, quoteTotal } from "@/lib/quotes";
-import { Badge, Button, cx, Empty, Field, Panel, Section, Segmented } from "@/ui";
+import { Badge, Button, cx, type DeclineAsk, DeclineDialog, DeclineNote, Empty, Field, Panel, Section, Segmented } from "@/ui";
 import { toast } from "@/ui/toast";
 
 export const APPROVAL_LABEL: Record<ApprovalKind, string> = {
@@ -50,6 +50,8 @@ export function ApprovalsPanel({ className }: { className?: string }) {
   const openId = params.get("open");
   const opened = db.approvals.find((a) => a.id === openId);
   const [tab, setTab] = useState<"waiting" | "done">(opened && opened.status !== "Pending" ? "done" : "waiting");
+  // Discarding a draft can carry a note saying why (Oisin, 17 Nov). It is optional.
+  const [no, setNo] = useState<DeclineAsk | null>(null);
   const pending = db.approvals.filter((a) => a.status === "Pending");
   const resolved = db.approvals.filter((a) => a.status !== "Pending");
   const ranked = rankApprovals(tab === "waiting" ? pending : resolved, db);
@@ -87,6 +89,7 @@ export function ApprovalsPanel({ className }: { className?: string }) {
           <span className="min-w-0 flex-1">
             <span className="block font-medium">{a.title}</span>
             <span className="block text-[0.93rem] text-muted">{c ? `${c.name}. ` : ""}{a.rationale}</span>
+            {a.status === "Discarded" && <DeclineNote note={a.discardNote} className="text-[0.93rem]" />}
           </span>
           <span className="shrink-0 text-right text-[0.93rem] text-muted max-sm:hidden">
             {a.status === "Pending" ? when(a.createdAt, day) : `${a.status} by ${a.resolvedBy}`}
@@ -101,7 +104,22 @@ export function ApprovalsPanel({ className }: { className?: string }) {
                 <p className="mr-auto text-[0.93rem] text-muted">You can read this draft. Approving or discarding it is for someone with the "Approve drafts" permission.</p>
               ) : a.status === "Pending" ? (
                 <>
-                  <Button variant="ghost" onClick={() => { discardApproval(a.id); setOpen(null); toast("Draft discarded"); }}>
+                  <Button
+                    variant="ghost"
+                    onClick={() =>
+                      setNo({
+                        title: "Discard this draft?",
+                        about: a.title,
+                        hint: "Say why, if it helps. The note is kept with the draft under Discarded and in the activity log.",
+                        confirm: "Discard",
+                        run: (note) => {
+                          discardApproval(a.id, note);
+                          setOpen(null);
+                          toast(note ? "Draft discarded, with your note" : "Draft discarded");
+                        },
+                      })
+                    }
+                  >
                     Discard
                   </Button>
                   <Button variant="primary" onClick={() => { approveApproval(a.id); setOpen(null); toast(DONE_TEXT[a.kind]); }}>
@@ -157,6 +175,7 @@ export function ApprovalsPanel({ className }: { className?: string }) {
         )}
       </Panel>
       <p className="mt-2 text-[0.93rem] text-muted">Click a row to open it here, and click it again to close it. Nothing is sent, priced or filed until a person approves it.</p>
+      <DeclineDialog ask={no} onClose={() => setNo(null)} />
     </Section>
   );
 }

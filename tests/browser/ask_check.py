@@ -133,7 +133,7 @@ try:
         page.wait_for_selector("text=Chaser approved and filed under Sent")
         page.goto(B + "/inbox/sent"); page.wait_for_selector("h1")
         check("Approved, it is filed under Sent as edited", page.get_by_text(f"{ref}, Dunmoy Bridewell final account").count() >= 1)
-        page.get_by_text(f"{ref}, Dunmoy Bridewell final account").first.click(); page.wait_for_timeout(300)
+        page.locator("main").get_by_role("button", name=re.compile(re.escape(f"{ref}, Dunmoy Bridewell final account"))).first.click(); page.wait_for_timeout(300)
         check("with the edit in it", page.get_by_text("Could you please let me know").count() >= 1)
 
         # 6. The other drafts
@@ -183,7 +183,7 @@ try:
         check("A reload keeps the conversation and the panel open", page.locator("#ask-panel [data-turn]").count() == n)
         page.locator("#ask-panel textarea").press("Escape")
         check("Escape closes the panel", page.locator("#ask-panel").count() == 0)
-        check("and puts the focus back on the button", page.evaluate("document.activeElement && document.activeElement.textContent") == "Ask AI")
+        check("and puts the focus back on the button", page.evaluate("document.activeElement && document.activeElement.textContent.trim()") == "Ask AI")
         page.get_by_role("button", name="Ask AI", exact=True).click(); page.locator("#ask-panel").get_by_role("button", name="New conversation").click()
         check("New conversation clears it", page.locator("#ask-panel [data-turn]").count() == 0 and page.locator("#ask-panel").get_by_text("Across the firm").count() == 1)
         page.locator("#ask-panel").get_by_role("button", name="Close Ask AI").click()

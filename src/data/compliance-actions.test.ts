@@ -3,7 +3,7 @@ import { scaffoldDue, scaffoldUnsafe, stateOf, subInsuranceFlags, ticketBlocks }
 import { addDays } from "@/lib/dates";
 import { nextServiceDate } from "@/lib/status";
 import { nextWorkWeek } from "@/lib/week";
-import { addScaffold, bookOnCourse, checkLicence, checkTicketPhoto, inspectScaffold, markAttendance, markCourseDone, movePlant, planPerson, recordSubPaper, recordVehicleService, renewCert, renewCompanyPaper, renewPlantCert, renewVehicle, sendTicketPhoto, setPlanDay, strikeScaffold, unbookFromCourse } from "./actions";
+import { addScaffold, bookOnCourse, checkLicence, setDriverLicence, checkTicketPhoto, inspectScaffold, markAttendance, markCourseDone, movePlant, planPerson, recordSubPaper, recordVehicleService, renewCert, renewCompanyPaper, renewPlantCert, renewVehicle, sendTicketPhoto, setPlanDay, strikeScaffold, unbookFromCourse } from "./actions";
 import { useData } from "./store";
 
 const db = () => useData.getState().db;
@@ -134,11 +134,13 @@ describe("scaffolds, papers, licences and vans", () => {
     renewCompanyPaper("co-3", { expires: addDays(day(), 365), reference: "CAR-50001" }, proof);
     const car = db().companyPapers.find((c) => c.id === "co-3")!;
     expect([car.reference, car.proofNeeded, !!car.proof]).toEqual(["CAR-50001", false, true]);
-    checkLicence("p-114", { categories: "B", expires: addDays(day(), 3000) }, null);
-    expect(person("p-114").licence!.checkedOn).toBe(day());
-    expect(person("p-114").licence!.proofNeeded).toBe(true);
+    checkLicence("p-114", "B and C1 seen");
+    expect(person("p-114").licenceCheck!.checkedOn).toBe(day());
+    // Fleet's licence form, saved with no copy: "Proof needed" until one is attached.
+    setDriverLicence("p-114", "driving", addDays(day(), 3000), []);
+    expect(person("p-114").licences!.driving!.proofNeeded).toBe(true);
     const v = db().vehicles.find((x) => x.reg === "212-D-18834")!;
-    renewVehicle(v.id, "test", addDays(day(), 365), 55, null);
+    renewVehicle(v.id, "test", addDays(day(), 365), 55, []);
     expect(db().vehicles.find((x) => x.id === v.id)!.compliance.test.proofNeeded).toBe(true);
     recordVehicleService(v.id, "Full service");
     const after = db().vehicles.find((x) => x.id === v.id)!;

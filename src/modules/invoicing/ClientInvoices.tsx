@@ -26,9 +26,9 @@ const TABS: { value: Show; label: string }[] = [
 const ADDRESS: Record<Show, string> = { all: "/invoicing", draft: "/invoicing?show=draft", paid: "/invoicing?show=paid", held: "/invoicing/held", unpaid: "/invoicing/invoiced", overdue: "/invoicing/invoiced?show=overdue", sent: "/invoicing/invoiced" };
 
 /** One square of the aged debt strip. Pressing it shows those invoices in the list below; pressing it again shows all that is owed. */
-function AgeTile({ to, current, label, amount, count, tone }: { to: string; current: boolean; label: string; amount: string; count: number; tone?: "warn" | "bad" }) {
+function AgeTile({ to, current, label, amount, count, tone, className }: { to: string; current: boolean; label: string; amount: string; count: number; tone?: "warn" | "bad"; className?: string }) {
   return (
-    <Link to={to} aria-current={current ? "true" : undefined} className={cx("press block px-3 py-2", current ? "bg-accent-soft" : "hover:bg-accent-soft/60")}>
+    <Link to={to} aria-current={current ? "true" : undefined} className={cx("press block px-3 py-2", current ? "bg-accent-soft" : "hover:bg-accent-soft/60", className)}>
       <span className="block text-[0.87rem] text-muted">{label}</span>
       <span className={cx("block text-[1.15rem] font-medium", tone === "bad" && "text-bad", tone === "warn" && "text-warn")}>{amount}</span>
       <span className="block text-[0.87rem] text-muted">{plural(count, "invoice")}</span>
@@ -36,10 +36,16 @@ function AgeTile({ to, current, label, amount, count, tone }: { to: string; curr
   );
 }
 
+// Below 1280 wide (Tailwind's xl) a row becomes a block: invoice and total, then client and
+// project, then sent, due, status and in accounts, each with its heading, then the buttons.
+const STACK_ROW = "max-xl:grid max-xl:grid-cols-2 max-xl:gap-x-4 max-xl:gap-y-2 max-xl:border-b max-xl:border-line max-xl:px-3 max-xl:py-3 max-xl:last:border-b-0 sm:max-xl:grid-cols-4 [&>td]:max-xl:border-0 [&>td]:max-xl:p-0";
+const LABELLED = "max-xl:before:block max-xl:before:text-[0.8rem] max-xl:before:text-muted max-xl:before:content-[attr(data-label)]";
+
 /**
  * Every invoice to a client in one list: drafts still to go, held ones, what has been sent and
  * is owed, and what has been paid. The tabs filter it; each row's menu moves an invoice on.
  */
+
 export function ClientInvoices() {
   const { db, day, region, access, canEdit, project, client } = useInv();
   const { pathname } = useLocation();
@@ -81,17 +87,19 @@ export function ClientInvoices() {
       />
       <PageBody className="grid max-w-[92rem] grid-cols-1 gap-4">
         {access.seeValues && show !== "draft" && show !== "held" && show !== "paid" && (
-          <Panel className="overflow-x-auto">
-            <nav aria-label="Aged debt" className="grid min-w-[40rem] grid-cols-5 divide-x divide-line">
-              <AgeTile to="/invoicing/invoiced" current={show === "unpaid" && age === null} label="Owed to us, with VAT" amount={money0(debt.gross, region)} count={debt.count} />
+          // Five across from 640 wide; on a phone the total on top and the four bands two by two, so nothing scrolls sideways.
+          <Panel>
+            <nav aria-label="Aged debt" className="grid grid-cols-2 divide-line sm:grid-cols-5 sm:divide-x">
+              <AgeTile to="/invoicing/invoiced" current={show === "unpaid" && age === null} label="Owed to us, with VAT" amount={money0(debt.gross, region)} count={debt.count} className="max-sm:col-span-2 max-sm:border-b max-sm:border-line" />
               {debt.buckets.map((b, n) => (
-                <AgeTile key={b.label} to={age === n ? "/invoicing/invoiced" : `/invoicing/invoiced?age=${n}`} current={age === n} label={b.label} amount={money0(b.gross, region)} count={b.count} tone={b.count === 0 || n === 0 ? undefined : n === 3 ? "bad" : "warn"} />
+                <AgeTile key={b.label} to={age === n ? "/invoicing/invoiced" : `/invoicing/invoiced?age=${n}`} current={age === n} label={b.label} amount={money0(b.gross, region)} count={b.count} tone={b.count === 0 || n === 0 ? undefined : n === 3 ? "bad" : "warn"} className={cx(n < 2 && "max-sm:border-b max-sm:border-line", n % 2 === 1 && "max-sm:border-l max-sm:border-line")} />
               ))}
             </nav>
           </Panel>
         )}
         <div className="flex flex-wrap items-center gap-3">
-          <div className="max-w-full min-w-0 overflow-x-auto whitespace-nowrap">
+          {/* On a narrow screen the tabs go onto a second line rather than scrolling sideways. */}
+          <div className="max-w-full min-w-0 [&>[role=tablist]]:flex-wrap">
             <Segmented label="Invoices shown" value={show} onChange={(s) => navigate(ADDRESS[s])} options={TABS.map((t) => ({ ...t, count: count(t.value) }))} />
           </div>
           <label className="relative ml-auto w-full max-w-xs">
@@ -100,14 +108,15 @@ export function ClientInvoices() {
             <input type="search" className="field pl-8" placeholder="Number, client, project or order number" value={text} onChange={(e) => setText(e.target.value)} />
           </label>
         </div>
-        <Panel className="overflow-x-auto">
+        {/* Below 1280 wide each invoice is a block of its own, so nothing is dragged sideways or cut off (Oisin, decision 84). */}
+        <Panel>
           {rows.length === 0 ? (
             <Empty title={text ? `No invoice matches "${text}"` : age !== null ? `No invoice is ${age === 0 ? "sent and not yet due" : (AGE_BUCKETS[age] ?? "").toLowerCase()}` : show === "draft" ? "No drafts waiting to go" : show === "held" ? "Nothing is held" : show === "overdue" ? "Nothing is overdue" : show === "paid" ? "Nothing paid yet" : "No invoices here yet"}>
               {text ? "Try the invoice number, the client's name, the site code or their order number." : show === "draft" ? "A stage payment appears here when its stage is reached, a final account when a project is marked complete, or draft one by hand." : show === "held" ? "A final account is held while an extra is waiting to be agreed or snagging is open." : undefined}
             </Empty>
           ) : (
-            <table className="tbl">
-              <thead>
+            <table className="tbl max-xl:block">
+              <thead className="max-xl:hidden">
                 <tr>
                   <th>Invoice</th>
                   <th>Client and project</th>
@@ -119,7 +128,7 @@ export function ClientInvoices() {
                   <th aria-label="Actions" />
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="max-xl:block">
                 {rows.map((i) => {
                   const p = project(i.projectId);
                   const c = client(i.clientId);
@@ -127,14 +136,14 @@ export function ClientInvoices() {
                   const no = invoiceNo(i);
                   const query = openQuery(db.invoiceQueries, i.id);
                   return (
-                    <tr key={i.id}>
-                      <td>
+                    <tr key={i.id} data-invoice={no} className={STACK_ROW}>
+                      <td className="max-xl:col-span-2 sm:max-xl:col-span-3 sm:max-xl:row-start-1">
                         <Link to={`/invoicing/client/${no}`} className="font-medium text-accent-ink underline-offset-2 hover:underline">
                           {no}
                         </Link>
                         <span className="block max-w-[20rem] text-[0.87rem] text-muted">{i.description}</span>
                       </td>
-                      <td>
+                      <td className="max-xl:col-span-2 sm:max-xl:col-span-4 sm:max-xl:row-start-2">
                         {access.can("customers") ? (
                           <Link to={`/customers/${i.clientId}`} className="text-accent-ink underline-offset-2 hover:underline">
                             {c?.name}
@@ -146,22 +155,22 @@ export function ClientInvoices() {
                           {p?.code} {p?.name}
                         </Link>
                       </td>
-                      <td className="whitespace-nowrap">
+                      <td className={cx("whitespace-nowrap", LABELLED)} data-label="Sent">
                         {i.issuedOn ? dShort(i.issuedOn) : <span className="text-muted">Not sent</span>}
                         {i.sentVia && <span className="block text-[0.87rem] text-muted">{routeWords(i.sentVia)}</span>}
                       </td>
-                      <td className="whitespace-nowrap">
+                      <td className={cx("whitespace-nowrap", LABELLED)} data-label="Due">
                         {stage === "held" ? <span className="text-muted">-</span> : i.dueOn ? dShort(i.dueOn) : <span className="text-muted">{c?.termsDays ?? 30} days after sending</span>}
                         {(stage === "sent" || stage === "overdue") && <span className={cx("block text-[0.87rem]", stage === "overdue" ? "text-bad" : "text-muted")}>{dueWords(i, day)}</span>}
                         {stage === "paid" && <span className="block text-[0.87rem] text-muted">Paid {dShort(i.paidOn)}</span>}
                       </td>
                       {access.seeValues && (
-                        <td className="num font-medium">
+                        <td data-label="Total with VAT" className="num font-medium max-xl:text-left max-sm:before:block max-sm:before:text-[0.8rem] max-sm:before:font-normal max-sm:before:text-muted max-sm:before:content-[attr(data-label)] sm:max-xl:col-start-4 sm:max-xl:row-start-1 sm:max-xl:text-right">
                           {money2(grossOf(i), region)}
                           <span className="block text-[0.87rem] font-normal text-muted">{money2(i.net, region)} before VAT</span>
                         </td>
                       )}
-                      <td>
+                      <td className={LABELLED} data-label="Status">
                         <StageBadge i={i} />
                         {stage === "held" && <span className="mt-1 block max-w-[16rem] text-[0.87rem] text-warn">{i.holdReason ?? "A manager has held it"}</span>}
                         {query && (
@@ -171,8 +180,8 @@ export function ClientInvoices() {
                         )}
                         {i.clientPaidOn && stage !== "paid" && <span className="mt-1 block text-[0.87rem] text-muted">Client says paid {dShort(i.clientPaidOn)}</span>}
                       </td>
-                      <td className="whitespace-nowrap">{i.exportedAt ? dShort(i.exportedAt.slice(0, 10)) : i.issuedOn ? <span className="text-muted">Not yet</span> : ""}</td>
-                      <td className="text-right whitespace-nowrap">
+                      <td className={cx("whitespace-nowrap", LABELLED)} data-label="In accounts">{i.exportedAt ? dShort(i.exportedAt.slice(0, 10)) : i.issuedOn ? <span className="text-muted">Not yet</span> : ""}</td>
+                      <td className="text-right whitespace-nowrap max-xl:col-span-2 max-xl:text-left sm:max-xl:col-span-4">
                         <span className="inline-flex items-center gap-1.5">
                           {canEdit && stage === "draft" && (
                             <Button size="sm" onClick={() => setSending(i)}>

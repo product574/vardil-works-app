@@ -54,3 +54,28 @@ if __name__ == "__main__":
         page.screenshot(path=f"{OUT}/07-activity.png")
     errs = run(steps)
     print("console:", errs)
+
+
+# The sample data checks and exports last week from its Tuesday on, so on a Wednesday to Friday
+# there is nothing left to check. The payroll steps take last week back to "not checked yet".
+OPEN_LAST_WEEK = """(() => { const k = 'cod.data'; const s = JSON.parse(localStorage.getItem(k)); const db = s.state.db;
+  const d = new Date(s.state.day + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7) - 7);
+  const mon = d.toISOString().slice(0, 10);
+  db.payrollChecks = db.payrollChecks.filter(c => c.weekStart !== mon); db.payrollExports = db.payrollExports.filter(x => x.weekStart !== mon);
+  localStorage.setItem(k, JSON.stringify(s)); })()"""
+def open_last_week(page):
+    page.evaluate(OPEN_LAST_WEEK); page.reload(); page.wait_for_selector("main h1"); page.wait_for_timeout(400)
+
+
+def phone_of(page, who="operative"):
+    """One of the two phones on the Site phone screen. From 1280 wide both are side by side,
+    each in its own frame (merged 19 Nov), so a check names the one it means."""
+    return page.get_by_label("Site manager's phone" if who == "manager" else "Operative's phone", exact=True)
+
+
+def show_phone(page, who):
+    """Narrower than 1280 there is room for one phone and a "Phone of" switch picks it; wider,
+    both are shown and there is nothing to press."""
+    tab = page.get_by_role("tablist", name="Phone of").get_by_role("tab", name="Site manager" if who == "manager" else "Operative")
+    if tab.count() and tab.is_visible():
+        tab.click(); page.wait_for_timeout(300)

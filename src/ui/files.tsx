@@ -83,10 +83,10 @@ export function useProofPick() {
   return { proof, error, pick };
 }
 
-export function ProofField({ pick, proof, error, hint = "A photo of the new card, or a PDF of the certificate. On a phone, Take a photo opens the camera." }: { pick: (f: File) => void; proof: { name: string } | null; error: string; hint?: string }) {
+export function ProofField({ pick, proof, error, label = "Proof", hint = "A photo of the new card, or a PDF of the certificate. On a phone, Take a photo opens the camera." }: { pick: (f: File) => void; proof: { name: string } | null; error: string; label?: string; hint?: string }) {
   return (
     <div>
-      <p className="mb-1 text-[0.93rem] font-medium">Proof</p>
+      <p className="mb-1 text-[0.93rem] font-medium">{label}</p>
       <PickFile accept="image/*,application/pdf" what="proof" onFile={pick} chosen={proof?.name} />
       <p className="mt-1 text-[0.87rem] text-muted">{hint}</p>
       <p role="alert" className="text-bad">

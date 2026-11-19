@@ -1,6 +1,6 @@
 import { addDays } from "@/lib/dates";
 import type { ServicePlan } from "@/lib/status";
-import type { FleetDoc, HiredPlant, PlantItem, Renewal, Vehicle } from "../types";
+import type { HiredPlant, PlantItem, Renewal, Vehicle, VehicleCheck } from "../types";
 import { type Rng, at, workdays } from "./util";
 
 type PlantRow = [ref: string, name: string, kind: string, spec: string, site: string | null, basis: "hours" | "months", finance: string];
@@ -103,7 +103,37 @@ export function seedAssets(r: Rng, today: string, driverIds: string[]) {
     { id: "hp-9", projectId: pid("C717"), description: "Mortar silo, 12 tonne", quantity: 1, hireCompany: "Midland Access Hire", hirePhone: "090 555 0171", hireRef: "MAH-19866", onHireFrom: workdays(today, -60), rate: 140, rateUnit: "week", status: "Collected", returnNotifiedAt: at(workdays(today, -7), "09:00"), collectedAt: at(workdays(today, -5), "11:30"), notes: "" },
   ];
 
-  type VRow = [reg: string, model: string, kind: Vehicle["kind"], base: string, price: number];
+  // The fleet moved to seed/fleet.ts on 18 Nov. The old vans are still drawn here, and thrown
+  // away, so the random numbers after this point (files, money) come out as they did before.
+  burnOldFleet(r, today, driverIds);
+  return { plant, hiredPlant };
+}
+
+/**
+ * Drivers' walkaround checks from the site phone. Every vehicle with a driver was checked on the
+ * last working day, and all but two this morning (18 Nov, as on the Secure-All build, so the
+ * office feed shows what a missed check looks like without half the fleet missing): the first is
+ * left for whoever tries the driving check on the phone. Two defects to find: a slow puncture
+ * reported yesterday and a brake light out today. Worked out from the list, not the random run.
+ */
+export function seedVehicleChecks(today: string, vehicles: Vehicle[]): VehicleCheck[] {
+  const driven = vehicles.filter((v) => v.active && v.driverId);
+  const before = workdays(today, -1);
+  const out: VehicleCheck[] = [];
+  const clock = (i: number) => `07:${String(28 + ((i * 7) % 28)).padStart(2, "0")}`;
+  driven.forEach((v, i) => {
+    out.push({ id: `vc-${out.length + 1}`, vehicleId: v.id, personId: v.driverId!, at: at(before, clock(i)), defects: i === 4 ? [{ item: "Tyres, wheels, wheel nuts, steering and brakes", note: "Slow puncture, nearside rear. Pumped up this morning" }] : [] });
+  });
+  driven.forEach((v, i) => {
+    if (i === 0 || i === 7) return;
+    out.push({ id: `vc-${out.length + 1}`, vehicleId: v.id, personId: v.driverId!, at: at(today, clock(i + 3)), defects: i === 3 ? [{ item: "All lights, indicators, reflectors and number plates", note: "Offside brake light out" }] : [] });
+  });
+  return out.sort((a, b) => b.at.localeCompare(a.at));
+}
+
+/** The vans as they were drawn before 18 Nov, kept only so the random numbers drawn after them do not change. */
+function burnOldFleet(r: Rng, today: string, driverIds: string[]) {
+  type VRow = [reg: string, model: string, kind: string, base: string, price: number];
   const VEHICLES: VRow[] = [
     ["231-G-4471", "Ford Transit Custom", "Van", "Galway", 38500],
     ["222-G-10283", "Ford Transit Custom", "Van", "Galway", 36900],
@@ -120,7 +150,7 @@ export function seedAssets(r: Rng, today: string, driverIds: string[]) {
     ["171-G-3008", "Ford Transit", "Van", "Galway", 26400],
   ];
   const year = Number(today.slice(0, 4));
-  const vehicles: Vehicle[] = VEHICLES.map(([reg, model, kind, baseLocation, purchasePrice], i) => {
+  const vehicles = VEHICLES.map(([reg, model, kind, baseLocation, purchasePrice], i) => {
     const item = (lo: number, hi: number, amount: number) => {
       const expiryDate = addDays(today, r.int(lo, hi));
       return { expiryDate, paidDate: addDays(expiryDate, -365), amount };
@@ -140,7 +170,7 @@ export function seedAssets(r: Rng, today: string, driverIds: string[]) {
       driverId: driverIds[i] ?? null,
       purchasePrice,
       purchaseMonth: `${bought}-${String(month).padStart(2, "0")}`,
-      sellPrice: null,
+      sellPrice: null as number | null,
       active: true,
       mileage: lastMeter + r.int(2000, 17000),
       compliance: { tax: item(25, 350, kind === "Tipper" ? 420 : 333), test: item(25, 350, 125), insurance: item(25, 350, r.int(1150, 1900)) },
@@ -186,7 +216,7 @@ export function seedAssets(r: Rng, today: string, driverIds: string[]) {
     ["Windscreen replaced", 260, 420],
     ["DPF cleaned and sensor replaced", 450, 820],
   ];
-  const fleetDocs: FleetDoc[] = [];
+  const fleetDocs: Record<string, unknown>[] = [];
   let n = 0;
   for (const veh of vehicles) {
     const age = year - Number(veh.purchaseMonth.slice(0, 4));
@@ -204,7 +234,7 @@ export function seedAssets(r: Rng, today: string, driverIds: string[]) {
       fleetDocs.push({ id: `fd-${++n}`, vehicleId: veh.id, category, date: c.paidDate, amount: c.amount, expiryDate: c.expiryDate, fileName: `${veh.reg} ${category} ${c.paidDate}.pdf` });
     }
   }
-  fleetDocs.sort((a, b) => b.date.localeCompare(a.date));
+  fleetDocs.sort((a, b) => String(b.date).localeCompare(String(a.date)));
 
-  return { plant, hiredPlant, vehicles, fleetDocs };
+  return fleetDocs.length;
 }

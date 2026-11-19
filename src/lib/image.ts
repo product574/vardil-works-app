@@ -48,3 +48,28 @@ export async function readProof(file: File): Promise<{ name: string; dataUrl: st
 }
 
 export const isPdf = (dataUrl: string) => dataUrl.startsWith("data:application/pdf");
+
+/** A file to attach to an email: a picture (shrunk) or a PDF within the size limit, as everywhere in the demo. */
+export async function readAttachment(file: File): Promise<{ name: string; dataUrl: string; sizeKb: number }> {
+  if (file.type.startsWith("image/")) {
+    const { dataUrl, sizeKb } = await shrinkImage(file, 1400, 0.75);
+    return { name: file.name, dataUrl, sizeKb: Math.max(1, sizeKb) };
+  }
+  if (file.type !== "application/pdf") throw new Error(`${file.name} was not attached. The demo keeps files in the browser, so it takes pictures and PDFs only.`);
+  if (file.size / 1024 > PROOF_LIMIT_KB) throw new Error(`${file.name} is over ${PROOF_LIMIT_KB / 1000} MB, which is too big for the demo to keep in the browser.`);
+  const dataUrl = await readAsDataUrl(file);
+  return { name: file.name, dataUrl, sizeKb: Math.max(1, kb(dataUrl)) };
+}
+
+/**
+ * An invoice, receipt or certificate for Fleet: PDF, photo, Word or Excel, as on the Lovable
+ * prototype. Photos are shrunk; other files are kept as they are within `limitKb`. The demo keeps
+ * files in the browser (small limit); a real build uploads them to storage.
+ */
+const FLEET_TYPES = ["application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"];
+export async function readUpload(file: File, limitKb: number): Promise<{ name: string; dataUrl: string }> {
+  if (file.type.startsWith("image/")) return { name: file.name, dataUrl: (await shrinkImage(file, 1800, 0.8)).dataUrl };
+  if (!FLEET_TYPES.includes(file.type) && !/\.(pdf|docx?|xlsx?)$/i.test(file.name)) throw new Error("Choose a PDF, a photo, or a Word or Excel file.");
+  if (file.size / 1024 > limitKb) throw new Error(`That file is over ${Math.round(limitKb / 100) / 10} MB, which is more than ${limitKb > 5000 ? "the limit" : "the demo can keep in the browser. A photo of it works"}.`);
+  return { name: file.name, dataUrl: await readAsDataUrl(file) };
+}

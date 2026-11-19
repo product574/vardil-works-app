@@ -16,16 +16,19 @@ import { REGION } from "@/lib/money";
 import { ROLES } from "../roles";
 import type { Db } from "../types";
 import { ticketBlocks } from "@/lib/compliance";
-import { seedAssets } from "./assets";
+import { seedAssets, seedVehicleChecks } from "./assets";
+import { buildFleet, withLicences } from "./fleet";
+import { seedChat } from "./chat";
 import { fillSubPapers, seedCompanyPapers, seedCourses, seedLicences, seedScaffolds, seedSmallKit } from "./compliance";
 import { quotedMargin, seedCommercial, seedPastCommercial } from "./commercial";
 import { fillInvoicing } from "./invoicing";
 import { APPROVAL_LIMIT, fillPurchases, seedPendingPurchases, seedSubcontractors } from "./purchases";
-import { fillManagementDates, seedActivity, seedFiles, seedMail, seedManagement, seedMoney } from "./office";
+import { fillManagementDates, seedDayInstructions, seedExpenses, seedOvertimeClaims, seedActivity, seedFiles, seedMail, seedManagement, seedMoney, seedPayrollChecks, seedPayrollExports, seedSiteAccess } from "./office";
 import { seedPeople } from "./people";
 import { isPastCode, quoteTargets, seedProjects } from "./projects";
 import { seedSubscription } from "./subscription";
 import { seedPortalNotes, seedSpendRequests, seedSupplies } from "./supply";
+import { builtInBankHolidays } from "@/lib/bank-holidays";
 import { demoDay, rng, workdays } from "./util";
 
 export { demoDay } from "./util";
@@ -35,18 +38,23 @@ export { demoDay } from "./util";
  * in written text are swapped for UK ones. Firm, town and people names are invented and stay as they are.
  */
 const UK_COUNTY: Record<string, string> = { Roscommon: "Shropshire", Galway: "Cumbria", Donegal: "Northumberland", Kildare: "Kent", Dublin: "London", Clare: "Cornwall", Cavan: "Cheshire", Waterford: "Worcestershire", Mayo: "Norfolk", Wicklow: "Wiltshire", Kerry: "Devon", Wexford: "Sussex" };
-function toUK(db: Db): Db {
+function toUK(db: Db, day: string): Db {
   let text = JSON.stringify(db);
   for (const [ie, uk] of Object.entries(UK_COUNTY)) text = text.replace(new RegExp(`\\b${ie}\\b`, "g"), uk);
   // Irish mobiles (08x xxx xxxx) and landlines (0xx 555 xxxx) become UK-shaped numbers.
   text = text.replace(/"08(\d) (\d{3}) (\d{4})"/g, '"07$2 $3$1$1"').replace(/"0(\d{1,2}) 555 (\d{4})"/g, '"01$1 555 $2"');
   text = text.replace(/€/g, "£");
   const out = JSON.parse(text) as Db;
+  // The UK's bank holidays in place of Ireland's. The sample timesheets were written around the
+  // Irish ones, so a UK copy can show a normal day marked on a UK bank holiday.
+  out.bankHolidays = builtInBankHolidays(day, "UK");
   // Number plates: 231-G-4471 becomes a UK-style plate built from the same digits.
   for (const v of out.vehicles) {
     const [yy = "24", letters = "AB", n = "1"] = v.reg.split("-");
     const reg = `${(letters + "K").slice(0, 2)}${yy.slice(0, 2)} ${(n + "XYZ").replace(/\d/g, (d) => "ABCDEFGHJK"[Number(d)]!).slice(0, 3)}`;
-    for (const d of out.fleetDocs) if (d.vehicleId === v.id) d.fileName = d.fileName.replace(v.reg, reg);
+    for (const d of out.fleetDocs) if (d.vehicleId === v.id) d.fileName = d.fileName.replace(v.reg, reg).replace(/\bCVRT\b|\bNCT\b/, "MOT");
+    for (const p of [...out.fleetDocs.map((d) => d.proof)]) if (p) p.name = p.name.replace(v.reg, reg).replace(/\bCVRT\b|\bNCT\b/, "MOT");
+    for (const t of out.todos) t.title = t.title.replace(v.reg, reg).replace("CVRT", "MOT");
     v.reg = reg;
   }
   return out;
@@ -54,7 +62,7 @@ function toUK(db: Db): Db {
 
 export function buildSeed(realToday: string, opts: { emailDomain?: string; vatPct?: number; region?: "IE" | "UK"; legalName?: string } = {}): { day: string; db: Db } {
   const built = buildIrishSeed(realToday, opts);
-  return opts.region === "UK" ? { day: built.day, db: toUK(built.db) } : built;
+  return opts.region === "UK" ? { day: built.day, db: toUK(built.db, built.day) } : built;
 }
 
 function buildIrishSeed(realToday: string, opts: { emailDomain?: string; vatPct?: number; region?: "IE" | "UK"; legalName?: string } = {}): { day: string; db: Db } {
@@ -63,9 +71,9 @@ function buildIrishSeed(realToday: string, opts: { emailDomain?: string; vatPct?
   const vatPct = opts.vatPct ?? REGION[DEFAULT_BRAND.region].vatPct;
   const r = rng(20261113);
 
-  const { people, holidays } = seedPeople(r, day, domain);
-  const names = new Map(people.map((p) => [p.id, p.name]));
-  const rates = new Map(people.map((p) => [p.id, p.hourlyRate]));
+  const { people: staff, holidays } = seedPeople(r, day, domain);
+  const names = new Map(staff.map((p) => [p.id, p.name]));
+  const rates = new Map(staff.map((p) => [p.id, p.hourlyRate]));
   // Won jobs were priced on the crews planned for them (projects.ts), so the quotes follow.
   const targets = quoteTargets(day, rates, holidays, quotedMargin);
   const now = seedCommercial(r, day, targets);
@@ -78,13 +86,17 @@ function buildIrishSeed(realToday: string, opts: { emailDomain?: string; vatPct?
   const quotes = [...now.quotes, ...before.quotes];
   const { meta, ...proj } = seedProjects(r, day, quotes, holidays, names, rates, rPast);
   // Nobody is on site on a day their Safe Pass or trade ticket had run out (Compliance, 18 Nov).
-  const person = new Map(people.map((p) => [p.id, p]));
+  const person = new Map(staff.map((p) => [p.id, p]));
   proj.attendance = proj.attendance.filter((a) => !person.get(a.personId) || ticketBlocks(person.get(a.personId)!, a.date).length === 0);
-  // One driver per vehicle, matched to where it is based; the last was sold and has none.
+  // The drivers the vans had before 18 Nov: kept so the random numbers drawn after them do not change.
   const drivers = ["p-sm2", "p-cm1", "p-sm5", "p-sm1", "p-sm3", "p-sm4", "p-yard", "p-128", "p-114", "p-107", "p-cm2", "p-hs"];
   const assets = seedAssets(r, day, drivers);
   // Compliance (18 Nov): none of it draws on the random sequence, so nothing else moves.
   assets.plant.push(...seedSmallKit(day));
+  // The fleet (18 Nov, from the Secure-All build) has its own random numbers, so it moves nothing else.
+  const fleet = buildFleet(day, rng(2207), staff, proj.attendance, proj.plan, proj.projects);
+  const people = withLicences(staff, fleet.vehicles, day);
+  // The office's yearly licence check, beside Fleet's licence and CPC (merged 19 Nov).
   seedLicences(day, people);
   const courses = seedCourses(day, people);
   const { approvals, automations } = seedManagement(day);
@@ -100,6 +112,8 @@ function buildIrishSeed(realToday: string, opts: { emailDomain?: string; vatPct?
   // Invoices waiting for approval: none is in a job's costs yet, so no margin moves.
   money.supplierInvoices.push(...seedPendingPurchases(day, people, proj.projects, subcontractors, { goods: vatPct === 20 ? 20 : 23, work: vatPct }));
 
+  const siteAccess = seedSiteAccess(day);
+
   const db: Db = {
     people,
     holidays,
@@ -111,8 +125,16 @@ function buildIrishSeed(realToday: string, opts: { emailDomain?: string; vatPct?
     supplies: seedSupplies(day),
     portalNotes: seedPortalNotes(day),
     subscriptionInvoices: seedSubscription(day, people),
+    payrollExports: [],
+    payrollChecks: [],
+    bankHolidays: builtInBankHolidays(day, "IE"),
+    vehicleChecks: seedVehicleChecks(day, fleet.vehicles),
+    expenses: seedExpenses(day),
+    overtimeClaims: [],
+    dayInstructions: seedDayInstructions(day),
     attendanceChanges: [],
     ...assets,
+    ...fleet,
     files,
     ...money,
     subcontractors,
@@ -123,6 +145,7 @@ function buildIrishSeed(realToday: string, opts: { emailDomain?: string; vatPct?
     invoiceComments: [],
     invoiceQueries: [],
     mails,
+    ...seedChat(day, proj.projects, siteAccess),
     approvals,
     automations,
     activity: [],
@@ -132,11 +155,15 @@ function buildIrishSeed(realToday: string, opts: { emailDomain?: string; vatPct?
       { id: "p-hs", departments: {}, perms: { allProjects: true, manageStaff: true } },
       { id: "p-yard", departments: { schedule: false }, perms: { allProjects: true, managePlant: true } },
     ],
+    siteAccess,
   };
   // Written last, from the finished records.
   fillManagementDates(db, day, opts.region ?? "IE");
   fillInvoicing(db, day, domain, opts.legalName ?? DEFAULT_BRAND.legalName, "IE");
   fillPurchases(db, day, domain, opts.legalName ?? DEFAULT_BRAND.legalName, "IE", vatPct);
+  db.overtimeClaims = seedOvertimeClaims(db, day);
+  db.payrollExports = seedPayrollExports(db, day);
+  db.payrollChecks = seedPayrollChecks(db.payrollExports);
   db.activity = seedActivity(db, day);
   return { day, db };
 }

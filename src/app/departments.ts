@@ -2,19 +2,41 @@
  * The map of the whole app: every department in the bottom bar, and the short sidebar each
  * one shows. Adding a screen means adding a line here and a route in router.tsx.
  */
-import { AddressBook, Browsers, CalendarDots, ChartBar, DeviceMobile, EnvelopeSimple, FolderOpen, Gauge, GearSix, Handshake, HardHat, type Icon, Receipt, ShieldCheck, Truck, UserGear, UsersThree } from "@phosphor-icons/react";
+import { AddressBook, Browsers, CalendarDots, ChartBar, ChartLineUp, ChatsCircle, DeviceMobile, EnvelopeSimple, FolderOpen, Gauge, GearSix, Handshake, HardHat, type Icon, Receipt, ShieldCheck, Truck, UserGear, UsersThree, Van } from "@phosphor-icons/react";
+import type { Brand } from "@/config/brand";
+import { totalUnread } from "@/lib/chat";
 import { needsAccounts, partyOf, purchaseStage } from "@/lib/purchases";
-import { waitingOnDirector } from "@/lib/requests";
-import type { Db, DepartmentKey, PermKey } from "@/data/types";
+import { openRequestCount, waitingOnDirector, overtimeClaimCount } from "@/lib/requests";
+import { lastWeekStart, payrollStage } from "@/lib/payroll";
+import { toPay } from "@/lib/reimbursements";
+import { driversOf } from "@/lib/fleet";
+import { invoiceWarnings } from "@/lib/fleet-spend";
+import { discLate, renewalRows } from "@/lib/renewals";
+import type { Db, DepartmentKey, ID, PermKey } from "@/data/types";
 
 /**
  * `mdOnly`: shown to the managing director only, even when the department is switched on for another level.
+ * `notMd`: left out of the managing director's sidebar, because he has the same screen in another department.
  * `staffOnly`: not shown to a client signed in to their portal.
  * `perm`: shown only to people with that permission (Compliance's firm-wide screens need "See every project").
+ * `tabs`: other addresses inside the same page (its tabs), which Ask AI may link to but the sidebar does not list.
  */
-export type NavItem = { to: string; label: string; count?: (db: Db, today: string) => number; countTone?: "accent" | "warn" | "bad"; end?: boolean; mdOnly?: boolean; staffOnly?: boolean; perm?: PermKey };
-export type NavGroup = { label: string; items: NavItem[] };
-export type Department = { key: DepartmentKey; /** Name in the bottom bar. */ label: string; /** Longer name for the sidebar heading, when it differs. */ title?: string; icon: Icon; home: string; groups: NavGroup[]; inBar: boolean };
+export type NavItem = { to: string; label: string; count?: (db: Db, today: string, me: ID | null) => number; countTone?: "accent" | "warn" | "bad"; end?: boolean; mdOnly?: boolean; notMd?: boolean; staffOnly?: boolean; perm?: PermKey; tabs?: { to: string; label: string }[] };
+/** `more`: items worked out from the records, such as one per Team chat channel. */
+export type NavGroup = { label: string; items: NavItem[]; more?: (db: Db, brand: Brand) => NavItem[] };
+export type Department = {
+  key: DepartmentKey;
+  /** Name in the bottom bar. */ label: string;
+  /** Longer name for the sidebar heading, when it differs. */ title?: string;
+  icon: Icon;
+  home: string;
+  groups: NavGroup[];
+  inBar: boolean;
+  /** Draws its own full-height side panel (Email and Team chat, laid out like the reference demos), so the shell shows no sidebar. */
+  ownLayout?: boolean;
+  /** A count on the department's button in the bottom bar: unread email, unread messages. */
+  badge?: (db: Db, today: string, me: ID | null) => number;
+};
 
 export const DEPARTMENTS: Department[] = [
   {
@@ -23,14 +45,24 @@ export const DEPARTMENTS: Department[] = [
     groups: [{ label: "Today", items: [{ to: "/dashboard", label: "Overview", end: true, count: (db) => db.approvals.filter((a) => a.status === "Pending").length }] }],
   },
   {
-    key: "inbox", label: "Email", icon: EnvelopeSimple, home: "/inbox", inBar: true,
+    key: "inbox", label: "Email", icon: EnvelopeSimple, home: "/inbox", inBar: true, ownLayout: true,
+    badge: (db) => db.mails.filter((m) => m.folder === "Inbox" && !m.read).length,
     groups: [
       { label: "Folders", items: [
         { to: "/inbox", label: "Inbox", end: true, count: (db) => db.mails.filter((m) => m.folder === "Inbox" && !m.read).length },
+        { to: "/inbox/starred", label: "Starred" },
         { to: "/inbox/sent", label: "Sent" },
+        { to: "/inbox/drafts", label: "Drafts" },
         { to: "/inbox/archive", label: "Archive" },
       ] },
     ],
+  },
+  {
+    // Laid out like Ping in the reference demos (16 Nov, Oisin): channels and direct messages.
+    key: "chat", label: "Team chat", icon: ChatsCircle, home: "/chat", inBar: true, ownLayout: true,
+    badge: (db, _t, me) => totalUnread(db.chatMessages, db.chatChannels, me),
+    // Not shown (the screen draws its own channel list); listed so Ask AI can link to it.
+    groups: [{ label: "Team chat", items: [{ to: "/chat", label: "Group chats" }] }],
   },
   {
     key: "sales", label: "Sales", icon: Handshake, home: "/sales", inBar: true,
@@ -58,7 +90,7 @@ export const DEPARTMENTS: Department[] = [
         { to: "/projects/completed", label: "Completed" },
       ] },
       { label: "Site", items: [
-        { to: "/projects/requests", label: "Requests", count: (db) => db.requests.filter((r) => r.status === "Open").length },
+        { to: "/projects/requests", label: "Requests", count: (db, _today, me) => openRequestCount(db, me) },
         // Where a site manager approves what the subcontractors on their sites have invoiced (18 Nov).
         { to: "/projects/subcontractor-invoices", label: "Subcontractor invoices" },
       ] },
@@ -72,14 +104,21 @@ export const DEPARTMENTS: Department[] = [
         { to: "/schedule/month", label: "Month ahead" },
         { to: "/schedule/today", label: "Who is where" },
       ] },
+      { label: "Leave", items: [
+        { to: "/schedule/holidays", label: "Holidays" },
+        { to: "/schedule/holiday-requests", label: "Holiday requests", count: (db) => db.holidays.filter((h) => h.status === "Requested").length },
+      ] },
     ],
   },
   {
     key: "people", label: "People", icon: UsersThree, home: "/people/timesheet", inBar: true,
     groups: [
       { label: "Labour", items: [
-        { to: "/people/timesheet", label: "Timesheet" },
+        { to: "/people/timesheet", label: "Timesheet", count: (db, _today, me) => overtimeClaimCount(db, me) },
         { to: "/people/history", label: "Attendance history" },
+        // The numbers are what is waiting: last week's hours on their way to payroll, and approved claims to pay.
+        { to: "/people/payroll", label: "Payroll export", count: (db, today) => (["to-check", "to-export"].includes(payrollStage(lastWeekStart(today), db.attendance, db.payrollChecks, db.attendanceChanges, db.payrollExports)) ? 1 : 0) },
+        { to: "/people/reimbursements", label: "Reimbursements", count: (db) => toPay(db.expenses).length },
       ] },
       { label: "Team", items: [
         { to: "/people", label: "Employee register", end: true },
@@ -97,12 +136,29 @@ export const DEPARTMENTS: Department[] = [
         { to: "/plant/register", label: "Own plant" },
         { to: "/plant/hired", label: "Hired plant", count: (db) => db.hiredPlant.filter((h) => h.status === "Return notified").length, countTone: "warn" },
       ] },
-      { label: "Fleet", items: [
-        { to: "/plant/vehicles", label: "Vehicles" },
-        { to: "/plant/documents", label: "Vehicle documents" },
-        { to: "/plant/repairs", label: "Repair spend" },
+    ],
+  },
+  {
+    // Fleet (18 Nov): the Secure-All build's Fleet, at Oisin's word, as a button of its own after Plant.
+    key: "fleet", label: "Fleet", icon: Van, home: "/fleet", inBar: true,
+    groups: [
+      { label: "Repair spend", items: [
+        { to: "/fleet", label: "Overview", end: true },
+        { to: "/fleet/invoices", label: "Invoices", count: (db) => db.garageInvoices.filter((i) => i.status === "To check").length, countTone: "warn" },
+      ] },
+      { label: "Vehicles", items: [
+        { to: "/fleet/vehicles", label: "Vehicles" },
+        { to: "/fleet/renewals", label: "Renewals", count: (db, today) => renewalRows(db.vehicles, driversOf(db.people, db.vehicles), db.todos, today).filter((x) => x.state !== "ok" || discLate(x)).length, countTone: "bad" },
+        { to: "/fleet/damage", label: "Damage reported", count: (db) => db.damageReports.filter((d) => d.status === "New").length, countTone: "bad" },
+        { to: "/fleet/documents", label: "Vehicle documents" },
+      ] },
+      { label: "Lists", items: [
+        { to: "/fleet/garages", label: "Garages" },
+        { to: "/fleet/drivers", label: "Drivers", count: (db) => db.people.filter((p) => p.licences?.driving?.fromPhoneAt || p.licences?.cpc?.fromPhoneAt).length, countTone: "warn" },
+        { to: "/fleet/bases", label: "Bases" },
       ] },
     ],
+    badge: (db, today) => invoiceWarnings(db.garageInvoices, today).length,
   },
   {
     // Every expiry in one place (18 Nov, after the HVAC compliance demo). Site managers see the
@@ -125,7 +181,7 @@ export const DEPARTMENTS: Department[] = [
   {
     // Kept on 16 Nov after all ("we still need this files section"), for the loose files
     // waiting in To be sorted. Each project's own folders are also on its Files tab.
-    key: "files", label: "Files", icon: FolderOpen, home: "/files", inBar: true,
+    key: "files", label: "Files", icon: FolderOpen, home: "/files", inBar: false,
     groups: [
       { label: "Files", items: [
         { to: "/files", label: "Project files", end: true },
@@ -163,6 +219,17 @@ export const DEPARTMENTS: Department[] = [
     ],
   },
   {
+    // What the firm's own people cost each site (Oisin, 17 Nov). The managing director's alone:
+    // it is not offered in Roles and access, so it cannot be switched on for anyone else. Job
+    // costs stays in Invoicing for everyone (his pick when the two chats were merged, 19 Nov).
+    key: "profit", label: "Profitability", icon: ChartLineUp, home: "/profit", inBar: true,
+    groups: [
+      { label: "Money per site", items: [
+        { to: "/profit", label: "By site", end: true },
+      ] },
+    ],
+  },
+  {
     // The firm's figures over the last 12 months (18 Nov, from the HVAC reports Oisin likes).
     // The managing director's to start with, switchable in Admin, Roles and access.
     key: "reports", label: "Reports", icon: ChartBar, home: "/reports", inBar: true,
@@ -196,9 +263,10 @@ export const DEPARTMENTS: Department[] = [
     groups: [
       { label: "For your yes or no", items: [{ to: "/admin", label: "Requests", end: true, count: (db) => waitingOnDirector(db).length }] },
       // Who can do what, and what the firm pays: the managing director's alone, even if Admin is given to another level.
-      { label: "Access", items: [{ to: "/admin/access", label: "Roles and access", mdOnly: true }] },
+      { label: "Access", items: [{ to: "/admin/access", label: "Roles and access", mdOnly: true }, { to: "/admin/sites", label: "Site access", mdOnly: true }] },
       { label: "Account", items: [{ to: "/admin/billing", label: "Billing", mdOnly: true }] },
       { label: "System", items: [
+        { to: "/admin/bank-holidays", label: "Bank holidays" },
         { to: "/admin/connections", label: "Connections" },
         { to: "/admin/automations", label: "Automations" },
         { to: "/admin/activity", label: "Activity log" },

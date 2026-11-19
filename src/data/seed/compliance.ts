@@ -36,24 +36,20 @@ export function seedSmallKit(today: string): PlantItem[] {
   return [harness(1, "C719", 121), harness(2, "C719", 121), harness(3, "C721", 64), harness(4, "C721", -5), harness(5, "C722", 140), harness(6, null, 97), transformer(1, "C719", 52), transformer(2, "C722", 8), transformer(3, null, -10)];
 }
 
-/** Each driver's licence, checked once a year. One check overdue, one due, one licence running out. */
+/**
+ * The office's yearly look at each driver's licence (Compliance; Fleet keeps the licence and the
+ * Driver CPC themselves). Days since the last check, for the twelve who drove before the fleet
+ * came across from the Secure-All build, as they were; the drivers it added are spread through
+ * the year. Liam Costigan's (p-114) is overdue. No random numbers, so nothing else moves.
+ */
 export function seedLicences(today: string, people: Person[]) {
-  const set = (id: string, categories: string, checkedAgo: number, expiresIn: number, proofNeeded = false) => {
-    const p = people.find((x) => x.id === id);
-    if (p) p.licence = { categories, checkedOn: addDays(today, -checkedAgo), checkedBy: "Declan Furey", expires: addDays(today, expiresIn), ...(proofNeeded ? { proofNeeded } : {}) };
-  };
-  set("p-sm2", "B", 130, 2100);
-  set("p-cm1", "B, BE", 220, 1500);
-  set("p-sm5", "B", 95, 2900);
-  set("p-sm1", "B, BE", 300, 3100);
-  set("p-sm3", "B", 41, 1250);
-  set("p-sm4", "B", 12, 2600, true);
-  set("p-yard", "B, BE, C1", 186, 1700);
-  set("p-128", "B", 350, 980);
-  set("p-114", "B", 375, 2400);
-  set("p-107", "B", 160, 1900);
-  set("p-cm2", "B", 200, 22);
-  set("p-hs", "B", 60, 3300);
+  const ago: Record<string, number> = { "p-sm2": 130, "p-cm1": 220, "p-sm5": 95, "p-sm1": 300, "p-sm3": 41, "p-sm4": 12, "p-yard": 186, "p-128": 350, "p-114": 375, "p-107": 160, "p-cm2": 200, "p-hs": 60 };
+  const spread = [20, 75, 140, 205, 260, 320, 110, 45, 290, 170];
+  let i = 0;
+  for (const p of people.filter((x) => x.drives)) {
+    const days = ago[p.id] ?? spread[i++ % spread.length]!;
+    p.licenceCheck = { checkedOn: addDays(today, -days), checkedBy: "Declan Furey" };
+  }
 }
 
 /** Courses: renewals booked for the tickets that are going, and one done last month. */

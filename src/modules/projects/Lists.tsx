@@ -8,9 +8,11 @@ import type { Db, Project, ProjectStatus } from "@/data/types";
 import { dShort, plural, when, whenInline } from "@/lib/format";
 import { money0 } from "@/lib/money";
 import { scopePercent } from "@/lib/project-costs";
-import { Badge, Button, Empty, PageBody, PageHead, Panel, Section, Segmented } from "@/ui";
+import { crewRequests, mayHandleCrewRequest, requestsFor, withOffice } from "@/lib/requests";
+import { Badge, Button, DeclineNote, Empty, PageBody, PageHead, Panel, Section, Segmented } from "@/ui";
 import { HoldBadge, Progress, ProjectBadge } from "@/ui/status";
 import { toast } from "@/ui/toast";
+import { CrewRequestButtons } from "./CrewRequestButtons";
 import { REQUEST_LABEL } from "./ProjectPage";
 
 const pctOf = (db: Db, p: Project) => scopePercent(db.scopeTasks.filter((t) => t.projectId === p.id));
@@ -334,13 +336,47 @@ export function SiteRequests() {
   const office = access.may("manageProjects");
   const [show, setShow] = useState<"Open" | "Done">("Open");
   const ids = new Set(access.scope(db.projects).map((p) => p.id));
-  const all = db.requests.filter((r) => ids.has(r.projectId));
-  const rows = all.filter((r) => r.status === show);
+  // Requests on the sites this screen covers, and general ones (not for one site) for the office and for whoever asked.
+  const all = requestsFor(db, access.personId);
+  // Asked on an operative's phone and still with the site manager (17 Nov): shown apart, above the office's list.
+  const crew = crewRequests(db.requests, ids);
+  const mine = crew.some((r) => mayHandleCrewRequest(db.projects.find((p) => p.id === r.projectId), access.personId, access.siteAccess));
+  const rows = all.filter((r) => (show === "Open" ? withOffice(r) : r.status === "Done"));
   return (
     <>
-      <PageHead title="Requests" note="What the sites have asked the office for: people, the firm's own plant, and plant to hire. Each waits for the managing director's yes or no in Admin. New requests are made from a project's Requests tab." actions={<Segmented label="Request status" value={show} onChange={setShow} options={[{ value: "Open", label: "Open", count: all.filter((r) => r.status === "Open").length }, { value: "Done", label: "Dealt with", count: all.filter((r) => r.status === "Done").length }]} />} />
-      <PageBody>
-        <Panel className="max-w-5xl overflow-x-auto">
+      <PageHead title="Requests" note="What the sites have asked the office for: people, the firm's own plant, plant to hire and anything else, for one site or in general. Each waits for the managing director's yes or no in Admin. A request made on an operative's phone goes to the site manager first, who passes it on or deals with it on site." actions={<Segmented label="Request status" value={show} onChange={setShow} options={[{ value: "Open", label: "Open", count: all.filter(withOffice).length }, { value: "Done", label: "Dealt with", count: all.filter((r) => r.status === "Done").length }]} />} />
+      <PageBody className="grid max-w-5xl gap-6">
+        {show === "Open" && crew.length > 0 && (
+          <Section title={`${mine ? "From your crew" : "With the site managers"} (${crew.length})`} aside="Asked on the site phone. The site manager passes each one to management or deals with it on site">
+            <Panel>
+              <ul className="divide-y divide-line" aria-label="Requests from the crew">
+                {crew.map((r) => {
+                  const p = db.projects.find((x) => x.id === r.projectId)!;
+                  const can = mayHandleCrewRequest(p, access.personId, access.siteAccess);
+                  return (
+                    <li key={r.id} className="flex flex-wrap items-start gap-3 px-3 py-2.5">
+                      <Badge className="mt-0.5 w-24 justify-center">{REQUEST_LABEL[r.kind]}</Badge>
+                      <div className="min-w-0 flex-1 basis-64">
+                        <p className="font-medium">
+                          {r.description}
+                          {r.quantity > 1 && <span className="font-normal text-muted"> x {r.quantity}</span>}
+                        </p>
+                        <p className="text-[0.93rem] text-muted">
+                          <Link to={`/projects/${p.code}?tab=requests`} className="underline-offset-2 hover:underline">
+                            {p.code} {p.name}
+                          </Link>
+                          . Asked by {r.requestedBy}, {when(r.createdAt, day)}. Needed {dShort(r.neededFrom)} to {dShort(r.neededTo)}.
+                        </p>
+                      </div>
+                      {can ? <CrewRequestButtons id={r.id} what={r.description} /> : <span className="text-[0.93rem] text-muted">With {db.people.find((x) => x.id === p.siteManagerId)?.name}</span>}
+                    </li>
+                  );
+                })}
+              </ul>
+            </Panel>
+          </Section>
+        )}
+        <Panel className="overflow-x-auto">
           {rows.length === 0 ? (
             <Empty title={show === "Open" ? "No open requests" : "Nothing dealt with yet"} />
           ) : (
@@ -358,7 +394,7 @@ export function SiteRequests() {
               </thead>
               <tbody>
                 {rows.map((r) => {
-                  const p = db.projects.find((x) => x.id === r.projectId)!;
+                  const p = db.projects.find((x) => x.id === r.projectId);
                   return (
                     <tr key={r.id}>
                       <td>
@@ -370,23 +406,31 @@ export function SiteRequests() {
                         {r.notes && <span className="block text-[0.87rem] text-muted">{r.notes}</span>}
                       </td>
                       <td>
-                        <Link to={`/projects/${p.code}?tab=requests`} className="underline-offset-2 hover:underline">
-                          {p.code} {p.name}
-                        </Link>
+                        {p ? (
+                          <Link to={`/projects/${p.code}?tab=requests`} className="underline-offset-2 hover:underline">
+                            {p.code} {p.name}
+                          </Link>
+                        ) : (
+                          <span className="text-muted">General, not for one site</span>
+                        )}
                       </td>
-                      <td className="whitespace-nowrap">
-                        {dShort(r.neededFrom)} to {dShort(r.neededTo)}
-                      </td>
+                      <td className="whitespace-nowrap">{r.neededFrom === r.neededTo ? dShort(r.neededFrom) : `${dShort(r.neededFrom)} to ${dShort(r.neededTo)}`}</td>
                       <td>
                         {r.requestedBy}
-                        <span className="block text-[0.87rem] text-muted">{when(r.createdAt, day)}</span>
+                        <span className="block text-[0.87rem] text-muted">
+                          {when(r.forwardedAt ?? r.createdAt, day)}
+                          {r.raisedBy ? `. First asked by ${r.raisedBy}` : ""}
+                        </span>
                       </td>
                       <td>
                         {r.decision ? (
                           <>
                             <Badge tone={r.decision === "Approved" ? "ok" : "neutral"}>{r.decision}</Badge>
                             <span className="block text-[0.87rem] text-muted">{r.decidedBy}</span>
+                            {r.decision === "Declined" && <DeclineNote note={r.declineNote} />}
                           </>
+                        ) : r.heldBy === "site" ? (
+                          <span className="text-muted">Dealt with on site{r.dealtBy ? ` by ${r.dealtBy}` : ""}</span>
                         ) : (
                           <span className="text-muted">Waiting</span>
                         )}

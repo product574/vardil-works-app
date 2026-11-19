@@ -167,7 +167,7 @@ describe("approving and paying", () => {
     markPurchasePaid(a!.id, { email: true, ref: "BT 9001" });
     const mail = db().mails.find((m) => m.purchaseInvoiceId === a!.id)!;
     const sub = db().subcontractors.find((x) => x.id === a!.subcontractorId)!;
-    expect([mail.folder, mail.subject.includes(a!.invoiceNo), mail.body.includes(sub.email), mail.body.includes("BT 9001")]).toEqual(["Sent", true, true, true]);
+    expect([mail.folder, mail.subject.includes(a!.invoiceNo), (mail.to ?? "").includes(sub.email), mail.body.includes("BT 9001")]).toEqual(["Sent", true, true, true]);
     markPurchasePaid(b!.id, { email: false });
     expect([purchaseStage(inv(b!.id)), count()]).toEqual(["paid", 1]);
   });

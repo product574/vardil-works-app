@@ -20,8 +20,11 @@ with sync_playwright() as p:
     page.locator("tbody tr", has_text="HS2").click(); page.wait_for_selector("dialog[open]")
     page.locator("dialog[open]").get_by_role("button", name="Record service").click(); page.wait_for_timeout(200)
     page.locator("dialog[open]").get_by_role("button", name="Close").click()
-    for name, expect in [("Calendar","twelve weeks"),("Own plant","Finance"),("Hired plant","a week"),("Vehicles","on the road"),("Vehicle documents","on file across"),("Repair spend","Whole fleet")]:
+    for name, expect in [("Calendar","twelve weeks"),("Own plant","Finance"),("Hired plant","a week"),("Fleet","on the road")]:
         side.get_by_role("link", name=name).click(); page.wait_for_selector(f"text={expect}")
+    # Fleet is one page with three tabs since 17 Nov.
+    for name, expect in [("Vehicle documents","on file across"),("Repair spend","Whole fleet")]:
+        page.get_by_role("navigation", name="Fleet sections").get_by_role("link", name=name).click(); page.wait_for_selector(f"text={expect}")
     bar.get_by_role("link", name="Files").click(); page.wait_for_selector("text=Last changed")
     side.get_by_role("link", name="To be sorted").click(); page.wait_for_selector("text=Needs a project")
     page.get_by_role("button", name="File the 2 with a project").click(); page.wait_for_timeout(300)
@@ -37,7 +40,7 @@ with sync_playwright() as p:
     main.get_by_role("button", name="Approve to job costs").click(); page.wait_for_selector("text=Confirmed by Aidan King")
     side.get_by_role("link", name="Job costs").click(); page.wait_for_selector("text=All jobs shown")
     side.get_by_role("link", name="Invoiced").click(); page.wait_for_selector("text=Aged debt")
-    side.get_by_role("link", name="Held").click(); page.wait_for_selector("text=Why it is held")
+    side.get_by_role("link", name="Held").click(); page.wait_for_selector("text=The reason is under each invoice")
     print("preview file: plant, calendar, register, hire, vehicles, documents, repair spend, files, filing, photos, issue, export download (" + name + "), supplier approval, job costs, aged debt, held all work")
     print("outside requests:", reqs, "| errors:", errs)
     b.close()

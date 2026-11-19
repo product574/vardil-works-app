@@ -34,7 +34,13 @@ what has been tested.
   unavailable; `tests/browser/ask_check.py` tests the panel against a scripted stand-in.
 
 **Where it stands.** Step 1 of six is built and live on demo.vardil.com (`main` at 01e7566,
-16 Nov). 199 automated tests and 647 browser checks pass.
+16 Nov). 199 automated tests and 647 browser checks pass there. On Oisin's copy
+(`product574/vardil-construction-demo`) his two lines of work were merged on 19 Nov: the
+branch `step-2-team-chat` (Email like Gmail, Team chat like Ping, the two phones, Admin,
+Schedule, payroll and overtime, Fleet from Secure-All, Profitability) and the branch
+`invoicing-section` (Invoicing, Reports, Customers, Compliance). The merged version is on
+`invoicing-section` and on his `main`, and is what his artifact shows. See "The two copies
+merged, 19 Nov" further down, and decisions 185 to 197.
 
 **How each step is built (on the co-founder's copy).** Work on a branch. Before any code,
 bring Aodhan 2 or 3 options as pictures and get his pick. Then build, add tests, run
@@ -50,6 +56,33 @@ preview address (`<branch>.vardil-construction-demo.pages.dev`, Cloudflare accou
 only). Merge into `main` only when Aodhan says publish, check it live, and update this file.
 Each round starts from the latest version: if `main` changed while the co-founder worked,
 send him a fresh zip first, or bring his changes across with care, so the two do not clash.
+
+**Round ten, 17 Nov:** decisions 108 to 116, and 117 after it.
+
+**Merged, 19 Nov:** decisions 185 to 197, and "The two copies merged, 19 Nov" further down.
+This copy's own decisions from 18 Nov were numbered 64 to 118 on `invoicing-section` and
+clashed with the other branch's; they are now 130 to 184, in the same order.
+
+**Round eleven, 18 Nov:** decisions 118 to 129. Fleet is now the Secure-All build's Fleet
+(`product574/vardil-works-security`, Vardil's own code, brought across with ABC's data), as a
+department of its own; the phones gained Report damage and Send a licence; Who is where reads
+any day, per site.
+
+**On Oisin's copy, from 16 Nov evening:** Oisin directs the work himself ("forget about
+Aodhan's steps for now, I will take control of the steps from now"). The list below is
+Aodhan's plan, kept for reference; on this copy, follow Oisin's own requests and ask him,
+not Aodhan, for picks. He looks at it as a private Claude artifact, "Construction demo
+(Oisin's copy)", rebuilt with `npm run build:preview` and republished after each change
+(sign in with demo / demo; downloads do nothing inside the artifact's frame). From 17 Nov he
+shares that artifact with other people himself (decision 88): its sign-in page no longer
+prints the login, and `npm run build:preview` takes the login from `.env.preview`.
+Oisin's standing rule (17 Nov): after finishing a task, always give him a checklist of every
+change, so he can check each one, ask for changes, and tick it off when happy. Since 17 Nov
+the checklist is a Sheets artifact, "Construction demo: changes to check"; for the merge on
+19 Nov he asked for it in the chat instead.
+His second standing rule (17 Nov, decision 107): when building, ask as many questions as
+possible first, to get as much of his input as possible; if he is away, build the default
+and put each open question in the checklist as a "Decision for you" row.
 
 **What is left, in order:**
 
@@ -74,18 +107,18 @@ invoices end to end. See "Invoicing, rebuilt 18 Nov" further down for what was d
 was built, what was tested and what comes next (supplier invoices with the Sage fields,
 subcontractor invoices with the portal and the timesheet, all invoices by site). It replaces
 step 6 as first written; "Invoice design" is built, and the Portal has been added to (not
-left as it is) at his word. A second part followed the same day (decisions 73 to 81, and
+left as it is) at his word. A second part followed the same day (decisions 139 to 147, and
 "Invoicing, part two" further down): the aged-debt squares as filters, a Back button on
 every screen, the export for Sage only with sales and purchases, supplier invoices approved
 and then paid, subcontractors in their own section of the portal, and a confirm box on every
-approval and payment. A third part followed the same day (decisions 82 to 94, and "Reports
+approval and payment. A third part followed the same day (decisions 148 to 160, and "Reports
 and Customers" further down): a Reports section after the HVAC reporting demo (the overview
 with five figures, sales by customer, the ten most profitable jobs paid in full, where the
 money goes, gross margin on every job finished in the last 12 months, tender conversion by
 kind of work), a year of past work in the sample data so the reports have something to
 show, and Customers as a section of its own in place of Sales, Clients (so the Customers
-half of step 4 is built on his copy). A fourth part followed the same day (decisions 95 to
-118, and "Compliance, 18 Nov" further down), after the HVAC compliance demo: Compliance as a
+half of step 4 is built on his copy). A fourth part followed the same day (decisions 161 to
+184, and "Compliance, 18 Nov" further down), after the HVAC compliance demo: Compliance as a
 section of its own after Plant, so step 4 is now built on his copy. Every expiry in one list
 (people's tickets, vans and driving licences, machinery checks and scaffold inspections,
 company papers, subcontractors' papers), a screen per area, training courses, and what stops
@@ -194,36 +227,102 @@ Two sources were merged (November 2026):
 | 61 | Reference templates | Ten demos he shared on 16 Nov (Athboy plant hire, HVAC, haulage, large haulage, packaging, Just Packaging, Costello Doors, Centra, Bryan Lynch, and the tarmac one again). All are Silkrun or Dubsof demos, so the rule stays: layouts and features as the reference, our own code, wording and data. Archives are kept outside the repository |
 | 62 | Billing | In Admin (16 Nov, after step 1: "add billing to the admin section. Have it to show three months prior as past invoices"), as in the templates: the plan, the next invoice, and the invoices for the three months before this one. Per person with a sign-in (office and site management, 13 in the sample data); operatives on the site phone and clients in the portal are free. Invoices from Vardil numbered VD-yymm, issued on the first working day of the month after, taken by direct debit three working days later. The price is €59 a person a month before VAT, set by Aodhan on 16 Nov (it was a €55 placeholder until he picked it), in `PLAN` in `src/lib/subscription.ts` (changing it means bumping DATA_VERSION and the figures in `subscription.test.ts`, `snapshot.test.ts` and `s1b_check.py`). Only the managing director sees it: Billing, like Roles and access, stays his even when Admin is switched on for another level (`mdOnly` on the sidebar item in `departments.ts`, and the screen sends anyone else back to Admin) |
 | 63 | Moving sales cards | Cards move between the board's columns (16 Nov, after step 1: "have it so that jobs can be moved between sections"), by dragging or with the handle on each card's corner (a list of columns, for phones and keyboards). Every move does what that stage means, after a dialog saying what will happen: To quote to Drafting drafts the quote; Drafting back to To quote discards the draft; Drafting to Sent sends it; a quote that is out can go to Queried (with the client's question), Won (purchase order, then a project), Declined, or back to Drafting to be changed; Queried to Sent sends the revision; Declined to Drafting reopens it. Refused: anything into Opened (the client does that), anything out of Won (a project now), skipping a stage. While dragging, the columns it can go to say what a drop does and the rest dim. Only people with "Price and send quotes" can move cards. Rules in `src/lib/pipeline.ts`. The board or list switch and the richer Log enquiry are still to come in step 3 |
+| 64 | Team chat layout | Like Ping in the reference demos (Oisin, 16 Nov: "team chat is going to be our equivalent of their ping, and I want it the exact same as theirs"). A side panel with the app, Channels (a # before each) and Direct messages, each with an unread count; the open conversation with a header (name, link to the project for a site channel, members), messages under day lines with initials, name and time, @mentions in bold, and a message box along the bottom ("Type a message... Use @ to mention", a paperclip, a round send button; Enter sends, Shift and Enter for a new line, @ offers the channel's members). No AI in it: Oisin first picked a triage view (option C of three pictures: messages picked out, tagged, passed on, replies drafted) and it was built, then he chose to drop the AI part when moving to Ping. That build is in git history (commit 7d8fc46) |
+| 65 | Team chat app | Switchable, like the accounts package (Oisin, 16 Nov, the recommended option of three: switchable, Teams only, Slack only): Admin > Connections has Microsoft Teams or Slack, Teams by default. It is a preference (`Brand.chatApp`), so it survives Reset demo data. Teams shows channels by name ("C720 Ardmullen House"), Slack as c720-ardmullen-house (`channelLabel` in `src/lib/chat.ts`) |
+| 66 | Email layout | Like Gmail, as in the reference demos (Oisin, 16 Nov: "keep the Gmail the exact same as they have it"; Centra and Bryan Lynch are the fullest). A side panel with the account, Compose, Inbox, Starred, Sent, Drafts, Archive, and the labels (our tags) with unread counts; the list with Focused and Other tabs, Search mail, select-all and Newest or Oldest, rows grouped by day (Today, Yesterday, Earlier this week, Older), each with a checkbox, a star, initials, sender, subject, a preview line, any attachment, the time and the label; picking rows offers Archive, Mark as read and Mark as unread. An open email replaces the list, with a toolbar (Back, n of N, newer and older, Archive, Star, Mark as unread, Label, Move), the email, Linked chips, the reply drafted for it (Send reply, Discard, Forward), and a Summary panel (summary, action items, Passed to, Discuss in Team chat). Compose files a new email under Sent. "Passed to me" and the Unread filter went; Passed to stays in the Summary panel |
+| 67 | Gmail and Ping, round two | Oisin, 17 Nov. Email: emails are dragged onto a label (to label them) or onto Inbox, Archive or Starred, as in Gmail; picked emails go together; the same is in a Label menu for picked emails, for phones and keyboards (`dropOn`, `DRAG_TYPE` in `Inbox.tsx`). Compose has small "Add Cc" and "Add Bcc" buttons under To, which open those boxes (`cc`, `bcc` on `Mail`). Team chat: group chats go by name alone, with no #, under "Group chats" ("replace the channels with the hashtags with just the name of the gc"); a New button (pencil, top of the side panel) opens "New message or email": find a person by name or job, then Message (opens or starts a direct message, `startDirectMessage`) or Email (opens Compose in Email addressed to them); "New email to anyone" too. A message sent late at night is stamped one minute after the conversation's last, so it never lands above this morning's (`chatStamp`) |
+| 68 | Team chat New message | Oisin, 17 Nov: the button at the top of Team chat's side panel reads "New message" with a plus in a circle (was a pencil with no words). It still opens "New message or email" |
+| 69 | Site phone: two phones | Oisin, 17 Nov. The Site phone screen has two sign-in options, Operative and Site manager (`Phone of` tabs; a signed-in site manager gets his own, an operative only theirs). The operative's phone is as it was, plus 73. The site manager's opens on the jobs he runs (`managerJobs` in `src/lib/roster.ts`, live first, then not started), scrolls, and a job opens Timesheet (today's crew: Full, Half, Not in, overtime, Send today's time stamps), Week ahead (next week day by day: take off, add someone free), Month ahead (a count per working day), Send a photo, Report extra work, Make a request (was "Ask for something"), and Claim a reimbursement. No My week for him. To make planning work there, "Plan the week ahead" is now on by default for the site manager level, which still only reaches the sites they run (roles.ts) |
+| 70 | Schedule: leave | Oisin, 17 Nov: a Leave group in Schedule's sidebar with Holidays (approved leave: off today, coming up, back in the last 30 days, with working days and usual sites; Record leave) and Holiday requests (each request as a card with working days, days already planned, who else is off then, Approve or Decline for anyone with "Approve leave"). The same requests are still in People, Holidays and Admin, Requests (`src/modules/schedule/Leave.tsx`, `leaveGroups`, `overlapping`) |
+| 71 | Week ahead grid | Oisin, 17 Nov: one table, sites (code, name, site manager) down the left, the five days with dates across the top, and in each cell everyone down for that site that day, one line each, so the cell grows. Not placed stays on the right. Names are dragged from Not placed onto a cell (plans them; half a day if they have a half day elsewhere), or from one cell to another site on the same day (moves them). Dropping someone with a full day elsewhere asks: Move, Put on both (double books), Cancel (`dropOutcome` in `src/lib/roster.ts`). Each cell has an Add button (everyone free that day, one tap) for phones and keyboards; clicking a name opens the person box as before. While dragging, cells say what a drop does. Days gone show who attended. The per-site tables and the trade-then-person picker went |
+| 72 | Attendance history | Oisin, 17 Nov: a Period box where the month buttons were (Last week, This week so far, then this month and five before), beside All sites; and a fourth view, Per site, laid out like the plant overview: a heading per site (code and name, site manager, people and days), then each person's full days, half days, overtime and days in all; sites running in the period with nothing recorded are listed after (`periodDays`, `periodOptions`, `perSite` in `src/lib/roster.ts`) |
+| 73 | Operative phone additions; Files out of the bar | Oisin, 17 Nov. A profile button top left of the phone: details, employee number, tickets, holidays with a Request holidays form (goes in as Requested, `requestLeave`), reimbursements, and Sign out (back to the sign-in choice). A Driving check: the vehicle, then three sections (cab and driver safety, vehicle walkaround, trailer and load safety), each item OK or Defect, a defect needs a note, Submit once all are answered (`src/lib/driving.ts`, `submitVehicleCheck`, `db.vehicleChecks`; the layout from his reference picture of a plant hire app). Claim a reimbursement: what for, amount with VAT, day, site, receipt photo; it waits for the director in Admin, Requests (`claimExpense`, `decideExpense`, `db.expenses`). The check and the claim are in English only; only the button names are translated. Files is out of the bottom bar (his pick from three); the section still opens at /files and each project keeps its Files tab |
+| 74 | Payroll, from the Oldstone call | The call with Oldstone's finance and admin on 16 Nov (notes in his upload, not in the repository). Agreed there: the dashboard records and checks hours and sends them to Sage Payroll as a file; rates, tax, USC, pension, union fees and the bank payment stay in Sage. So: every employee has a Sage employee number (`Person.sageNo`, on the register and the add form; Aoife Kinsella has none in the sample data, to show the flag); People, Payroll export shows a week (last week by default) with each day's mark, basic hours on a 39 hour week (8 Monday to Thursday, 7 Friday, half for a half day, `src/lib/payroll.ts`), overtime and total, flags (no Sage number and days not sent block that person; under 39 hours and two sites are notes), and "Export hours to Sage Payroll" (new permission `exportPayroll`, managing director and accounts) which downloads the CSV and records the week (`db.payrollExports`); since 17 Nov only after a manager has checked the week (decision 97). Attendance history's payroll totals show basic, overtime and total hours, no longer "paid hours" at time and a half. The CSV columns are a placeholder until the sample payroll file from Oldstone's accounts arrives |
+| 75 | Invoicing, from the Oldstone call | Supplier invoices carry what is keyed into Sage by hand today: file number (`fileNo`, 11400 up), nominal code per cost heading (5000 materials, 5100 carriage, 5200 plant hire, 5201 tools, 5300 subcontractors, 5900 other), the project number as the department (686 for C686; sales lines now use the number too), tax code (T1 23%; T13 for 13.5% is a guess to check), supplier account (eight capitals). Anything over 500 euro gross waits for the director's sign-off (`SIGN_OFF_OVER`, Admin, Requests and on the invoice) before it can go. Accounts export has a Supplier invoices part: waiting for sign-off, ready to go, and the purchase file in each package's layout (`src/lib/purchases.ts`). Job costs has "Download profitability report" (valuation of work done, wages, materials, plant, subcontract and other, profit, margin), the report built by hand in Excel today. VAT returns, bank reconciliation and payroll stay in the accounts package (said on the page). Not built: subcontractor invoices checked against their timesheet days |
+| 76 | Ask AI mark | Oisin, 17 Nov: two amber sparkles (`src/ui/AiSparkle.tsx`, from his picture) on the Ask AI button, the panel heading and the Ask AI line in search; the only colour besides the accent, on purpose. The question box reads "AI Assistant" in faded text until something is typed |
+| 77 | Requests from the crew | Oisin, 17 Nov (phone round). The operative's "Ask for something" is "Make a request" in all five languages and goes to the site manager first, not the office (`heldBy: "site"` on `SiteRequest`). The site manager sees it on his phone inside that job ("Requests from the crew", with a count on the job card) and on his desktop (Projects, Requests: "From your crew"; the project's Requests tab), and either forwards it to management as his own request (`forwardCrewRequest`: he becomes `requestedBy`, the operative is kept in `raisedBy`, and it joins Admin, Requests) or marks it dealt with (`closeRequest`, shown as "Dealt with on site"). Only the project's own site manager gets the two buttons; the office sees who each one is with. The office's counts (overview, Admin, plant "asked for", Ask AI) leave out requests still with a site manager (`withOffice` in `src/lib/requests.ts`); the number beside Requests in the Projects sidebar is every open request on the projects that person's screen covers (`openRequestCount`, which also fixed a site manager seeing the whole firm's count) |
+| 78 | Site manager phone, second pass | Oisin, 17 Nov. The phone never changes the plan ("not editing ability on the mobile app, just a request button"): Week ahead and Month ahead show who is down; in Month ahead a day is tapped to see who; each day to come has "Request someone for this day" (a named person, listed with where they are that day; `requestPerson`, a `SiteRequest` with `personId`). In Admin a yes puts a free person on the plan for that day and closes the request; if they are busy elsewhere it stays open for the office (`decideSiteRequest` returns "planned" or "open"). "Plan the week ahead" is still on for site managers on the desktop (on the Oldstone call the site managers do the planning); Oisin has not ruled on that yet. Also: Site instructions for the day (`DayInstruction`, `setDayInstruction`; today or the next working day; one per site and day); the front page has the profile button (details, tickets, Request holidays, reimbursements, Sign out) and, apart from the jobs, Driving check and Claim a reimbursement ("stuff should be separate"), so the job no longer has the reimbursement. Files: `src/modules/site/ManagerPhone.tsx`, with the sheets both phones share in `sheets.tsx` |
+| 79 | Operative phone, second pass | Oisin, 17 Nov. The site and site manager shown are the ones for that day (`siteOn`: where they were marked in, else where they are planned, else their site list). The manager's name opens his details with Call now (`ManagerCard`); the Call button beside it is still one tap. "Today's instructions" (the site manager's for the day, in English as he wrote them) sit above the standing site instructions. My week shows the site manager beside each site, tapped for his details and Call now, and any instructions already up for that day |
+| 80 | Rest of the week | Oisin, 17 Nov: on the Week ahead, the first time someone goes on a site in the week (dragged from Not placed, moved from another site, or the Add button), a bar above the grid asks "Here for the rest of the week?" with Yes and No. Yes plans the days after it where they are free (a half day where half is taken); after a move it moves the days they were wholly on the old site; days on a third site are left, and the bar says so (`planSteps`, `firstOnSite` in `src/lib/roster.ts`, `planDays` in actions). It is a bar, not a dialog, so it does not get in the way of the next drag |
+| 81 | Month ahead grid | Oisin, 17 Nov, in the layout of his own Oldstone planning tool (two screenshots): a row per site (code, name, site manager, dates), a column per day with weekends greyed and narrow, and the names in each square. Days gone show who was on site from the timesheet; days to come show the plan, the same `db.plan` as the Week ahead, so each updates the other (`dayRoster`). It scrolls sideways inside its own panel with the site names and day headings fixed, opens on today, and has Week buttons to scroll. Clicking a square opens the day: who is planned (take off), Add person (search by name or trade, where each is that day, people on leave cannot be picked), "Repeat each weekday until", a line saying what will be added, and "Add to C7xx". Someone with a full day elsewhere is added anyway and shown in red on both sites, as in his tool. The three total rows stay. `src/modules/schedule/Month.tsx` |
+| 82 | Who is where, per site | Oisin, 17 Nov: a "Per site" view beside "On site", laid out like the plant overview: a heading per live site (code, name, site manager, county, how many on site), then who is there today with status and phone; then "Not on a site today" |
+| 83 | Attendance history layout | Oisin, 17 Nov (later): "have the layout per site like the plant format as well as the other features, put this option in the top right corner" (with a picture of the plant overview's Everything or Needs attention switch). So Per site is no longer a fourth view: it is a layout switch at the top right, Everyone or Per site, and it applies to all three views (Totals for payroll, Day by day, Corrections), which now sit beside the Period and Site boxes. Per site totals carry the payroll columns (full days, half days, basic, overtime and total hours) with a total per site (`perSite` in `src/lib/roster.ts` now adds basic hours) |
+| 84 | Held fits the page | Oisin, 17 Nov (later): "remove the drag at the bottom and just make it fit the page without having to scroll across". The reason an invoice is held was one long unbroken badge in its own column, which pushed the table wider than its panel. It is now on a line of its own under each invoice (`under` on `SalesTable` in `Invoicing.tsx`); text columns wrap; below 1024 pixels each invoice is a stacked block instead of a row (seven columns do not fit beside the sidebar there). The same table serves To invoice, Invoiced and Accounts export |
+| 85 | General request | Oisin, 17 Nov (later): the site manager's phone has "Make a request" on its front page, under General, for a request that is not for one site. `SiteRequest.projectId` can be null (with `requestedById`, so it stays on the asker's own list), and there is a fourth kind, "other" (shown as "Something else"), offered to site managers on the phone and on a project's Requests tab; the operative's form keeps to people and plant. A general request goes straight to management (Admin, Requests, marked "General, not for one site"), is on the office's Requests list and the asker's own (`requestsFor` in `src/lib/requests.ts`), and the phone lists his own with the office's answer. Not seeded: there is none until someone makes one |
+| 86 | One plan, shown one way | Oisin, 17 Nov (later): "make sure the week and month ahead all syncs up together through the different apps and updates accordingly". They already shared `db.plan`; what differed was how a day was read. Now one rule everywhere a site's day is shown, `dayRoster` (the timesheet for a day gone and for today once the site has marked anyone, otherwise the plan): the office's week grid (which used to show today empty until someone was marked), the month grid, the site manager's phone (job card, Week ahead, Month ahead, the day list, site instructions) and, read from the person's side, `personDay` for the operative's My week, which now shows days gone from the timesheet and has a This week or Next week switch so the week being planned can be seen. `src/data/plan-sync.test.ts` checks every way the plan changes against every way it is shown |
+| 87 | Site access | Oisin, 17 Nov (later): "In admin add the ability to decide which sites each site manager has access to". Admin, Site access (under Roles and access; the managing director's alone, `mdOnly`): a row per site that is live or about to start, a column per site manager, a switch in each square; "Runs it" where they run the site, which cannot be switched off. `db.siteAccess` holds one row per person and site given (`setSiteAccess`); `opensSite` in `src/lib/site-access.ts` is the rule, used by `scope` in `access.ts`, the phone's jobs (`managerJobs`), the Requests count, and who may handle a crew's requests. A given site is theirs in every way their level allows: project page, timesheet, plan, requests from its crew, its group chat (they join and leave it with the switch), the job on their phone (marked "Run by ..."). The crew still see whoever runs the site as their site manager. People with "See every project" are listed under the grid, since there is nothing to pick. Sample data: Shane Culloty can open C725, which Róisín Garvey runs. Changing who runs a site came the same day (decision 94) |
+| 88 | Sharing the preview | Oisin, 17 Nov (later): "make this up to date link be able to be opened by other people also with the right username and password". Claude's tools cannot change who can open an artifact; Oisin does it himself with Share on the artifact's page (people invited by email, his organisation, or anyone with the link). What Claude changed: the preview's sign-in page used to print "The default is username demo, password demo", which hands the login to everyone the link reaches. `.env.preview` now sets `VITE_DEMO_USERNAME` and `VITE_DEMO_PASSWORD_SHA256` (the hash of "demo" for now), which switches that line off; the login is still demo / demo until he picks his own (`npm run hash-password`, paste the hash there, rebuild). The login is checked inside the page, so it is a courtesy gate, not protection: anyone who can open the artifact has the whole app, and the Share setting is what decides who that is. Prospects belong on demo.vardil.com behind Cloudflare Access (Aodhan's). Each viewer has their own sample data in their own browser. Once the artifact is shared, republishing it needs `shared_live` set to its read mode (and its title when public) |
+| 89 | Overtime rates (one rate a day and the early starts changed by decision 100) | Oisin, 17 Nov (round seven), confirmed on the call with Oldstone's managing director the same day: overtime is at time and a half or double time. Time and a half: Monday to Friday after normal hours up to midnight, and Saturday 8am to 12 noon. Double time: midnight to the normal 8am start, Saturday after 12 noon, all Sunday, bank holidays. `Attendance.overtimeRate` (2 for double time, absent for time and a half; one rate for a day's overtime), picked when marking: "Full + time and a half" or "Full + double time" on the timesheet and in the Correct dialog, and a rate switch on the site manager's phone. The rates are written out on the Timesheet (`OvertimeRules`, `OVERTIME_RULES` in `src/lib/overtime.ts`), so whoever marks time can tell which applies. Carried into: timesheet cells and corrections ("Full +2h x2"), the week and month grids, Attendance history (Overtime x1.5 and Overtime x2 columns, for everyone and per site), Payroll export (two columns; the Sage file has `Overtime hours x1.5` and `Overtime hours x2`), labour cost (double time counts twice), the operative's My week, and Ask AI's summary. Sample data: Derrybawn Bridge (C724) overtime is double time (6am starts on Tuesdays and Thursdays, to set out traffic lights). Not built: the timesheet is Monday to Friday, so Saturday, Sunday and bank holiday hours cannot be recorded yet; the rate is picked by a person, not worked out from clock times |
+| 90 | A note with every no | Oisin, 17 Nov: "if you decline somebody's request for holidays add an optional note to say why" and "if an approval needs to decline for anything add an optional note". Every Decline or Discard opens a small dialog with a "Note (optional)" box (`DeclineDialog` in `src/ui`); the button works with the box empty. Kept as `declineNote` on `Holiday`, `SiteRequest`, `SpendRequest` and `Expense`, and `discardNote` on `Approval` (a holiday also keeps `decidedBy`). Asked in: Schedule, Holiday requests; People, Holidays; Admin, Requests (leave, site requests, spending, reimbursements); Approvals on the overview (Discard). Shown to whoever asked: the phone profile (holidays, reimbursements), the site manager's phone (requests), Projects, Requests and a project's Requests tab. Also: a Declined list under Schedule, Holiday requests; "Why it was declined" in People, Holidays; Answered in Admin (reimbursements joined that list); the Done tab in Approvals; the activity log and project history. Moving a discarded draft back to waiting drops its note. Not given a note: recording that a client declined a quote, and discarding a drafted reply in Email |
+| 91 | Email: under a label, out of the Inbox | Oisin, 17 Nov: "remove email from inbox when inserted into category like how gmail operate". `Mail.folder` gains "Filed": an email dragged onto a label, or moved with "Move to" (picked emails) or Move (an open email), takes the label and leaves the Inbox (`fileMail`; `filedFolder` in `src/lib/mail.ts`). It is found under its label, and under Starred and Drafts as before; not in Archive. It keeps whether it was read, so a label's unread count includes it (`labelUnread`). Under a label, emails still in the Inbox carry an "Inbox" chip, as in Gmail. "Move to inbox" brings one back with its label. The open email's Label menu only changes the label and leaves the email where it is, so a wrong tag can be put right without filing it; the picked-emails menu was "Label" and is now "Move to" |
+| 92 | Email attachments | Oisin, 17 Nov: "add attachments for composing email". Compose has "Attach files": pictures (shrunk to JPEG) and PDFs up to 1.2 MB, five at most (`readAttachment` in `src/lib/image.ts`, `MAX_ATTACHMENTS`), kept in the browser like photos. Each shows as a chip with its size and a Remove button. Sent emails list them (`Mail.attachments`, `attachmentsOf`); one opens to look at with a download (a PDF is only ever a download). Forward carries the email's files. Other file types are refused with a plain reason |
+| 93 | Roles and access as ticks | Oisin, 17 Nov, with a picture of the Roles page of an earlier app of his: "make our roles and access more similar to this previous app i made; where it ticks what they have access to or not". By role: a card per level (how many people, what the level does, who; a name opens By person), then one grid (money, permissions, departments) with a tick or a dash per level (`Tick` in `src/ui`). Unlike his page, the ticks can be changed: each one in a light box is a checkbox, a click or the space bar changes it at once, with a message. The managing director's column and a level's home department are plain ticks that cannot be changed. By person shows the level's tick beside the person's. The layout is from his reference; the code and wording are ours. DESIGN.md prefers lists to rows of cards; kept here because each card holds real content and he asked for it |
+| 94 | Who runs each site | Oisin, 17 Nov: "make it easier to assign which site manager should be at which site?". Admin, Site access: each site has a Site manager box (`setSiteManager`): pick a name and they run it from then on (project page, timesheet, plan, requests from its crew, the job on their phone, the name the crew see, the site's group chat); the one before no longer opens it unless their name is ticked. The choices are everyone at site manager level (`siteManagerChoices` in `src/lib/site-access.ts`). Who else can open a site is a tick under their name (it was a switch). Above the grid, a card per site manager: how many sites, which they run, which they also open. This is the "changing who runs a site" that decision 87 left unbuilt |
+| 95 | Fleet, made easy | Oisin, 17 Nov, with three pictures of his own Oldstone fleet tool: "for the fleet section within the Plant tab make very easy to use with features like this". Plant's sidebar has one Fleet entry (with how many vehicles have a paper out of date), and Fleet is one page with three tabs, each an address of its own: Vehicle stats (`/plant/fleet`), Vehicle documents (`/plant/fleet/documents`), Repair spend (`/plant/fleet/repairs`); the old addresses redirect. The same three buttons are at the top right of every tab: Upload document (the main one), Add vehicle, Edit vehicle. Vehicle stats: "Search registration or model" (however the registration is typed) and, per vehicle, driver, mileage, tax, test, insurance, next service, the driver's last check from the phone (decision 73; a defect shows in red with what was reported) and repairs in the last 12 months. Upload document is one dialog: choose the file, and a registration in its name picks the vehicle and says so; the kind (repair invoice, motor tax, test, insurance) is read from the name too (`readFleetFile` in `src/lib/fleet.ts`: rules, not a model); a repair joins the repair spend, a certificate moves the vehicle's date. Edit vehicle asks which vehicle, then registration, make and model, kind, base, driver and mileage (`updateVehicle`; a registration another vehicle has is refused); Remove from fleet moved there. Add vehicle takes a driver and mileage. Vehicle documents: the search and an "All categories" box. Repair spend: 1 month, 3 months, 6 months, 1 year (to start), 2 years, 5 years, by vehicle and by garage (`repairSpend`, `SPEND_PERIODS`); the by-quarter table went. With no vehicles every tab says how to start. Sample data: a driver's check for every driven vehicle, two with a defect (`seedVehicleChecks`). The layout is from his tool; the code and wording are ours |
+| 96 | Reimbursements ready to pay | From the call with Oldstone's managing director on 17 Nov (notes in Oisin's upload, not in the repository): once the director approves a reimbursement, it should be ready for the office staff to export and pay. People, Reimbursements (`src/modules/people/Reimbursements.tsx`, rules in `src/lib/reimbursements.ts`): approved claims waiting to be paid, with the Sage employee number, what for, site, amount and who approved; "Export for payment" downloads a CSV, one row a claim, and stamps each claim (`exportExpenses`, `Expense.exportedAt`, `exportedBy`) so none goes twice; then they are listed under Sent for payment. The page shows the file before it goes. It uses the `exportPayroll` permission, now worded "Export hours and reimbursements for payment" (managing director and accounts). Admin, Requests says an approved claim is on the office's list and links there; the phone profile shows "On the office's list to pay", then "Sent for payment". The People sidebar shows how many wait. Sample data: one approved and waiting, one already sent. The bank payment itself stays outside the demo |
+| 97 | Payroll: a manager's check, then the export by hand | From the same call: an overall manager looks over the week's hours before they go to Sage, and the export stays a person's click ("we won't automate that"). People, Payroll export: "Mark the week as checked" (new permission `checkPayroll`, "Check the week's hours for payroll": managing director and contracts managers by default; the accounts office exports but does not check, so it takes two people unless the managing director does both). Export is off until the week is checked, and a day corrected after the check means it is checked again (`weekCheck`, `payrollStage` in `src/lib/payroll.ts`; `db.payrollChecks`, `checkPayrollWeek`). A new note on a person's week, "A lot of overtime" (10 hours or more, `OVERTIME_TO_QUERY`), and on every row "Ask" with the name of whoever runs that person's site, which opens a Team chat direct message to them. The three steps are written on the page. It is a to-do on the overview (`src/lib/overview.ts`): for whoever checks, "Last week's hours are in from every site and ready for you to check"; for whoever exports, that they wait on a manager's check or are ready to export, with any reimbursements to pay; and the People sidebar shows a 1 beside Payroll export while last week waits. The overview still shows four facts at most, so while payroll waits the managing director's "invoices ready to go out" fact drops off |
+| 98 | Overtime rates at the top; a filter in the history | From the same call, where the rates in decision 89 were confirmed and asked for at the top of the tab: the Timesheet's overtime rates are two lines in the page's heading, above the grid (they were under it). Attendance history has an Overtime box (All days, Days with overtime, Time and a half only, Double time only), which works on all three views and both layouts; the note says which days are counted |
+| 99 | Invoices: going out or coming in | From the same call ("are these invoices coming in or invoices going out?"): Invoicing's sidebar groups are "Going out, to clients" (To invoice, Held, Invoiced), "Coming in, from suppliers" (Supplier invoices) and "Accounts" (Accounts export, Job costs), and each screen's first line says which way its invoices go |
+| 100 | Overtime at both rates in one day; an early start is not overtime | Oisin, 17 Nov (round nine): "technically the employee could have a full time with overtime time and a half and double pay", and "if a site starts at 6am or 7am this not qualify for overtime it is just if they keep working from the day before". A day's overtime is two boxes of hours, one at each rate, with no clock times (his pick): `Attendance.overtimeHours` is the hours at time and a half and `doubleHours` the hours at double time (`overtimeRate` is gone). Marking is "Full + overtime", then the two boxes: on the Timesheet, in the Correct dialog and on the site manager's phone. Overtime begins once a normal day's hours are done (8, or 7 on a Friday), whenever the day began; double time after midnight is only for work that carries on from the day before (`OVERTIME_RULES`, `EARLY_START_NOTE` in `src/lib/overtime.ts`, written at the top of the Timesheet). This corrects decision 89, where Derrybawn Bridge's 6am starts were double time: the sample data no longer has them. Double time with no time and a half on a normal day is saved, with a warning beside it, and flagged for the manager's weekly check (his pick; `doubleWithoutHalf`, payroll flag "Double time, no time and a half"). Sample data: one night on C724 that ran past midnight (7.5 hours at time and a half, 1.5 at double time), and one deliberate slip on C722 (2 hours at double time and nothing else) |
+| 101 | Weekend time stamp | Oisin, 17 Nov: "someone can be inserted for weekends but not normal so add a weekend timestamp button", and "for the weekends / bank holidays they could have whatever hrs all at overtime rate". A "Weekend time stamp" button at the top of the Timesheet, beside Send today's time stamps: the day (a Saturday, a Sunday or a bank holiday that has been, newest first), who worked (the site's crew to tick, several at once, and a box to add anyone from another site), and the hours at each rate. The rules are enforced (`restDayProblem`): Saturday, at most 4 hours at time and a half (8am to 12 noon) and the rest at double time; Sunday and bank holidays, every hour at double time. It is an `Attendance` row with `status: "restday"`: no basic hours, saved as sent in the name of whoever stamped it (`stampRestDay`); changing or removing one is a correction with a reason (`correctAttendance`). The grid stays Monday to Friday and the stamps are a list under it, "Weekend and bank holidays" (his pick of three). The Timesheet offers days back to the week before the one shown; the phone the last 14 days. "Anyone in the firm" (his answer) is built as any active operative; office staff cannot be stamped |
+| 102 | Bank holidays | Built in and editable (his pick): `db.bankHolidays`, filled from rules in `src/lib/bank-holidays.ts` for last year, this year and next (Ireland's ten, St Brigid's Day rule included; the UK's eight with days in lieu when the region is switched). Admin, Bank holidays (`src/modules/admin/BankHolidays.tsx`): a year switch, the list, Take off, and Date plus Name plus "Add bank holiday" for a day the firm treats as one. A bank holiday on a weekday is named in the Timesheet's column, the week grid, the month grid and Payroll; nobody is marked a normal day on it in the sample data, and work on it is a weekend time stamp at double time. The demo's day skips built-in bank holidays as it skips weekends (`demoDay`). A week with a bank holiday expects 8 hours fewer before "Under n hours" is flagged (`expectedHours`) |
+| 103 | Pay week Monday to Sunday | His pick: the weekend's hours belong to the week they end. Payroll export's week ends on the Sunday (the file's name and period end too), has a "Sat, Sun" column when anyone worked the weekend, and its check goes stale when any time stamp for the week is saved after it, not only a correction (the badge reads "Changed since X checked it"; `weekCheck` takes the attendance rows). Attendance history counts weekend stamps in a "Weekend days" column apart from full and half days, and its Overtime box is All days, Days with overtime, Days with time and a half, Days with double time, Weekend and bank holiday work |
+| 104 | Weekend work on the plan and the phones | His pick: all four places. Week ahead: a "Weekend" section under the grid (by day and site; "Plan weekend work" with day, site and people; take off; a weekend gone shows who was stamped in and their hours; `planRestDay`). Month ahead: a weekend column opens out to show names only where someone worked or is down for it; the rest stay narrow grey strips. Site manager's phone: "Weekend time stamp" inside a job, and Saturday or Sunday in its Week ahead when anyone is down. Operative's My week: the weekend day when worked or planned. Sample data: two people down for C724 this Saturday and next; weekend work last Saturday (C724), last Sunday (C720), the Saturday before (C719) and the last bank holiday (C721) |
+| 105 | Profitability | Oisin, 17 Nov: "there should be a profitability app that can be built now and will calculate the outgoings for employees and then will eventually link up the invoices when we sort them out". A department of its own in the bottom bar, after Invoicing (his pick), the managing director's alone and fixed, like Ask AI: not offered to other levels in Roles and access, and its address sends anyone else home. By site only (his pick): wages (basic, time and a half, double time), approved reimbursements for the site, outgoings for employees, and two measures (his pick: both), the labour allowed in the quote ("% used" beside the work done, or "over") and the contract value ("wages are x% of it", "Left after employees"). Live sites first, with a switch for Finished. A site opens to who its wages went to: rate an hour, days, weekend days, hours at each rate, wages, reimbursed. Wages are costed on the 39 hour week (8 hours Monday to Thursday, 7 on Friday, overtime at its rate), the same as Job costs, so a site's wages here equal its labour there by construction (`wagesOf`, `siteProfit`, `labourState` in `src/lib/profitability.ts`; `paidHours` in `project-costs.ts` now takes the date). Job costs is under Profitability for the managing director and stays in Invoicing for accounts (his pick; `notMd` on the sidebar item). Supplier invoices per job are to be linked later, at his word |
+| 106 | Email drafts | Like Gmail (his pick): closing Compose (the X or Escape) keeps what was typed as a draft and says "Saved to Drafts"; Compose has Discard, Save draft and Send; a draft is under Drafts with the replies not sent, reads "Draft, to ..." with "Not sent", opens back into Compose ("Draft email"), and is used up when sent (`saveDraft`, `discardDraft`, `composeMail(d, id)`; `Mail.folder` "Drafts"). An email with nothing in it is not kept. Found while testing: the shared `Dialog` reported its own close as the person's, so onClose ran twice and two drafts were kept; a close the screen asked for is no longer reported |
+| 107 | Ask many questions | Oisin, 17 Nov: "ask as many questions as possible when building these web apps to get as much user input as possible". Sixteen were asked before round nine was built (four rounds of buttons). When he is away, build the default and list each open question in the checklist as a "Decision for you" row |
+| 108 | Overtime claims from the phone | Oisin, 17 Nov (round ten): "in the operative phone app make it possible to claim overtime and this will be sent to site manager phone where he approve or not and it will go into the timesheets"; it is optional and only for overtime ("they can say extra 2 hours that day or a previous day to make site manager aware ... they do not have to do this for normal hrs"). On the operative's phone, My hours and overtime has "Claim overtime" and a Claim button beside each day: the day (today and the 7 before it, his pick), the site (the one they were on that day), the extra hours in all, and an optional note (`claimOvertime`; `OvertimeClaim` in `db.overtimeClaims`; rules in `src/lib/overtime-claims.ts`). It goes to that site's manager: on his phone, a job's "Overtime claims" (a count on the job card), each claim starting split by the day's rule (`suggestedSplit`: time and a half on a normal day, 4 then double on a Saturday, all double on a Sunday or bank holiday), which he can change before Approve (his pick), or Decline with an optional note. Also on the desktop Timesheet, in the Overtime list, for anyone who may mark that site (his pick), with a count beside Timesheet in the People sidebar (`overtimeClaimCount`). A yes adds the hours to that day (`approvalEffect`, `decideOvertimeClaim`): onto today's mark if not yet sent, as a correction with "Overtime claim approved: ..." as its reason once sent, as a full day with the overtime where nobody marked them in, or as an overtime time stamp on a rest day; a half day is refused until put right. The operative sees each claim's state on the phone. Sample data: two waiting for Eoin Brosnan (C724, C719), the C724 night past midnight approved, one on C722 declined with a note (`seedOvertimeClaims`) |
+| 109 | The Overtime list | "Weekend and bank holidays" under the Timesheet grid is now "Overtime" and lists all overtime on the site in the week shown (his pick: the week in the grid): weekday hours marked in the grid, overtime time stamps and approved claims, with how each came in and a total, then claims waiting and declined. Change opens the right correction for each |
+| 110 | "Weekend" becomes "Overtime" | His pick, everywhere: Overtime time stamp (Timesheet and the site manager's phone), the Week ahead's Overtime section and Plan overtime work, which now also takes a weekday bank holiday. Log lines "Added an overtime time stamp", "Planned overtime work" |
+| 111 | Bank holidays blocked as normal days | His yes to the open question, everywhere (his pick): no Add or drop on a bank holiday in the Week ahead grid (it says to use Plan overtime work), none in the Month ahead's day dialog, no normal day marked or corrected on one (`markAttendance`, `correctAttendance`, the plan actions use `isRestDay`). Adding a bank holiday in Admin for a day to come takes whoever was down for a normal day off the plan and says how many (`plannedOn`) |
+| 112 | Site manager's phone timesheet | "add/edit timesheets even if it is already sent in ... filled out on the phone". A Day box from today back to the Monday of last week (his pick), Add someone to this site, today marked as before, and a Change button on a sent or earlier day, which opens the same correction as the office, with a short reason (his pick; `CorrectDialog` is shared from `Timesheet.tsx`). Once a week has gone to payroll only the office changes it (his pick): whoever has "Check the week's hours" or "Export hours", on the phone and the desktop (`weekExported` in `payroll.ts`) |
+| 113 | My hours on the operative's phone | "let them see what hours they have been down for the one week back where they can check it is correct". A button of its own (his pick), "My hours and overtime" (translated as a button name; the sheet is in English): this week so far and last week, day by day as the timesheet holds it, with totals in basic, x1.5 and x2 hours. Hours only, no pay (his pick; `hoursWeek`, `hoursText`) |
+| 114 | Attendance history per site first | It opens on the Per site layout; Everyone is the switch beside it |
+| 115 | Month ahead in whole weeks | "for monday the 30th of November ... in November month planning and same for the other way for December". The grid runs from the Monday of the month's first week to the Sunday of its last (`monthWeeks` in `week.ts`), days from the months either side greyed and named (Mon 30 Nov in December, Fri 4 Dec in November). The site manager's phone month shows those days too |
+| 116 | Profitability, round ten | "Labour allowed in the quote" removed everywhere (the column, the warning, the site dialog line, `allowed`, `usedPct`, `labourState`). Finished jobs (only, his pick) show Contract value, Wages, Reimbursements, Subcontractor invoices, Supplier invoices, Net profit and Net profit %: net profit is the contract value, agreed extras included, less all of those (his pick, `netProfit`, `netPct`). The invoices are the checked ones posted to the job, subcontractors (the labour heading) apart from everything else (`jobInvoices` in `figures.ts`), so the two add up to Job costs less the firm's own labour. A line above the table names any job at a loss or under 10% (`profitState`, `THIN_PROFIT_PCT`; his pick). Live sites keep wages, reimbursements, contract value and what is left after employees |
+| 117 | Profitability: costs by heading | Oisin, 17 Nov (after round ten): "in the profitability in the by site include plant and hire, materials, and subcontractor for costs". Seven questions first; his picks: both tabs; a fourth column, Other, for carriage and anything else, so the columns add up; plant and hire from checked invoices only (plant still on hire and the firm's own plant count once invoiced); equipment (scaffold, generators, small tools) under Plant and hire, as on Job costs. `jobInvoices` in `figures.ts` now gives `plantHire` (plant and equipment), `materials`, `subcontractors` (the labour heading) and `other` (transport and other); "Supplier invoices" went. Live sites: Site, Wages, Reimbursements, Plant and hire, Materials, Subcontractors, Other, Total costs so far (replaces "Outgoings for employees"), Contract value, Left after all costs so far (replaces "Left after employees"; the same `netProfit` as a finished job's). Finished jobs: the same four in place of the two invoice columns, then Net profit and Net profit %. A site's box shows the costs line by line on both tabs. Headings and the wage lines wrap so both tables fit at 1280 pixels and wider; narrower, the table scrolls inside its panel |
+| 118 | Who is where, any day | Oisin, 18 Nov: "have a per site view as in the attendance history ... for the Who is where in the schedule tab so it is easy to flick through and see who is at what site for that day". Laid out like Attendance history: Everyone or Per site at the top right (Per site first), then a Day box with Previous day and Next day arrows either side (weekends skipped; his pick), a Today button, a Site box and a Status box (his pick). Any working day from 13 weeks back to 6 weeks ahead (his pick: days gone and to come): a day gone is read from the timesheet, a day to come from the plan, today as before (marked, else planned, else on a site's list), the same rule as the week and month ahead (`whereOn`, `plannedLabel`, `whereDays`, `sitesRunning` in `src/lib/roster.ts`). "Planned" is called Not marked in on a day gone, Not marked yet today, Planned ahead. Each site's table has Name (with trade), Status, Day (full, half, overtime) and Phone; on a phone the Day and Phone fold under the status and the name. The day, layout and boxes are remembered (`useScreenState`, decision 127) |
+| 119 | Fleet from Secure-All | Oisin, 18 Nov: "can we import in the fleet tab from the secure all with all the features". The Secure-All build's Fleet screens and rules (`src/modules/fleet/`, `fleet-spend.ts`, `renewals.ts`, `match.ts`, `sample-docs.ts`, `sample-pictures.ts`, `pdf.ts`, `ui/DocViewer.tsx`) replace ABC's Fleet page (decision 95). A department of its own in the bar after Plant (his pick), with its own sidebar: Repair spend (Overview, Invoices), Vehicles (Vehicles, Renewals, Damage reported, Vehicle documents), Lists (Garages, Drivers, Bases). Plant keeps plant only; the old `/plant/fleet` addresses go to the new screens. Garage invoices (`db.garageInvoices`) with a line per vehicle, To check or Checked, a note to put one back, warnings for a number entered twice and a repair again inside 30 days; a vehicle, an invoice and a garage each on a page of its own; renewals with the disc to tick on; damage reports with photos; garages with private notes; bases. ABC has no routes |
+| 120 | Repair spend by base, driver and site | His pick: each repair is filed under the van's base, its driver, and the site that driver was on that day (`InvoiceLine.siteId`): the timesheet, else the plan, else for a site manager the site he runs (`driverSiteOn` in `roster.ts`). The overview's filters and bars are base, garage, driver and site, with the periods 1 month to 5 years (kept from ABC's Fleet, his pick). Repairs are not charged to a job's Profitability (he did not pick that) |
+| 121 | Drivers are people | Drivers are people from People on the driver list (`Person.drives`, `drivesUntil`), worked out by `driversOf` in `src/lib/fleet.ts`; name, phone and email stay People's. Each has a driving licence and a Driver CPC (his pick; the CPC for the 7 tonne tippers), with an expiry and a copy, flagged in Renewals. Add a driver picks someone from People; Take off the list moves them to Left, history kept. A van's driver is picked from People in Add or Edit vehicle |
+| 122 | Who may do what in Fleet | Contracts managers and accounts have Fleet; site managers do not by default (their phone has the checks and damage; switch it on in Roles and access). Adding and changing anything needs "Manage plant and fleet"; checking a garage invoice also "Handle invoices" (his pick: fleet managers and accounts) (`useFleetCan` in `modules/fleet/shared.tsx`) |
+| 123 | Garage invoices stay in Fleet | His pick: not in Invoicing's Coming in list or the accounts export |
+| 124 | AI reading | His pick: built. On the hosted copy an uploaded garage invoice, tax, test, insurance or licence paper is read by the model and fills the form for checking (`src/ai/read.ts`, `src/ai/reading.ts`, `functions/api/read.ts`, behind Cloudflare Access like Ask AI). For anyone with "Manage plant and fleet" (his pick), checked on the page; the server checks the Access sign-in (a real build checks the person there too, marked REAL BUILD). On his preview and any copy with no server it says so, and the file's name is read instead for a registration and a kind (`readFleetFile`, `readingFromName` in `upload.tsx`; kept at his word). `public/_headers` allows frames from `blob:` so a kept PDF shows in the browser's own viewer |
+| 125 | Kept from ABC's Fleet | His picks, all four: the next service per vehicle (shown on its page and flagged in Coming up), the trailer section of the driving check, the periods 1 month to 5 years, and reading the file's name |
+| 126 | The phones | Both phones (his pick) have Report damage (where, what happened, up to 4 photos from the camera or the phone, or a drawn sample) and Send a licence (driving licence or Driver CPC, front and back, the date it runs to, or a sample sheet), on the operative's front page and under the site manager's Vehicle and expenses (`src/modules/site/fleet-sheets.tsx`). Damage goes to Fleet, Damage reported; a licence goes on the record at once, flagged until the office ticks Checked. The Driving check button says whether today's check on their van is done. The sheets are in English; the two button names are in all five languages. Not taken across, at his word: the wellness check and scan a checkpoint |
+| 127 | What the office receives | His pick: beside the phone, for the office (`src/modules/site/OfficeFeed.tsx`, rules in `src/lib/ops.ts`): everything the phones have sent since yesterday evening, newest first (checks, defects, damage, licences, requests, extras, photos, overtime and reimbursement claims), each opening its screen; on top, Needs a look: damage and defects, then vehicles with a driver and no driving check yet today once it is past 09:00. Sample data: every driven van checked this morning but two |
+| 128 | Back button and To do | His picks. Back in the top bar, left of the search box, for the whole app: to exactly where you were, screen, filters, tab and height, also after a reload (`src/app/trail.ts`, `src/app/screen-state.ts`, per role). To do on the Dashboard under the AI overview, across the page: the signed-in person's own list, what and when, ticked off when done; a renewal goes on it with "Add to my to-do" and is ticked off once recorded |
+| 129 | Sample fleet | About 20 vehicles (his pick): the twelve vans ABC had, with the same drivers, and eight more (the managing director's car, two more tippers, crew vans, a leadwork van, two pool vans), two removed; six bases (Oranmore yard, Head office, Clondalkin, Naas, Ennis, Waterford), eight garages, 18 months of garage invoices (at most ten repairs a vehicle; one duplicate; one repeat repair), a paper per renewal, five damage reports (three new), licences for 20 drivers (a CPC out of date, one due, a licence from the phone to check), garage notes and three to-dos. Drawn from its own random numbers, so nothing else in the sample data moved (`src/data/seed/fleet.ts`) |
 
 Decisions made by Oisin on his copy, 18 Nov 2026 (asked with question buttons; he picked the
 recommended answer each time):
 
 | # | Question | Decision |
 |---|---|---|
-| 64 | Invoicing section | Built from a call with Majella Walsh of Oldstone (16 Nov: how she ran Sage payroll and Sage 50 Accounts by hand) and five of his reference apps (HVAC, Costello Doors, Bryan Lynch, distributor, dairy; layouts and features only, as decision 61). Sections for client, supplier and subcontractor invoices, and all invoices by site. Subcontractors and clients use the portal for each job. Sage stays: the demo exports to it and never does VAT returns, payroll or bank payments ("if our product touches the tax man" a CFO will not trust it). No RCT, retention or payment applications for now |
-| 65 | Opening a client invoice | A full page, not a pop-up or a side panel: the invoice as paper on the left; the client, the project, emails, comments and history on the right; the buttons along the top |
-| 66 | Changing where an invoice stands | On each row (Send, Mark paid, Undo paid, and a menu for the rest), with tabs over the list: All, Drafts, Held, Sent, Overdue, Paid. Marking paid can always be undone |
-| 67 | Send to client | Email with the PDF and the client's portal together in one press; either can be unticked each time |
-| 68 | "Client problems" | Invoice queries: a client questions or disputes an invoice by portal, email or phone; it is not chased until accounts answer and settle it. (In place of "Returns" in the Bryan Lynch app) |
-| 69 | Subcontractors in the portal | A preview inside Portal first ("What a subcontractor sees", with a viewing-as switch). No seventh sign-in role yet. Not built yet |
-| 70 | Subcontractor hours | Their own section on the site timesheet, marked by the site manager; each subcontractor invoice is matched against it and differences flagged (Majella: "your subcontractor could tell you anything"). Not built yet |
-| 71 | Clients and invoices in the portal | Open and download the PDF, ask about an invoice, say payment has been sent, and send a document (a purchase order or payment certificate). Built |
-| 72 | Supplier invoice approval | Accounts approve up to 500 before VAT; above that the managing director approves; changeable in the app. Built in part two (decision 76) |
+| 130 | Invoicing section | Built from a call with Majella Walsh of Oldstone (16 Nov: how she ran Sage payroll and Sage 50 Accounts by hand) and five of his reference apps (HVAC, Costello Doors, Bryan Lynch, distributor, dairy; layouts and features only, as decision 61). Sections for client, supplier and subcontractor invoices, and all invoices by site. Subcontractors and clients use the portal for each job. Sage stays: the demo exports to it and never does VAT returns, payroll or bank payments ("if our product touches the tax man" a CFO will not trust it). No RCT, retention or payment applications for now |
+| 131 | Opening a client invoice | A full page, not a pop-up or a side panel: the invoice as paper on the left; the client, the project, emails, comments and history on the right; the buttons along the top |
+| 132 | Changing where an invoice stands | On each row (Send, Mark paid, Undo paid, and a menu for the rest), with tabs over the list: All, Drafts, Held, Sent, Overdue, Paid. Marking paid can always be undone |
+| 133 | Send to client | Email with the PDF and the client's portal together in one press; either can be unticked each time |
+| 134 | "Client problems" | Invoice queries: a client questions or disputes an invoice by portal, email or phone; it is not chased until accounts answer and settle it. (In place of "Returns" in the Bryan Lynch app) |
+| 135 | Subcontractors in the portal | A preview inside Portal first ("What a subcontractor sees", with a viewing-as switch). No seventh sign-in role yet. Not built yet |
+| 136 | Subcontractor hours | Their own section on the site timesheet, marked by the site manager; each subcontractor invoice is matched against it and differences flagged (Majella: "your subcontractor could tell you anything"). Not built yet |
+| 137 | Clients and invoices in the portal | Open and download the PDF, ask about an invoice, say payment has been sent, and send a document (a purchase order or payment certificate). Built |
+| 138 | Supplier invoice approval | Accounts approve up to 500 before VAT; above that the managing director approves; changeable in the app. Built in part two (decision 142) |
 
 Decisions made by Oisin on his copy, later on 18 Nov 2026, after looking at part one (asked
 with question buttons, the layout ones with sketches of each option):
 
 | # | Question | Decision |
 |---|---|---|
-| 73 | The squares over Client invoices | Each one is a filter: Owed to us, Not yet due, 1 to 30, 31 to 60, Over 60 days late. Pressed again, it lets go |
-| 74 | Back button | In the top bar at the far left, before the firm's name, on every screen of the app and on a phone (option A of three: top bar, above each page title, top of the sidebar). It goes to the screen that was open before, across departments, and is greyed out when there is none |
-| 75 | Accounts package | Sage only, and called Sage, not Sage 50. The choice of Sage 50, Xero or a spreadsheet is gone from the export page and from Settings (this undoes decision 16 on this copy). The export page is laid out like his HVAC app: a line saying what the day book is and its nominal codes, Download CSV on the right, then the rows. He picked "screenshot plus Dept" for the columns (Majella splits jobs in Sage by department) and "one list, sent ones marked" over two tabs. It carries sales and purchases |
-| 76 | Supplier invoices | Checked by accounts, then approved: by accounts up to 500 before VAT, by the managing director above (asked again, since his message said "approved by Managing Director": he kept the limit). Approved invoices go to a page of their own, To be paid, where accounts pay and then mark each one paid |
-| 77 | Subcontractor invoices | Approved by the manager of the site they are for, or the managing director, whichever comes first, any amount. Accounts never approve them ("only the site knows the work was done"). The site manager approves on a new page in Projects, since they cannot open Invoicing |
-| 78 | The portal | Two sections, Clients and Subcontractors. Several subcontractors share a site, so office staff pick whose portal they are looking at from a list on the left: every site with its subcontractors one under the other (option A of two; the other was a drop-down). Each subcontractor sees only their own. Still no subcontractor sign-in (decision 69) |
-| 79 | Confirm | Every Approve and every Mark paid opens a box that says what will happen, with Cancel and "Confirm approval" or "Confirm paid". Client invoices too. Mark paid can still be undone |
-| 80 | Telling them it is paid | The client's or subcontractor's portal says so every time, at the top and on the invoice. The confirm box also has a tick to email them (a receipt for a client, a remittance advice for a subcontractor), filed under Email, Sent. His words: "Portal notice and when marked email; an option to also send email to them". It starts ticked |
-| 81 | Subcontractor hours | Decision 70 (subcontractors on the timesheet, invoices matched against the hours) waits for the next round |
+| 139 | The squares over Client invoices | Each one is a filter: Owed to us, Not yet due, 1 to 30, 31 to 60, Over 60 days late. Pressed again, it lets go |
+| 140 | Back button | In the top bar at the far left, before the firm's name, on every screen of the app and on a phone (option A of three: top bar, above each page title, top of the sidebar). It goes to the screen that was open before, across departments, and is greyed out when there is none |
+| 141 | Accounts package | Sage only, and called Sage, not Sage 50. The choice of Sage 50, Xero or a spreadsheet is gone from the export page and from Settings (this undoes decision 16 on this copy). The export page is laid out like his HVAC app: a line saying what the day book is and its nominal codes, Download CSV on the right, then the rows. He picked "screenshot plus Dept" for the columns (Majella splits jobs in Sage by department) and "one list, sent ones marked" over two tabs. It carries sales and purchases |
+| 142 | Supplier invoices | Checked by accounts, then approved: by accounts up to 500 before VAT, by the managing director above (asked again, since his message said "approved by Managing Director": he kept the limit). Approved invoices go to a page of their own, To be paid, where accounts pay and then mark each one paid |
+| 143 | Subcontractor invoices | Approved by the manager of the site they are for, or the managing director, whichever comes first, any amount. Accounts never approve them ("only the site knows the work was done"). The site manager approves on a new page in Projects, since they cannot open Invoicing |
+| 144 | The portal | Two sections, Clients and Subcontractors. Several subcontractors share a site, so office staff pick whose portal they are looking at from a list on the left: every site with its subcontractors one under the other (option A of two; the other was a drop-down). Each subcontractor sees only their own. Still no subcontractor sign-in (decision 135) |
+| 145 | Confirm | Every Approve and every Mark paid opens a box that says what will happen, with Cancel and "Confirm approval" or "Confirm paid". Client invoices too. Mark paid can still be undone |
+| 146 | Telling them it is paid | The client's or subcontractor's portal says so every time, at the top and on the invoice. The confirm box also has a tick to email them (a receipt for a client, a remittance advice for a subcontractor), filed under Email, Sent. His words: "Portal notice and when marked email; an option to also send email to them". It starts ticked |
+| 147 | Subcontractor hours | Decision 70 (subcontractors on the timesheet, invoices matched against the hours) waits for the next round |
 
 Decisions made by Oisin on his copy, later still on 18 Nov 2026, from the HVAC reporting demo
 (`reporting-hvac.wacz`; layouts and features only, as decision 61), first in his own words and
@@ -231,19 +330,19 @@ then with question buttons (he picked the recommended answer unless it says othe
 
 | # | Question | Decision |
 |---|---|---|
-| 82 | Where Reports lives | Its own tile in the bar, between Invoicing and Portal. Sidebar: Overview, Sales by customer, Gross margin, Tender conversion |
-| 83 | Who sees Reports | The managing director by default, switchable per level in Admin, Roles and access. What it shows follows that level's money settings (no values: no sales or overdue; no margins: no margin figures, top 10 or gross margin page) |
-| 84 | Left out of the HVAC reports | Sales by category, sales by rep, sales by brand, project pipeline, supplier performance, stock value, slow movers and debtors ageing ("not useful"; the aged-debt squares on Client invoices do that job). Categories only as the jobs on the gross margin page. The HVAC tiles on deliveries and quality are not a contractor's figures |
-| 85 | Figures across the top | Five: Tender win rate (in place of Quote win rate), then his four picks from the options: Average margin on paid jobs, Sales in the last 12 months, Overdue from clients, Jobs finished on time |
-| 86 | Tender win rate | By number, over the last 12 months: tenders won of tenders decided (answered in that time), with the value won beside it. Tender conversion is split by the kind of work, the rate book the tender was priced from (`Quote.kind`) |
-| 87 | Most profitable jobs | Only jobs paid in full: closed, and every invoice on the job paid, the last payment in the last 12 months (his pick over "closed or invoiced"). The top 10 by margin %, with Job, Price, Cost, Margin and Margin %. Cost is the actual cost from Job costs, headed Cost, not an estimate |
-| 88 | Where the money goes | Every job cost in the last 12 months, as in the HVAC example: labour (the timesheets at each person's loaded rate), materials, subcontractors, plant and hire, transport and other site costs (approved supplier and subcontractor invoices by the date on the invoice; credit notes come off). Biggest first |
-| 89 | Gross margin page | Every job finished in the last 12 months, paid or not: revenue, cost to do them, gross margin, losing money; best and weakest job; a table that sorts by margin %, margin, revenue or newest first; Export CSV |
-| 90 | Sales by customer | Kept from HVAC. Client invoices sent in the last 12 months, paid or not, before VAT: the sales Sage has. Each customer opens their customer page |
-| 91 | Customers | A tile of its own after Sales, in place of Sales, Clients, which is gone. Every client link (Client invoices, queries, the invoice page, search, the old `/sales/clients` addresses) lands on the customer's page. Contracts managers and accounts have it by default as well as the managing director |
-| 92 | A customer's page | Tabs across the top: Overview (figures, details, the latest with them), Projects, Tenders, Invoices, Emails, Files, each linking to the record in its own section |
-| 93 | Changing customers | Add customer and Edit details, for whoever may price quotes or handle invoices. The Sage account is made from the name when the customer is added and never changes after, so Sage keeps matching their invoices |
-| 94 | Past work | About a year of it in the sample data, so the 12-month reports are full |
+| 148 | Where Reports lives | Its own tile in the bar, between Invoicing and Portal. Sidebar: Overview, Sales by customer, Gross margin, Tender conversion |
+| 149 | Who sees Reports | The managing director by default, switchable per level in Admin, Roles and access. What it shows follows that level's money settings (no values: no sales or overdue; no margins: no margin figures, top 10 or gross margin page) |
+| 150 | Left out of the HVAC reports | Sales by category, sales by rep, sales by brand, project pipeline, supplier performance, stock value, slow movers and debtors ageing ("not useful"; the aged-debt squares on Client invoices do that job). Categories only as the jobs on the gross margin page. The HVAC tiles on deliveries and quality are not a contractor's figures |
+| 151 | Figures across the top | Five: Tender win rate (in place of Quote win rate), then his four picks from the options: Average margin on paid jobs, Sales in the last 12 months, Overdue from clients, Jobs finished on time |
+| 152 | Tender win rate | By number, over the last 12 months: tenders won of tenders decided (answered in that time), with the value won beside it. Tender conversion is split by the kind of work, the rate book the tender was priced from (`Quote.kind`) |
+| 153 | Most profitable jobs | Only jobs paid in full: closed, and every invoice on the job paid, the last payment in the last 12 months (his pick over "closed or invoiced"). The top 10 by margin %, with Job, Price, Cost, Margin and Margin %. Cost is the actual cost from Job costs, headed Cost, not an estimate |
+| 154 | Where the money goes | Every job cost in the last 12 months, as in the HVAC example: labour (the timesheets at each person's loaded rate), materials, subcontractors, plant and hire, transport and other site costs (approved supplier and subcontractor invoices by the date on the invoice; credit notes come off). Biggest first |
+| 155 | Gross margin page | Every job finished in the last 12 months, paid or not: revenue, cost to do them, gross margin, losing money; best and weakest job; a table that sorts by margin %, margin, revenue or newest first; Export CSV |
+| 156 | Sales by customer | Kept from HVAC. Client invoices sent in the last 12 months, paid or not, before VAT: the sales Sage has. Each customer opens their customer page |
+| 157 | Customers | A tile of its own after Sales, in place of Sales, Clients, which is gone. Every client link (Client invoices, queries, the invoice page, search, the old `/sales/clients` addresses) lands on the customer's page. Contracts managers and accounts have it by default as well as the managing director |
+| 158 | A customer's page | Tabs across the top: Overview (figures, details, the latest with them), Projects, Tenders, Invoices, Emails, Files, each linking to the record in its own section |
+| 159 | Changing customers | Add customer and Edit details, for whoever may price quotes or handle invoices. The Sage account is made from the name when the customer is added and never changes after, so Sage keeps matching their invoices |
+| 160 | Past work | About a year of it in the sample data, so the 12-month reports are full |
 
 Decisions made by Oisin on his copy, later still on 18 Nov 2026, from the HVAC compliance demo
 (`compliance-hvac.wacz`; layouts and features only, as decision 61). His words: "the
@@ -254,30 +353,55 @@ machinery that needs servicing every so often as well". Then six rounds of quest
 
 | # | Question | Decision |
 |---|---|---|
-| 95 | Compliance home | One list of everything, soonest first, with five figures across the top that filter it (run out or missing, stopping work, due in 30 days, proof needed, in date), a switch by area, a search, and Record a renewal |
-| 96 | "A different file" | A screen per area: Personnel, Training courses, Fleet, Machinery, Company papers, Subcontractors |
-| 97 | Training tickets and van papers | Move to Compliance (People, Training tickets is gone; Plant and Vehicles keep a "Renew in Compliance" link; an employee's box links to their tickets). `/people/certs` lands on Personnel as a list |
-| 98 | Areas beyond his three | Company papers, Subcontractor papers and Training courses as well as Personnel, Fleet and Machinery |
-| 99 | Personnel | A training matrix (people down, tickets across) and a list, with a switch |
-| 100 | Machinery | Services by hours or months, thorough examinations, a weekly inspection for each scaffold and tower, electrical tests (transformers) and harness inspections |
-| 101 | Fleet | Tax, test (CVRT or MOT), insurance and service, plus a yearly driving licence check for each driver |
-| 102 | Someone whose ticket has run out | Blocked: cannot be planned or marked on site until it is renewed (his pick, over "warn only") |
-| 103 | What blocks | The Safe Pass (CSCS card in the UK) and the trade ticket each trade needs (scaffolder: advanced scaffolding; roofer and slater: MEWP; leadworker: hot works; stonemason: abrasive wheels; site manager: site supervisor safety). Other tickets show but do not block |
-| 104 | Already planned | Stays on the plan, marked "Cannot work", and the week cannot be sent to operatives until they are taken off or the ticket renewed |
-| 105 | Due soon | 30 days, for everything |
-| 106 | Who sees it | Every office level, switchable in Admin, Roles and access. Site managers see only the people, machinery and subcontractors on their own sites, and not Fleet or Company papers |
-| 107 | Reminders | One weekly list of what runs out in the next 30 days, every area, waiting in Approvals on Monday (in place of the ticket reminder) |
-| 108 | Subcontractor papers out of date | Their invoices are flagged wherever they are approved, and can still be approved |
-| 109 | Courses | A list of courses with places; people are booked from their ticket; marking a course done renews the ticket of everyone booked, waiting on the certificate |
-| 110 | Site phone | Operatives see their tickets, are told plainly when they cannot work, and can send a photo of a new card for the office to check |
-| 111 | Scaffold register | Kept by the site manager on the project's Plant tab: add a scaffold, record each inspection (safe or not, with what was seen), take it down |
-| 112 | Small kit | Harnesses and site transformers as items in Own plant, with their checks |
-| 113 | Machine past a check | Cannot go to a site until renewed (thorough examination, tower inspection, electrical test, harness inspection, insurance; a service overdue does not block). A van out of date: its driver is told on the phone not to drive it |
-| 114 | Where the tile goes | After Plant |
-| 115 | Subcontractor papers tracked | Public and employers' liability insurance, their people's Safe Pass, the safety statement, and a method statement (RAMS) for each site. No tax clearance |
-| 116 | Company papers | Kept by the managing director and accounts (a new permission, "Manage company and subcontractor papers") |
-| 117 | Proof | A renewal can be saved without a copy; it then shows "Proof needed" until one is attached |
-| 118 | The overview | Only what stops work: someone planned who cannot work, and a machine on site that may not be used |
+| 161 | Compliance home | One list of everything, soonest first, with five figures across the top that filter it (run out or missing, stopping work, due in 30 days, proof needed, in date), a switch by area, a search, and Record a renewal |
+| 162 | "A different file" | A screen per area: Personnel, Training courses, Fleet, Machinery, Company papers, Subcontractors |
+| 163 | Training tickets and van papers | Move to Compliance (People, Training tickets is gone; Plant and Vehicles keep a "Renew in Compliance" link; an employee's box links to their tickets). `/people/certs` lands on Personnel as a list |
+| 164 | Areas beyond his three | Company papers, Subcontractor papers and Training courses as well as Personnel, Fleet and Machinery |
+| 165 | Personnel | A training matrix (people down, tickets across) and a list, with a switch |
+| 166 | Machinery | Services by hours or months, thorough examinations, a weekly inspection for each scaffold and tower, electrical tests (transformers) and harness inspections |
+| 167 | Fleet | Tax, test (CVRT or MOT), insurance and service, plus a yearly driving licence check for each driver |
+| 168 | Someone whose ticket has run out | Blocked: cannot be planned or marked on site until it is renewed (his pick, over "warn only") |
+| 169 | What blocks | The Safe Pass (CSCS card in the UK) and the trade ticket each trade needs (scaffolder: advanced scaffolding; roofer and slater: MEWP; leadworker: hot works; stonemason: abrasive wheels; site manager: site supervisor safety). Other tickets show but do not block |
+| 170 | Already planned | Stays on the plan, marked "Cannot work", and the week cannot be sent to operatives until they are taken off or the ticket renewed |
+| 171 | Due soon | 30 days, for everything |
+| 172 | Who sees it | Every office level, switchable in Admin, Roles and access. Site managers see only the people, machinery and subcontractors on their own sites, and not Fleet or Company papers |
+| 173 | Reminders | One weekly list of what runs out in the next 30 days, every area, waiting in Approvals on Monday (in place of the ticket reminder) |
+| 174 | Subcontractor papers out of date | Their invoices are flagged wherever they are approved, and can still be approved |
+| 175 | Courses | A list of courses with places; people are booked from their ticket; marking a course done renews the ticket of everyone booked, waiting on the certificate |
+| 176 | Site phone | Operatives see their tickets, are told plainly when they cannot work, and can send a photo of a new card for the office to check |
+| 177 | Scaffold register | Kept by the site manager on the project's Plant tab: add a scaffold, record each inspection (safe or not, with what was seen), take it down |
+| 178 | Small kit | Harnesses and site transformers as items in Own plant, with their checks |
+| 179 | Machine past a check | Cannot go to a site until renewed (thorough examination, tower inspection, electrical test, harness inspection, insurance; a service overdue does not block). A van out of date: its driver is told on the phone not to drive it |
+| 180 | Where the tile goes | After Plant |
+| 181 | Subcontractor papers tracked | Public and employers' liability insurance, their people's Safe Pass, the safety statement, and a method statement (RAMS) for each site. No tax clearance |
+| 182 | Company papers | Kept by the managing director and accounts (a new permission, "Manage company and subcontractor papers") |
+| 183 | Proof | A renewal can be saved without a copy; it then shows "Proof needed" until one is attached |
+| 184 | The overview | Only what stops work: someone planned who cannot work, and a machine on site that may not be used |
+
+The two copies merged, 19 Nov 2026. Oisin uploaded a build of `step-2-team-chat` (681c6db) and
+asked for it to be merged with `invoicing-section`: "keep the plant and the fleet separate in
+separate tabs like it is on the HTML", "keep the invoicing like it is currently within this
+chat", "the profitability and reports keep the way it is", the site phone "like a phone size,
+and you can scroll down on the phone, but have all the same features ... operative or site
+manager", "keep as much of the admin features from this HTML as you possibly can", and "take
+the fleet format that I have in this HTML". Then four rounds of question buttons (he picked
+the recommended answer unless it says otherwise):
+
+| # | Question | Decision |
+|---|---|---|
+| 185 | What comes from where | From `step-2-team-chat`: Email, Team chat, Schedule, People (timesheet, history, payroll, reimbursements, overtime), both phones, Admin (requests, holidays, roles as ticks, site access, bank holidays, billing), Fleet as a department of its own, Profitability, the Back button's memory, To do on the Dashboard. From `invoicing-section`: Invoicing, Reports, Customers, Compliance, the subcontractor portal, the year of past work. Where both changed the same thing, the decisions below |
+| 186 | The site phone | Option C of three pictures: both phones side by side, each in a phone-sized frame that scrolls inside itself (`src/modules/site/PhoneFrame.tsx`). Every sheet opens on its own phone, not over the page (`PhoneSheetHost` in `src/ui`: a sheet inside a frame is a non-modal dialog on a layer over that phone's screen, closed by its Close button or Escape). From 1440 wide, what the office receives sits beside them. Narrower than 1280, one phone at a time with the Phone of switch. Narrower than 640, and on a real phone, no frame: the phone fills the screen and its sheets are ordinary dialogs (his pick: drop the frame) |
+| 187 | Back | At the far left of the top bar, before the firm's name (decision 140's place), with the other copy's memory (decision 128): back to exactly where you were, filters, tab and height, also after a reload, kept per role. It opens the screen again rather than using the browser's history, so the browser's forward button is not part of it. `src/app/back.ts` and `src/lib/trail.ts` went |
+| 188 | The bar | 17 tiles: Dashboard, Email, Team chat, Sales, Customers, Projects, Schedule, People, Plant, Fleet, Compliance, Invoicing, Profitability, Reports, Portal, Site phone, Admin. Files stays out of the bar (decision 73) and opens at /files |
+| 189 | Fleet papers | One set of records, shown in both: a van's tax, test and insurance are Fleet's (`db.vehicles`), and Compliance reads them (rows `veh:` and `vsvc:`). Renewing one in Compliance opens Fleet's own form, so both places always agree |
+| 190 | Licences | Fleet's driving licence and Driver CPC for each driver (decision 121), plus Compliance's yearly look at the licence (decision 167), kept as `Person.licenceCheck`. Compliance, Fleet has a column for each |
+| 191 | What stops work | Both rules kept: a person whose Safe Pass or trade ticket has run out (decisions 168 to 170), and a machine past its checks or a van with tax, test or insurance out of date (decision 179). The driving check on both phones says "Do not drive" for such a van. A driving licence or Driver CPC out of date is a row that stops work too ("May not drive") |
+| 192 | Tickets | In Compliance only (decision 163). People has no Training tickets |
+| 193 | Supplier invoice approval | This copy's rule (decision 142), shown in both places: Invoicing, To approve, and Admin, Requests, which lists supplier invoices over the limit with Approve and Send back and the same confirm boxes. The other copy's sign-off over 500 euro gross (decision 75's `SIGN_OFF_OVER`) went with its supplier invoice screens |
+| 194 | Invoicing | His answer: none of the other copy's changes to Invoicing. So Job costs stays in Invoicing for everyone, Profitability's sidebar is By site only, and /profit/costs goes to /invoicing/costs (this undoes decision 105's move of Job costs). Decision 84 ("fit the page") is kept, on this copy's client invoice list: below 1280 wide each invoice is a block of its own, and on a phone the aged-debt squares go two by two and the tabs wrap |
+| 195 | Join-ups | All four he was offered: "To-do" on a Compliance row puts it on the person's list on the Dashboard and it is ticked off when the thing is renewed (`Todo.complianceKey`, `closeTodos` in actions); and inside a job on the site manager's phone, Who cannot work, Scaffold inspections (record one on the spot) and Subcontractor invoices (Approve or Send back, with the confirm boxes) |
+| 196 | Tickets on the operative's phone | In the profile (My tickets, with "Send a photo of the new card"), and the red "you cannot work" card at the top of the front page |
+| 197 | Delivery | Pushed to `invoicing-section`, his `main` made the same commit, the artifact "Construction demo (Oisin's copy)" republished, and the checklist given in the chat |
 
 Standing preferences (these come from Aodhan and are not optional):
 
@@ -366,12 +490,25 @@ src/
                         overview.ts (the AI overview, worked out from the records),
                         approvals.ts (client first), portal.ts (the overview's Portal panel),
                         requests.ts (what waits for the managing director's yes or no),
-                        subscription.ts (Admin, Billing), pipeline.ts (moving sales cards)
+                        subscription.ts (Admin, Billing), pipeline.ts (moving sales cards),
+                        chat.ts (Team chat), mail.ts (Email), roster.ts (17 Nov: the week
+                        and month ahead, the phones, attendance per site), payroll.ts,
+                        purchases.ts, driving.ts, overtime.ts, site-access.ts (which sites a site
+                        manager opens), fleet.ts (Fleet's drivers from People, reading an
+                        uploaded file's name), fleet-spend.ts, renewals.ts, match.ts, ops.ts
+                        (18 Nov, from Secure-All: repair spend, warnings, renewals, names and
+                        registrations on documents, what the office receives), sample-docs.ts
+                        and sample-pictures.ts (drawn sample papers and damage), reimbursements.ts (approved
+                        claims for the office to pay), bank-holidays.ts (the built-in lists and
+                        which days are rest days), profitability.ts (wages, invoices and net
+                        profit by site), overtime-claims.ts (claims from the phone, My hours)
   ui/                   the interface kit: Button, Badge, PageHead, Panel, Dialog, Menu, toast
   modules/<department>/ one folder per department, one file per screen. dashboard/ is the
                         overview plus ApprovalsPanel.tsx; admin/ (16 Nov) holds Requests,
-                        Roles and access, Billing, Connections, Automations and the
-                        Activity log; a project's own Files tab is projects/ProjectFiles.tsx,
+                        Roles and access, Site access (17 Nov), Billing, Connections,
+                        Automations, Bank holidays (17 Nov) and the Activity log; profit/ (17 Nov) is
+                        Profitability; fleet/ (18 Nov, from the Secure-All build) is Fleet;
+                        a project's own Files tab is projects/ProjectFiles.tsx,
                         beside the Files section in files/Files.tsx. invoicing/ (18 Nov) is
                         ClientInvoices.tsx (the list and Draft an invoice), InvoicePage.tsx,
                         Queries.tsx, SageExport.tsx, Templates.tsx (invoice design, email
@@ -386,8 +523,13 @@ src/
                         and CustomerPage.tsx (one customer, with its tabs). compliance/
                         (18 Nov) is Compliance.tsx (the seven screens) and shared.tsx (the
                         figures, the table of rows, and one renewal box per kind of thing);
-                        the scaffold register is ScaffoldRegister in projects/ProjectPage.tsx
-functions/              Cloudflare Pages Functions: api/ask.ts (Ask AI) and ask-log.ts (the record)
+                        the scaffold register is ScaffoldRegister in projects/ProjectPage.tsx.
+                        site/ (merged 19 Nov) is SiteView.tsx (both phones and the
+                        operative's), ManagerPhone.tsx, PhoneFrame.tsx (the phone-sized frame
+                        and the layer its sheets open on), sheets.tsx, fleet-sheets.tsx,
+                        hours.tsx and OfficeFeed.tsx
+functions/              Cloudflare Pages Functions: api/ask.ts (Ask AI), api/read.ts (AI reading,
+                        18 Nov) and ask-log.ts (the record)
 server/                 their helpers: the Access token check, the D1 record, request checks
 ```
 
@@ -411,11 +553,13 @@ server/                 their helpers: the Access token check, the D1 record, re
   screen, are in `src/data/permissions.ts`. `answerRequests` (16 Nov) is the yes or no on
   site requests and spending in Admin; the managing director's only by default.
 - `seeValues`, `seeMargins`: money.
-- `scope(projects)`: without the "See every project" permission, only the projects they run.
+- `scope(projects)`: without the "See every project" permission, only the sites they open:
+  the ones they run, and any the managing director has given them in Admin, Site access
+  (`opensSite` in `src/lib/site-access.ts`, decision 87).
 
-Screens never check a role name, with three exceptions that are the managing director's
-alone whatever is switched on: Ask AI (decision 46), and in Admin, Roles and access and
-Billing (16 Nov). Admin itself can be switched on for another level, so those two are marked
+Screens never check a role name, with five exceptions that are the managing director's
+alone whatever is switched on: Ask AI (decision 46), Profitability (decision 105), and in
+Admin, Roles and access, Site access (17 Nov) and Billing (16 Nov). Admin itself can be switched on for another level, so those are marked
 `mdOnly` in `departments.ts` (left out of everyone else's sidebar) and their screens send
 anyone else back to `/admin`. Without that, a level given Admin could open Roles and access
 and change its own access (possible from step 1, when it moved there from Settings, which
@@ -450,7 +594,7 @@ Access is worked out in two layers:
    that differ from their level. A missing key means "same as their level".
 
 Both are edited by the managing director in Admin > Roles and access (moved from Settings on 16 Nov; "By role" and "By
-person"). The managing director, operatives and clients are locked: fixed access, no
+person"; ticks and dashes since 17 Nov, decision 93). The managing director, operatives and clients are locked: fixed access, no
 exceptions. A level's home department can never be switched off, so nobody is locked out.
 The rule is `resolveAccess(def, row, personExceptions)`, a pure function with its own tests.
 
@@ -533,8 +677,8 @@ day, so it looks the same on any weekday (rebuilt in the review, 16 Nov):
   week (booked on a MEWP course before then). Attendance is never recorded on a day a
   needed ticket had run out (filtered in `seed/index.ts`). Small kit: six harnesses
   (HAR1 to HAR6) and three site transformers (TR1 to TR3) in Own plant; HAR4 on C721 and
-  TR3 in the yard are past their checks. Twelve drivers with licences (Liam Costigan's
-  yearly check overdue). Eight courses, one of them yesterday's Hot works not yet marked
+  TR3 in the yard are past their checks. Every driver's yearly licence check (`Person.licenceCheck`,
+  since the merge: the licences themselves are Fleet's), Liam Costigan's overdue. Eight courses, one of them yesterday's Hot works not yet marked
   done, one done three weeks ago that renewed three people's tickets. Seven company
   papers (contractors all risk due in 19 days, professional indemnity waiting on its
   schedule). Each subcontractor's papers and people, with one lapsed insurance (Kinvara),
@@ -542,14 +686,15 @@ day, so it looks the same on any weekday (rebuilt in the review, 16 Nov):
   (Corrib's Łukasz Zieliński) and an overdue safety statement review (Portumna). Six
   scaffolds and towers standing with weekly inspections by each site's manager, two of
   them overdue (C719 S2, C723 T1), and one "Not safe to use" last week put right the next
-  day (C722 S1). Ten things stop work today. The Monday reminder in Approvals is
-  `mondayReminder` in `lib/compliance.ts`. DATA_VERSION 15.
+  day (C722 S1). Ten things stop work today, eleven since the merge (Kevin Shortall's Driver
+  CPC, from Fleet's sample, has run out too). The Monday reminder in Approvals is
+  `mondayReminder` in `lib/compliance.ts`. DATA_VERSION 15, and 24 since the merge.
 
 ### Re-branding for a prospect
 
 Change `src/config/brand.ts` (name, legal name, tagline, accent, logo, region, email domain)
 and rebuild. The same fields can be changed live in Settings. The accounts package is no
-longer one of them: on this copy it is always Sage (decision 75).
+longer one of them: on this copy it is always Sage (decision 141).
 
 ### Who can open the demo
 
@@ -589,6 +734,198 @@ State of the work at the start of the second session (re-checked from the zip):
   private Claude artifact (title "Construction operations demo").
 - The managing director is Aidan King. The client the demo signs in as is Susan Kane of
   Ardmullen Estate.
+
+**Oisin's copy, 16 Nov (branch `step-2-team-chat`): Email like Gmail, Team chat like Ping.**
+After building a triage-style Team chat (decision 64, first version), Oisin shared ten of the
+reference demos as web archives (Founders shared drive, Demo_Database, Top 10: .wacz files,
+replayed offline with Playwright answering every request from the recording) and asked for
+Email to match their Gmail layout and Team chat their Ping, dropping the AI in Team chat
+(decisions 64 to 66). Layouts and features copied, not their code, wording or data. Built:
+
+- Shell: a department with `ownLayout` (Email, Team chat) draws its own full-height side
+  panel and the shell shows no sidebar; a department's `badge` puts an unread count on its
+  button in the bottom bar (unread email, unread messages).
+- Team chat: `ChatChannel` (kind channel or dm, members, `lastRead` per person) and
+  `ChatMessage` (text, optional attachment name) in `types.ts`; sample data in
+  `src/data/seed/chat.ts` (a channel per live site with the people who run it, Office, Plant
+  and yard, Accounts, four direct messages, the working day before and this morning, every
+  name, item of plant and supplier already in the records); rules in `src/lib/chat.ts`
+  (names in Teams or Slack, who sees which channels, unread, day lines, @mentions);
+  `sendChatMessage` and `markChannelRead` in actions; screen `src/modules/chat/TeamChat.tsx`.
+  Everyone with a sign-in sees only the channels they are a member of, so site managers now
+  have Team chat with their own sites' channels. On a phone the list and a conversation are
+  one screen each.
+- Email: `starred` and `to` on `Mail`; three more sample emails so no folder opens empty (an
+  order to Burren Lime and a Safe Pass booking in Sent, a delivery note in Archive); rules in
+  `src/lib/mail.ts` (folders, Focused and Other, day groups, search, preview line, summary,
+  action items); `toggleStar`, `startReply`, `composeMail`, `shareMailToChat` in actions
+  (sent replies now record who they went to); screen `src/modules/inbox/Inbox.tsx`, routes
+  for Starred, Drafts and each label. Ask AI's list of screens includes the new folders.
+- DATA_VERSION 13.
+- 17 Nov, round two (decision 67): drag to label, Cc and Bcc, group chats without #, New
+  message or email. 705 browser checks (`m5_check.py` 77, `s2_check.py` 41).
+- 17 Nov, round three (decisions 68 to 76): see the decisions. DATA_VERSION 16. 275 automated
+  tests (new: `roster.test.ts` 18, `payroll.test.ts` 8, `purchases.test.ts` 12, `driving.test.ts` 3;
+  `access.test.ts` and `overview.test.ts` updated for the new defaults); 763 browser checks in
+  fifteen suites (new `s3_check.py`, 56; `m3_check.py` and `m3b_check.py` rewritten for the week
+  grid and site managers planning; others for Files out of the bar and the bigger Admin queue);
+  `csp_check.py` 32 screens, no violations. Found while testing: a dialog taken off the page while
+  open is now closed first (`Dialog` in `src/ui`). In the test browser the first drag after a
+  dialog closes does not start and a second does; the suites retry once. Not tested: dragging with
+  a real mouse or finger, a real phone, Safari and Firefox, the Polish, Romanian, Portuguese and
+  Lithuanian button names.
+- 17 Nov, rounds four and five (decisions 77 to 82): the phones and requests, then the Schedule
+  (rest of the week, month grid, who is where per site). DATA_VERSION 17. 300 automated tests
+  (new `requests.test.ts` 5 and `crew-requests.test.ts` 7; `roster.test.ts` now 36). 842 browser
+  checks in seventeen suites (new `s4_check.py` 41 for the phones and requests, `s5_check.py` 32
+  for the month and who is where; `m3b_check.py` 85 with the rest-of-the-week question;
+  `m5_check.py` and `s3_check.py` updated). `csp_check.py` 34 screens, no violations. The phone
+  screen is now three files: `SiteView.tsx` (the switch and the operative), `ManagerPhone.tsx`,
+  `sheets.tsx`. Worth knowing: a sticky table heading's `offsetLeft` is not relative to its table,
+  so the month grid measures on-screen positions to open on today. Not tested: dragging with a real
+  mouse or finger, a real phone, Safari and Firefox, the new Polish, Romanian, Portuguese and
+  Lithuanian wording (Make a request, Call now, Today's instructions).
+- 17 Nov, round six (decisions 83 to 87): Attendance history per site from the top right, Held
+  fitting the page, the site manager's general request, one plan shown one way across the
+  office and both phones, and Admin, Site access. DATA_VERSION 18. 335 automated tests (new
+  `site-access.test.ts` in `src/lib` 9 and in `src/data` 8, `plan-sync.test.ts` 11;
+  `roster.test.ts` now 42; a seed check for the site access example). 917 browser checks in
+  eighteen suites (new `s6_check.py` 74; `m4_check.py` 92 and `s3_check.py` updated for the
+  Held and Attendance history layouts). `csp_check.py` 37 screens, no violations.
+  `preview_check7.py` opens the single-file preview from disk on the new screens. Found and
+  fixed: with `npm run dev` every dialog shut the moment it opened. The "close on the way
+  out" added to `Dialog` on 17 Nov was reported as the person closing it, and in development
+  React runs each effect twice. Built copies were never affected, which is why the suites
+  (which use built copies) did not catch it; `Dialog` now tells its own close from the
+  person's. Worth knowing: a `Panel` hides what overflows it, so a table too wide for one is
+  cut off, not scrolled; `s6_check.py` checks for both. Not tested: a real phone, Safari and
+  Firefox, dragging with a real mouse, the new Polish, Romanian, Portuguese and Lithuanian
+  wording (This week, Next week, Not marked in), and `npm run dev` beyond opening the new
+  dialogs by script.
+- 17 Nov, later still (decision 88): the preview's sign-in page no longer prints the login, so
+  the artifact can be shared. `preview_check7.py` now also checks that the page does not show
+  the login and that a wrong username or password is refused. No change to the other builds
+  (`.env.preview` is read only by `npm run build:preview`). Not tested: opening the shared
+  artifact as another person, which needs Oisin to share it first.
+- 17 Nov, round seven (decisions 89 to 94): overtime at time and a half or double time, a
+  note with every no, email under a label leaving the Inbox, files on a new email, Roles and
+  access as ticks, and picking who runs each site. DATA_VERSION 19. 374 automated tests in 41
+  files (new `overtime.test.ts` 9, `decline-notes.test.ts` 7, `mail-filing.test.ts` 8;
+  `mail.test.ts`, `site-access.test.ts`, `roster.test.ts`, `payroll.test.ts`, `week.test.ts`
+  and `project-costs.test.ts` extended). 1,019 browser checks in nineteen suites (new
+  `s7_check.py`, 102; the access steps of `m2`, `m3b`, `m4`, `s1b` and `s6` now use ticks,
+  and every decline or discard in `m5`, `review`, `s1` and `s3` goes through the note
+  dialog). `csp_check.py` 37 screens, no violations. `preview_check8.py` opens the
+  single-file preview from disk on the new features. Worth knowing: at this app's 15 pixel
+  base, Tailwind's `size-9` is 33.75 pixels, so the tick is `size-10`; a grid whose only
+  column holds a wide table needs `grid-cols-[minmax(0,1fr)]`, or everything beside the
+  table is stretched to its width and cut off on a phone; Playwright's `get_by_label("To")`
+  also matches any label containing "to" (a file called site-photo.jpg), so the suites ask
+  for it exactly. Not tested: a real phone, Safari and Firefox, dragging an email with a
+  real mouse, the attachment download inside the artifact's frame (downloads do nothing
+  there), and `npm run dev`.
+- 17 Nov, round eight (decisions 95 to 99): the Fleet page made easy, after Oisin's own
+  Oldstone fleet tool, and what came out of the call with Oldstone's managing director that
+  morning: reimbursements ready for the office to pay, a manager's check before payroll is
+  exported by hand, the overtime rates at the top of the Timesheet with a filter in the
+  history, and Invoicing saying which invoices go out and which come in. DATA_VERSION 20.
+  412 automated tests in 45 files (new `fleet-page.test.ts` 12, `payroll-check.test.ts` 11,
+  `reimbursements.test.ts` 6, `fleet-actions.test.ts` 9; `overview.test.ts` updated).
+  1,112 browser checks in twenty suites (new `s8_check.py`, 93; the Fleet steps of
+  `m4_check.py` rewritten for the one page; `m3b`, `m4` and `s7` count fifteen permissions;
+  `s3_check.py` marks the week checked before exporting). `csp_check.py` 40 screens, no
+  violations. `preview_check9.py` opens the single-file preview from disk on the new
+  screens. Also on the call and already built in round seven: email leaving the Inbox under
+  a label, attachments, a note with a decline, simpler roles, who runs each site. Talked
+  about on the call but not built, because there was no clear ask (Oisin to direct): a
+  simpler first dashboard for new users, a clearer Sales section, plant tracking beyond the
+  fleet, more on Projects and Invoicing. Letting someone else open the preview is Oisin's
+  own Share click (decision 88); on the call it showed "page not found" because it is
+  private. Worth knowing: Playwright's `get_by_label("Week")` matches every label
+  containing "week" (the Ask buttons), so the suite asks for it exactly; a download read in
+  Python's text mode has its line ends turned into plain new lines. Not tested: a real
+  phone, Safari and Firefox, the downloads inside the artifact's frame, `npm run dev`.
+  Not built: Saturday, Sunday and bank holiday days on the timesheet; a day's overtime
+  split between two rates; reading the registration off the document itself (the file's
+  name is read).
+- 17 Nov, round nine (decisions 100 to 107): overtime at both rates in one day and the early
+  start rule, the Weekend time stamp for Saturdays, Sundays and bank holidays, bank holidays
+  in Admin, the pay week Monday to Sunday, weekend work on the week and month ahead and both
+  phones, Profitability for the managing director, and email drafts. Sixteen questions were
+  put to Oisin first (four rounds of buttons); he then had to leave, so the round was finished
+  without him and the open questions are "Decision for you" rows in the checklist's fifth tab.
+  DATA_VERSION 21. 471 automated tests in 49 files (new `bank-holidays.test.ts`,
+  `profitability.test.ts`, `src/data/rest-days.test.ts`, `src/data/mail-drafts.test.ts`;
+  `overtime.test.ts` rewritten; `week`, `roster`, `payroll`, `project-costs` and `seed`
+  tests updated). 1,212 browser checks in twenty-one suites (new `s9_check.py`, 100; the
+  overtime steps of `s7_check.py` rewritten for hours at both rates; `m1`, `m3`, `s5`, `s6`
+  and `s8` updated for the thirteenth department, the two boxes, weekends that open out, the
+  Weekend days column and the Sunday week end). `csp_check.py` 43 screens, no violations.
+  `preview_check10.py` opens the single-file preview from disk on the new screens. Found
+  and fixed: `Dialog` reported a close the screen had asked for as the person's, so onClose
+  ran twice (harmless until closing Compose meant "keep a draft", which kept two). Left
+  alone at his word: Fleet (he will give a template). Worth knowing: Playwright's
+  `get_by_label("Site")` also matches "Add someone from another site", so the suite asks for
+  it exactly; a dialog inside the phone frame has two Close buttons (the sheet's and the
+  dialog's), so the suites take the last. Not tested: a real phone, Safari and Firefox,
+  `npm run dev`, the downloads inside the artifact's frame. Not built: a normal (basic
+  hours) day on a Saturday or Sunday, which he ruled out; the split between rates worked
+  out from clock times (hours are typed); supplier invoices in Profitability (to be linked
+  later); weekend time stamps for office staff and site managers (operatives only);
+  blocking a weekday bank holiday in the week grid, which can still be planned as a normal
+  day; a UK set of timesheets (switching region swaps the bank holiday list, but the
+  sample timesheets were written around the Irish days).
+- 17 Nov, round ten (decisions 108 to 116): overtime claims from the operative's phone answered
+  by the site manager, the Overtime list, "weekend" renamed "overtime", bank holidays blocked as
+  normal days, the site manager's phone timesheet back to last Monday week with the payroll lock,
+  My hours, Attendance history per site first, the month in whole weeks, and Profitability with
+  invoices and net profit. Sixteen questions were put to Oisin first (four rounds of buttons).
+  The screenshot he mentioned for "Add someone to this site" did not arrive, so it was built from
+  his words. DATA_VERSION 22. 509 automated tests in 51 files (new `src/lib/overtime-claims.test.ts`
+  and `src/data/overtime-claims.test.ts`; `profitability.test.ts` rewritten for net profit;
+  `rest-days.test.ts` for the new log lines). 1,262 browser checks in twenty-two suites, all passing
+  (new `s10_check.py`, 50; `s9_check.py` updated for the new names and the Overtime list; `m3`,
+  `s3`, `s6`, `s7`, `s8` and `s9` pick Everyone in Attendance history; `m3` reads the grid as the
+  first table now that the Overtime list is a second; `s5` counts the month's whole weeks).
+  `csp_check.py` clean. `preview_check10.py` now also claims and approves overtime and opens the
+  whole-week month, from the single-file preview on disk. Not tested: a real phone, Safari and Firefox, `npm run dev`, the
+  new Polish, Romanian, Portuguese and Lithuanian button name ("My hours and overtime"). Not built:
+  the overtime claim sheet in the operative's own language (English, like the driving check);
+  supplier invoices on live sites in Profitability (finished jobs only, his pick).
+- 17 Nov, after round ten (decision 117): Profitability's costs by heading on both tabs.
+  509 automated tests (`profitability.test.ts` checks every live and finished site against
+  Job costs heading by heading; `overtime-claims.test.ts` the four-way split of one job's
+  invoices). 1,264 browser checks in twenty-two suites, all passing: `s10_check.py` 52 (the four columns on both tabs, against the checked
+  invoices, adding up, fitting the page), `s9_check.py` and `preview_check10.py` for the new
+  live columns. Not tested: below 1280 pixels the table scrolls inside its panel (checked by
+  eye at 1100); a real phone.
+- 18 Nov, round eleven (decisions 118 to 129): Who is where per site and any day; Fleet from
+  the Secure-All build as a department of its own; Report damage, Send a licence and what the
+  office receives on the phones; the Back button; To do on the Dashboard. Sixteen questions
+  were put to Oisin first (four rounds of buttons). DATA_VERSION 23. 551 automated tests in 56
+  files (new `src/data/fleet-actions.test.ts` 19 and, from Secure-All, `fleet-spend`, `renewals`,
+  `match`, `ops`, `reading` tests; `fleet-page.test.ts` rewritten; `roster.test.ts` for
+  `whereOn`, `whereDays`, `sitesRunning`, `driverSiteOn`). 1,274 browser checks in
+  twenty-three suites (new `s11_check.py`, 67; `m4_check.py`'s Fleet part rewritten; `s8_check.py`
+  lost its old Fleet page part; `m1`, `m4b`, `m5`, `s1b`, `s5` and `review` updated for the new
+  bar and addresses). `csp_check.py` 51 screens, no violations (a kept PDF shows in the browser's
+  own viewer from a `blob:` frame). `preview_check11.py` opens the single-file preview from disk
+  on the new screens. Found and fixed: a new address on the same screen (a row opened in place,
+  a filter) scrolled the page to the top, so an approval opened from the AI overview landed out
+  of sight (`useTrailTracker` in `Shell.tsx` now leaves the height alone). Also fixed in the
+  suites, not the app: `s3`, `s8` and `s9` checked and exported last week, which the sample data
+  does by itself from its Tuesday on, so they failed from Wednesday to Friday; they now take
+  last week back to "not checked yet" first (`open_last_week` in `shots.py`). The night past
+  midnight on C724 now falls to Orla Prunty and Seán Dunphy when they were in that day. Worth
+  knowing: Chrome's own PDF viewer loads `chrome-extension://` files, which the preview check
+  lists as requests; they are the browser's, not the internet. Not tested: the AI reading with
+  the real model (the hosted copy is Aodhan's) and `/api/read` in `fn_check.py`; a real phone;
+  Safari and Firefox; the new Polish, Romanian, Portuguese and Lithuanian button names.
+- Tests: 235 automated tests (new `mail.test.ts`, 17; `chat.test.ts` rewritten, 20); 690
+  browser checks in fourteen suites (`s2_check.py` rewritten for Team chat, 34; the Email
+  part of `m5_check.py` rewritten, 69 in all; `m1_check.py` counts seven departments for a
+  site manager; `s1_check.py` and `ask_check.py` allow for the unread counts and the row
+  checkboxes). Not tested: a real phone, Safari and Firefox.
 
 **16 Nov, later: Aodhan's list of changes, in six steps** (each built on a branch, tried on
 its preview address, and published only when he says). He listed them after the review;
@@ -946,7 +1283,7 @@ Small things waiting on a decision or a person:
 
 ## Invoicing, rebuilt 18 Nov (on the co-founder's copy)
 
-Branch `invoicing-section`. Decisions 64 to 72. What Oisin asked for: a pop-up that drafts an
+Branch `invoicing-section`. Decisions 130 to 138. What Oisin asked for: a pop-up that drafts an
 invoice from the records and makes a PDF that can be emailed; filters like Costello Doors;
 the invoice with everything linked like Bryan Lynch; "In Sage" on every invoice like the
 distributor; the Sage export laid out like the dairy app; an undo for Mark paid; an email
@@ -1026,7 +1363,7 @@ AI's server function, not touched); the hosted build behind Cloudflare, which is
 
 ## Invoicing, part two, 18 Nov (on the co-founder's copy)
 
-Same branch, `invoicing-section`. Decisions 73 to 81. What Oisin asked for after looking at
+Same branch, `invoicing-section`. Decisions 139 to 147. What Oisin asked for after looking at
 part one: the squares at the top clickable; a back button through the whole app; the export
 to Sage like his HVAC screenshot and for Sage only; supplier invoices approved by the
 managing director, then on a separate page to be paid, where accounts pay and mark paid; the
@@ -1069,7 +1406,7 @@ paid; and the portal telling the client or subcontractor by itself that it has b
   and Send back on the rows the person looking may decide.
 - **To be paid** (`/invoicing/to-pay`): approved invoices, soonest first, late ones in red;
   Mark paid asks for the day and an optional bank reference; a Paid tab with Undo paid.
-  Paying itself stays at the bank and in Sage (decision 64).
+  Paying itself stays at the bank and in Sage (decision 130).
 - **Every invoice has the firm's own file number** (`fileNo`, F-1001 up, in arrival order)
   and a date to be paid by (30 days from its own date).
 - **Subcontractors** are records now (`db.subcontractors`: five firms, with the sites each is
@@ -1120,7 +1457,7 @@ behind Cloudflare; Ask AI with the changed summary. `preview_check5.py` and
 
 - Subcontractor invoices carry ordinary VAT (13.5% by default). In Ireland a principal
   contractor accounts for the VAT on construction work itself and deducts RCT; none of that
-  is here, at his word (decision 64). A CFO will notice.
+  is here, at his word (decision 130). A CFO will notice.
 - The Sage tax code T3 for 13.5% and the purchase nominal codes other than 5000 are Sage's
   usual ones, not Oldstone's own. Confirm with Majella.
 - The office cannot log a subcontractor's invoice that came on paper: it either arrives by
@@ -1133,7 +1470,7 @@ behind Cloudflare; Ask AI with the changed summary. `preview_check5.py` and
 **Next, in this order:**
 
 1. Subcontractors on the site timesheet in their own section, and each invoice matched
-   against the hours the site manager recorded (decisions 70 and 81).
+   against the hours the site manager recorded (decisions 136 and 147).
 2. The rest of the supplier side as Majella worked it: nominal code chosen per line (today it
    follows the cost heading), new suppliers with Sage's mandatory fields, and the reports she
    ran (by supplier, project, nominal code, month).
@@ -1146,7 +1483,7 @@ behind Cloudflare; Ask AI with the changed summary. `preview_check5.py` and
 
 ## Reports and Customers, 18 Nov (on the co-founder's copy)
 
-Same branch, `invoicing-section`. Decisions 82 to 94. What Oisin asked for: the reporting in
+Same branch, `invoicing-section`. Decisions 148 to 160. What Oisin asked for: the reporting in
 his HVAC demo, made right for a contractor: Tender win rate in place of Quote win rate; sales
 by customer kept, with a customer page holding all their details and linked to the other
 sections; the most profitable closed jobs, top 10 by margin %, with price, cost, margin and
@@ -1219,7 +1556,7 @@ and the new links; `fn_check.py`; the hosted build behind Cloudflare.
 
 ## Compliance, 18 Nov (on the co-founder's copy)
 
-Same branch, `invoicing-section`. Decisions 95 to 118. What Oisin asked for: a Compliance
+Same branch, `invoicing-section`. Decisions 161 to 184. What Oisin asked for: a Compliance
 section linked to the training and personnel records, from his HVAC compliance demo, with a
 screen per area: personnel training, fleet (insurance and services) and machinery that needs
 servicing every so often. Step 4's Compliance half, as first written, is covered by it.
@@ -1262,7 +1599,7 @@ servicing every so often. Step 4's Compliance half, as first written, is covered
   (`/compliance/subcontractors`, `?sub=`): a section each, their papers (insurances, safety
   statement, a method statement per site) and their people's Safe Pass, Add a person.
 - **Renewals** (`RenewDialog` in `compliance/shared.tsx`): one form per kind of thing, all
-  saving without a copy as "Proof needed" (decision 117). Renewing a ticket offers the
+  saving without a copy as "Proof needed" (decision 183). Renewing a ticket offers the
   course it is booked on.
 - **Where it shows elsewhere.** The timesheet shows "Cannot work" and refuses the mark. The
   week ahead marks those days, says how many people are planned who cannot work, and keeps
@@ -1280,7 +1617,7 @@ servicing every so often. Step 4's Compliance half, as first written, is covered
 - **Ask AI**: a Compliance block in the summary (the rules, the figures, who cannot work,
   what has run out or is due, courses, company papers), and links to a person's tickets and
   a subcontractor. Not tried with the model.
-- **Sample data**: see "The sample data" above. DATA_VERSION 15.
+- **Sample data**: see "The sample data" above. DATA_VERSION 15 (24 since the merge).
 
 **Tested.** 355 automated tests (31 new: `compliance.test.ts`, 21, and
 `compliance-actions.test.ts`, 10; `overview.test.ts` and `snapshot.test.ts` changed). Browser:
@@ -1310,17 +1647,93 @@ Cloudflare.
   Claude and have not been read by a native speaker.
 - An overdue service does not stop a machine; only the checks in `BLOCKING_CHECKS` do.
 - A subcontractor's person with a lapsed Safe Pass is flagged but not stopped: subcontractors
-  are not on the timesheet yet (decisions 70 and 81).
+  are not on the timesheet yet (decisions 136 and 147).
 - The UK copy uses the CSCS card as the safety card; the trade tickets are Irish names.
 - Ticket lengths on renewal are fixed (`renewedTo`: four years for the safety card, three
   for the rest); a renewal can change the date.
-- The Ask AI summary is about 146,000 characters, near the test's 150,000 bound.
+- The Ask AI summary is about 146,000 characters, near the test's 150,000 bound (148,225 after
+  the merge, trimmed: see "The two copies merged, 19 Nov").
 - The first page's main file is 538 kB (166 kB compressed), over Vite's 500 kB warning,
   because the sample data builder is in it.
 
 **Next, if he wants it:** subcontractors on the timesheet with their people's cards checked
 there; overdue services stopping a machine; tax clearance and RCT for subcontractors;
 a native speaker for the phone's words.
+
+## The two copies merged, 19 Nov (on the co-founder's copy)
+
+Decisions 185 to 197. Oisin's two lines of work were brought together on `invoicing-section`
+(a merge of `step-2-team-chat` at 681c6db, which was byte for byte the HTML file he uploaded,
+into `invoicing-section`), and his `main` was moved to the same commit. Both branches came
+from 5449d24. Before the merge `invoicing-section` was at 059efbb and `step-2-team-chat` at
+681c6db; both stay in the history as the merge commit's two parents, and `step-2-team-chat`
+stays on GitHub as it was.
+
+**What was done where they met.**
+
+- **Decision numbers.** The other branch's 64 to 129 are kept; this copy's 64 to 118 are now 130
+  to 184, in the same order (tables, sections and cross-references renumbered).
+- **The data model** (`src/data/types.ts`) holds both: Fleet's `Licence` (driving licence and
+  Driver CPC, with `proofNeeded`) and Compliance's yearly check as `LicenceCheck` on
+  `Person.licenceCheck`; Fleet's garage invoice line renamed `RepairLine`, since this copy's
+  `InvoiceLine` is a client invoice's; `Todo` gains `complianceKey` and `to`; Mail carries both
+  sets of fields (invoice links, attachments, star, To, Cc, Bcc); 19 permissions; 17
+  departments. DATA_VERSION 24.
+- **Actions.** What stops work (`mayNotWork`) is checked in the other copy's planning actions too
+  (`planDays`, `stampRestDay`, `planRestDay`, `decideSiteRequest`: a yes to a person who cannot
+  work leaves the request open). Every renewal closes the to-dos made for it (`closeTodos`).
+  Fleet's renewals without a copy are "Proof needed". Sent emails keep the address in `to`, not
+  as a "To:" line in the body.
+- **Compliance on Fleet's records** (`lib/compliance.ts`): vehicle rows from `db.vehicles`, driver
+  rows from `driversOf` (driving licence, Driver CPC, yearly check; row keys `dl:` and `lic:`),
+  the test named by region and vehicle (`testName`). Compliance, Fleet uses Fleet's renewal and
+  licence forms; the yearly check is its own small box (`LicenceCheckForm`).
+- **Admin, Requests** lists supplier invoices over the limit (`waitingForDirector` in
+  `lib/requests.ts`) with the Invoicing confirm boxes, which can act for someone (`actor`).
+- **Schedule.** The week grid and month grid mark someone who cannot work in red, refuse a drop
+  or an Add for them, and say why; the Week ahead is held back while anyone planned cannot work.
+- **The phones** (`src/modules/site/`): `PhoneFrame.tsx`; `Dialog` in `src/ui` hands a sheet
+  inside a frame to `PhoneSheet` (portalled onto the frame's layer, non-modal, Escape closes the
+  top one even after focus has dropped out of it). New on the site manager's phone, inside a
+  job: `CannotWorkSheet`, `ScaffoldSheet`, `SubInvoiceSheet`. On the operative's: `MyTickets` and
+  `CardPhotoSheet` in the profile, the red card on the front page, Do not drive on the driving
+  check (both phones).
+- **Invoicing** is this copy's, with decision 84 applied to the client invoice list
+  (`STACK_ROW`, `LABELLED` in `ClientInvoices.tsx`). The other copy's `lib/pdf.ts` (drawn
+  sample papers) is now `lib/sample-pdf.ts`; this copy's `lib/pdf.ts` writes the invoices.
+- **Ask AI's summary** went to 187,000 characters with both copies' records and was trimmed to
+  148,225 (see "Ask AI: how it is built").
+- **Sample data.** Everything from both copies. One change of meaning: Kevin Shortall's Driver
+  CPC (Fleet's sample) has run out, so eleven things stop work today, not ten. The year of past
+  work skips bank holidays.
+
+**Tested.** 686 automated tests in 63 files (`npm test`), both type checks. 1,665 browser checks
+in 28 suites, all passing (`run_all.sh`, with the new `merge_check.py`, 45: the bar of 17, Files
+at its own address, Back before the firm's name going back to the square that was pressed and
+still after a reload, Plant and Fleet apart and the old address, this copy's Invoicing and
+Profitability By site only, the other copy's Admin screens, both phones side by side and
+phone-sized with the phone scrolling inside itself and the office feed beside them, the red card
+and tickets in the profile, a sheet on the phone not over the page and Escape closing it, Who
+cannot work, a scaffold inspection saved in the site manager's name, a subcontractor invoice
+approved on the phone in his name, Do not drive, Compliance reading Fleet's records and opening
+Fleet's form, Fleet's to-do ticked off by the renewal, a Compliance to-do on the Dashboard ticked
+off by the renewal, and at phone width no frame, one phone and ordinary dialogs). `csp_check.py`:
+76 screens, no violations. Every suite from both branches was changed where the merged app
+differs: both phones are named "Operative's phone" and "Site manager's phone" (`phone_of` and
+`show_phone` in `shots.py`), the bar order, 19 permissions, the grid week ahead's cannot-work
+checks, the client invoice list's blocks, Compliance's fleet part, the operative's tickets in the
+profile, and the payroll and history checks that expected Orla Prunty's overtime from one
+particular day (now worked out from the records, as the sample data draws an ordinary late
+finish on some days). Not tested: a real phone, Safari and Firefox, the AI reading and Ask AI
+with the real model (the hosted copy is Aodhan's), `fn_check.py`.
+
+**Known gaps from the merge.**
+
+- The other copy's Job costs report download ("Download profitability report", decision 75) and
+  its purchase file in three layouts went with its Invoicing screens, at Oisin's word (none of
+  its Invoicing changes).
+- The browser's own forward button does not follow the Back button's steps.
+- The phone's frame and sheets were checked in Chrome only.
 
 ## Build status
 
@@ -1387,6 +1800,8 @@ Work is in milestones, with a stop for Aodhan's feedback after each.
       Fleet (`Fleet.tsx`): vehicles with tax, test (CVRT in Ireland, MOT in the UK) and
       insurance; renew with amount and receipt; add and remove vehicles (sale amount or
       NA); vehicle documents; repair spend by vehicle, garage and quarter, as figures only.
+      One page with three tabs since 17 Nov (decision 95): `/plant/fleet`.
+      Since 18 Nov Fleet is a department of its own, from the Secure-All build (decision 119).
       Files (`src/modules/files/Files.tsx`): folders per project with a search across all
       of them; add a picture or PDF; all photos; "To be sorted", where each arrival has a
       suggested project and folder with the reason (`src/lib/filing.ts`, tested).
@@ -1493,7 +1908,10 @@ The pieces:
   supplier invoices are summed up per supplier and emails kept to the last four months to
   hold it there; about 146,000 since Compliance went in later that day, which leaves only
   4,000 before `snapshot.test.ts` fails at half the server's 300,000 limit, so trim before
-  adding more; about 40,000 tokens with the instructions, measured live, before), every
+  adding more; 187,000 when the two copies were merged on 19 Nov, trimmed to 148,225 by
+  keeping garage invoices line by line for 91 days and summed per vehicle before that, paid
+  supplier invoices for 60 days, enquiries for 120 days or while open, tenders answered more
+  than 120 days ago in a short table, and emails for 70 days with bodies cut at 450 characters; about 40,000 tokens with the instructions, measured live, before), every
   figure worked out with the same rules as the
   screens (`dashboardNumbers`, `projectCosts` in `src/data/figures.ts`, which the Job costs
   screen now uses too, `dueState`, `hireEstimate`), day counts already done, and the list of
@@ -1568,7 +1986,9 @@ checked on the live site on 13 and 15 Nov 2026.
    default for testing.
 3. **Built-in password mode is weak by design. Documented.** The hash of the shared
    password is compiled into the page (plain SHA-256, no salt), so it can be guessed
-   offline. Use it on your own machine only.
+   offline. Use it on your own machine only. The one exception is Oisin's preview artifact
+   (decision 88), where the artifact's own Share setting decides who can open it and the
+   built-in login is only a courtesy gate on top; it holds sample data and no keys.
 4. **No way to inject script. Checked.** No `dangerouslySetInnerHTML`, `innerHTML`, `eval`
    or `new Function` anywhere. Everything typed in (captions, notes, replies, names) is
    shown as text by React. The brand colour is checked against a strict pattern before it
@@ -1577,7 +1997,10 @@ checked on the live site on 13 and 15 Nov 2026.
    download only, never opened inside the page.
 5. **Links out. Checked.** Every link that opens a new tab has `rel="noopener noreferrer"`.
 6. **Secrets. Checked.** No keys or tokens in the repository. `.env` and `.env.local` are
-   ignored by git. `.env.preview` is committed on purpose and holds one harmless setting.
+   ignored by git. `.env.preview` is committed on purpose and holds the preview's settings: the
+   router mode and, since 17 Nov, the preview's username and the SHA-256 of its password
+   (decision 88). That hash is not a secret in the way a key is, since the same value is in
+   the published page, but a short password can be guessed from it, so a real one should be long.
    The Supabase keys from the old Oldstone project were never copied in, and the Supabase
    library has since been removed. No secret may ever go in a `VITE_` variable, because
    every `VITE_` value ends up in the page.
@@ -1863,6 +2286,20 @@ the identical file opened from disk); dragging Sales cards on a touch screen (th
 each card is the way on a phone, and is tested at phone width).
 
 ## Known gaps to pick up later
+
+- An overtime claim is in English on the operative's phone; only its button name is translated
+  (decision 113).
+- Overtime hours are typed by whoever marks time (decision 100): nothing checks them against
+  clock times, so the split between time and a half and double time is theirs to get right.
+  The Saturday and Sunday limits on a weekend time stamp are the only ones enforced.
+- Profitability counts plant only once its invoice is checked: hire still running and the
+  firm's own plant cost nothing there until then (decision 117, his pick).
+- Fleet (18 Nov): the AI reading needs the hosted copy (Aodhan's) and has not been tried there
+  with the real model; `tests/functions/fn_check.py` does not cover `/api/read` yet. A garage
+  repair is not charged to a job. A driver's base is their van's. The phone's licence sheet does
+  not use the AI (the date is typed, or comes with the sample). A vehicle's mileage is typed.
+- Other sample events (emails, invoices, deliveries) are dated on working days by weekday
+  only, so one can fall on a bank holiday on some demo days; timesheets and the plan cannot.
 
 - Supplier invoice VAT in the sample data is fixed at 23%.
 - New records are stamped with the real time of day on the demo's "today", so something

@@ -3,7 +3,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 FIX = os.path.join(HERE, "fixtures") + os.sep
 sys.path.insert(0, HERE)
 import re
-from shots import run, BASE, OUT
+from shots import run, BASE, OUT, phone_of, show_phone
 
 # Compliance, 18 Nov 2026, after the HVAC compliance demo: every expiry in one place (people,
 # vans and licences, machinery and scaffolds, company papers, subcontractors), training courses,
@@ -47,27 +47,30 @@ def steps(page, ctx):
 
     # ── Where it lives
     names = [t.strip() for t in bar.get_by_role("link").all_inner_texts()]
-    check("Bar: Compliance sits after Plant", names.index("Compliance") == names.index("Plant") + 1, names)
+    # Merged 19 Nov: Plant, then Fleet (a department of its own), then Compliance.
+    names = [n.split("\n")[-1] for n in names]
+    check("Bar: Compliance sits after Plant and Fleet", names.index("Fleet") == names.index("Plant") + 1 and names.index("Compliance") == names.index("Fleet") + 1, names)
     text = main.inner_text()
-    check("Overview: someone planned who cannot work is a decision, with their ticket and course", "Tomás Breslin is planned on C722 today, but their Safe Pass ran out on 17 Nov" in text and "booked on the course on" in text, text[:400])
+    ran = data(page, "(() => { const c = db.people.find(p => p.id === 'p-124').certs.find(c => c.name === 'Safe Pass'); const d = new Date(c.expires + 'T12:00:00Z'); return d.getUTCDate() + ' ' + d.toLocaleString('en-GB', { month: 'short', timeZone: 'UTC' }) })()")
+    check("Overview: someone planned who cannot work is a decision, with their ticket and course", f"Tomás Breslin is planned on C722 today, but their Safe Pass ran out on {ran}" in text and "booked on the course on" in text, (ran, text[:400]))
     go(page, "/people")
     check("People: Training tickets has moved out of the sidebar", side().get_by_role("link", name="Training tickets").count() == 0)
     go(page, "/people/certs", "table")
     check("Old address: Training tickets lands on Compliance, Personnel, as a list", page.url.endswith("/compliance/personnel?view=list"), page.url)
 
-    # ── Everything due
+    # ── Everything due (merged 19 Nov: eleven, since Kevin Shortall's Driver CPC from Fleet has run out too)
     go(page, "/compliance", "table")
     figs = [t.strip() for t in page.locator("dl[aria-label='Compliance figures'] dt").all_inner_texts()]
     check("Everything due: five figures across the top", figs == ["Run out or missing", "Stopping work", "Due in 30 days", "Proof needed", "In date"], figs)
     blocks_fig = int(page.locator("dl[aria-label='Compliance figures'] button", has_text="Stopping work").locator("dd").first.inner_text())
-    check("Everything due: ten things stop work today", blocks_fig == 10, blocks_fig)
+    check("Everything due: eleven things stop work today", blocks_fig == 11, blocks_fig)
     page.screenshot(path=f"{OUT}/400-compliance.png", full_page=True)
     rows = page.get_by_role("table", name="Everything due").locator("tbody tr")
     first_two = [r.inner_text() for r in rows.all()[:2]]
     check("Everything due: a missing paper comes first, then soonest first", all("Missing" in t for t in first_two), first_two)
     page.locator("dl[aria-label='Compliance figures'] button", has_text="Stopping work").click(); page.wait_for_timeout(200)
     stop = [r.inner_text() for r in rows.all()]
-    check("Everything due: the Stopping work figure is a filter, each row saying what it stops", len(stop) == 10 and all(any(w in t for w in ["Cannot be planned or marked on site", "Do not drive", "May not be used on site", "Cannot go to a site", "Do not use"]) for t in stop), stop[:3])
+    check("Everything due: the Stopping work figure is a filter, each row saying what it stops", len(stop) == 11 and all(any(w in t for w in ["Cannot be planned or marked on site", "Do not drive", "May not be used on site", "Cannot go to a site", "Do not use", "May not drive"]) for t in stop), stop[:3])
     page.locator("dl[aria-label='Compliance figures'] button", has_text="Stopping work").click(); page.wait_for_timeout(150)
     page.get_by_role("tab", name="Fleet").click(); page.wait_for_timeout(150)
     ftxt = page.get_by_role("table", name="Everything due").inner_text()
@@ -95,7 +98,7 @@ def steps(page, ctx):
     tom = page.get_by_role("button", name=re.compile(r"^Tomás Breslin, Safe Pass: ran out"))
     check("Personnel: Tomás's Safe Pass is red in the matrix", tom.count() == 1 and "bad" in (tom.get_attribute("class") or ""))
     page.screenshot(path=f"{OUT}/401-personnel.png", full_page=True)
-    page.get_by_role("tab", name="List").click(); page.wait_for_timeout(200)
+    page.get_by_role("tab", name="List").click(); page.wait_for_timeout(700)
     check("Personnel: the same tickets as a list, soonest first", page.get_by_role("table", name="Training tickets").locator("tbody tr").count() == data(page, "db.people.filter(p => p.active).flatMap(p => p.certs).length"))
     page.get_by_role("tab", name="Matrix").click(); page.wait_for_timeout(200)
     main.get_by_role("button", name="Book on a course").click(); page.wait_for_timeout(200)
@@ -132,18 +135,27 @@ def steps(page, ctx):
     dlg().get_by_role("button", name="Add course").click(); page.wait_for_timeout(250)
     check("Add a course: it is listed to come", page.get_by_role("table", name="Courses to come").locator("tbody tr", has_text="Working at height").count() == 1)
 
-    # ── Fleet
+    # ── Fleet (merged 19 Nov): the vans, licences and Driver CPC are Fleet's own records, shown here too
     go(page, "/compliance/fleet", "table")
     vt = page.get_by_role("table", name="Vehicle papers")
-    check("Fleet: every vehicle on the road, with tax, CVRT, insurance and service", vt.locator("tbody tr").count() == 12 and "CVRT" in vt.locator("thead").inner_text())
-    check("Fleet: a van out of date says not to drive it", "Do not drive" in vt.locator("tr", has_text="212-D-18834").inner_text() and "Do not drive" in vt.locator("tr", has_text="191-G-7730").inner_text())
+    nveh = data(page, "db.vehicles.filter(v => v.active).length")
+    check("Fleet: every vehicle on the road, from Fleet's records, with tax, CVRT, insurance and service", vt.locator("tbody tr").count() == nveh and nveh >= 18 and "CVRT" in vt.locator("thead").inner_text(), (vt.locator("tbody tr").count(), nveh))
+    check("Fleet: a van out of date says not to drive it", "Do not drive" in vt.locator("tr", has_text="212-D-18834").inner_text())
+    check("Fleet: a vehicle opens on its page in Fleet", vt.get_by_role("link", name="212-D-18834").get_attribute("href").startswith("/fleet/vehicles/"))
     lic = page.get_by_role("table", name="Driving licences")
+    ndrivers = data(page, "db.people.filter(p => p.drives && p.active).length")
     liam = lic.locator("tr", has_text="Liam Costigan")
-    check("Fleet: each driver's licence, with Liam's yearly check overdue", lic.locator("tbody tr").count() == 12 and "Overdue by" in liam.inner_text())
-    liam.get_by_role("button", name="Check licence").click(); page.wait_for_timeout(200)
-    dlg().get_by_label("Choose a proof from this device").set_input_files(FIX + "card.png"); page.wait_for_timeout(500)
-    dlg().get_by_role("button", name="Save the check").click(); page.wait_for_timeout(250)
-    check("Fleet: checking the licence today puts it back in date", "In date" in lic.locator("tr", has_text="Liam Costigan").inner_text() and data(page, "db.people.find(p => p.id === 'p-114').licence.checkedOn === day"))
+    check("Fleet: each driver with their licence and Driver CPC, and Liam's yearly check overdue", lic.locator("tbody tr").count() == ndrivers and [t.strip() for t in lic.locator("thead th").all_inner_texts()] == ["Driver", "Driving licence", "Driver CPC", "Yearly check"] and "Overdue by" in liam.locator("td").nth(3).inner_text(), (lic.locator("tbody tr").count(), ndrivers, liam.inner_text()))
+    cpc = lic.locator("tr", has_text="Kevin Shortall").locator("td").nth(2)
+    check("Fleet: Kevin's Driver CPC has run out and is red", "Ran out" in cpc.inner_text(), cpc.inner_text())
+    liam.locator("td").nth(3).get_by_role("button").click(); page.wait_for_timeout(250)
+    check("Fleet: the yearly check says what to look at and links to Fleet", "Check Liam Costigan's driving licence" in dlg().inner_text() and dlg().get_by_role("link", name="Open in Fleet").count() == 1)
+    dlg().get_by_role("button", name="Checked today").click(); page.wait_for_timeout(250)
+    check("Fleet: checking the licence today puts it back in date", "Overdue" not in lic.locator("tr", has_text="Liam Costigan").locator("td").nth(3).inner_text() and "Last " in lic.locator("tr", has_text="Liam Costigan").locator("td").nth(3).inner_text() and data(page, "db.people.find(p => p.id === 'p-114').licenceCheck.checkedOn === day"))
+    # The tax renewal opens Fleet's own form, so both places change the same record.
+    vt.locator("tr", has_text="191-G-7730").locator("td").nth(1).get_by_role("button").click(); page.wait_for_timeout(250)
+    check("Fleet: a tax renewal opens Fleet's own renewal form", dlg().count() == 1 and "191-G-7730" in dlg().inner_text(), dlg().inner_text()[:200])
+    dlg().get_by_role("button", name="Cancel").last.click(); page.wait_for_timeout(200)
     page.screenshot(path=f"{OUT}/403-fleet.png", full_page=True)
 
     # ── Machinery and scaffolds
@@ -183,7 +195,9 @@ def steps(page, ctx):
     # ── Subcontractors
     go(page, "/compliance/subcontractors", "table")
     kin = page.get_by_role("region", name="Kinvara Stone Carvers")
-    check("Subcontractors: one section each, with what is out of date said at the top", page.locator("main section[aria-label]").count() == 5 and "employers' liability ran out on 14 Nov" in kin.inner_text())
+    # The day it ran out moves with the demo's day, so read it from the records.
+    el = data(page, "(() => { const s = db.subcontractors.find(x => x.id === 'sub-2'); const p = s.papers.filter(p => p.kind === 'Employers liability insurance' || /mployers/.test(p.kind)).sort((a, b) => b.expires.localeCompare(a.expires))[0]; const d = new Date(p.expires + 'T12:00:00Z'); return d.getUTCDate() + ' ' + d.toLocaleString('en-GB', { month: 'short', timeZone: 'UTC' }) })()")
+    check("Subcontractors: one section each, with what is out of date said at the top", page.locator("main section[aria-label]").count() == 5 and f"employers' liability ran out on {el}" in kin.inner_text(), (el, kin.inner_text()[:300]))
     cor = page.get_by_role("region", name="Corrib Scaffolding")
     cor.get_by_role("table", name="Corrib Scaffolding's papers").locator("tr", has_text="Method statement, C721").get_by_role("button", name="Record it").click(); page.wait_for_timeout(200)
     dlg().get_by_label("Choose a proof from this device").set_input_files(FIX + "cert.pdf"); page.wait_for_timeout(400)
@@ -199,11 +213,11 @@ def steps(page, ctx):
     go(page, "/projects/subcontractor-invoices")
     page.get_by_role("tab", name=re.compile("^Everything on these sites")).click(); page.wait_for_timeout(250)
     kin_head = page.locator("th", has_text="Kinvara Stone Carvers").first.inner_text()
-    check("Site manager's subcontractor invoices: lapsed insurance is flagged under their name, not held", "Employers' liability insurance ran out on 14 Nov" in kin_head, kin_head)
+    check("Site manager's subcontractor invoices: lapsed insurance is flagged under their name, not held", f"Employers' liability insurance ran out on {el}" in kin_head, (el, kin_head))
     as_role(page, "Managing director")
     go(page, "/portal/subcontractors?sub=sub-2&site=pr-C719")
     papers = page.get_by_role("region", name="Your papers")
-    check("Portal: Kinvara see their papers and what is out of date", "employers' liability ran out on 14 Nov" in papers.inner_text() and "Your invoices are flagged" in papers.inner_text())
+    check("Portal: Kinvara see their papers and what is out of date", f"employers' liability ran out on {el}" in papers.inner_text() and "Your invoices are flagged" in papers.inner_text())
     papers.locator("tr", has_text="Employers' liability").get_by_role("button", name="Send a new one").click(); page.wait_for_timeout(200)
     check("Portal: a new paper cannot be sent without a copy", dlg().get_by_role("button", name="Send").is_disabled())
     dlg().get_by_label("Choose a copy from this device").set_input_files(FIX + "cert.pdf"); page.wait_for_timeout(400)
@@ -214,19 +228,21 @@ def steps(page, ctx):
     go(page, "/site")
     pick(page.get_by_label("Operative to view the phone as"), r"^Tomás Breslin")
     page.wait_for_timeout(250)
-    phone = page.get_by_label("Phone screen")
+    phone = phone_of(page, "operative")
     check("Site phone: Tomás is told his Safe Pass ran out and he cannot work, and when his course is", "Safe Pass ran out" in phone.inner_text() and "cannot work on site" in phone.inner_text() and "Booked on the course" in phone.inner_text(), phone.inner_text()[:300])
-    phone.get_by_role("button", name="My tickets").click(); page.wait_for_timeout(200)
-    check("Site phone: My tickets lists his tickets with their dates", "Safe Pass" in dlg().inner_text() and "Manual handling" in dlg().inner_text())
-    dlg().locator("li", has_text="Safe Pass").get_by_role("button", name="Send a photo of the new card").click(); page.wait_for_timeout(200)
+    # Merged 19 Nov: his tickets are in his profile, with the red card on the front page.
+    phone.get_by_role("button", name="My profile").click(); page.wait_for_timeout(250)
+    tickets = dlg().get_by_role("list", name="My tickets")
+    check("Site phone: My tickets, in his profile, lists his tickets with their dates", "Safe Pass" in tickets.inner_text() and "Manual handling" in tickets.inner_text())
+    tickets.locator("li", has_text="Safe Pass").get_by_role("button", name="Send a photo of the new card").click(); page.wait_for_timeout(250)
     dlg().get_by_label("Choose a card from this device").set_input_files(FIX + "card.png"); page.wait_for_timeout(600)
     dlg().get_by_role("button", name="Send").click(); page.wait_for_timeout(300)
     check("Site phone: the card is sent to the office, in his name", data(page, "!!db.people.find(p => p.id === 'p-124').certs.find(c => c.name === 'Safe Pass').sentPhoto") is True and data(page, "db.activity[0].who") == "Tomás Breslin")
     page.screenshot(path=f"{OUT}/406-phone.png", full_page=True)
-    dlg().get_by_role("button", name="Cancel").click()
+    dlg().get_by_role("button", name="Close").first.click(); page.wait_for_timeout(200)
     pick(page.get_by_label("Operative to view the phone as"), r"^Seán Dunphy")
     page.wait_for_timeout(250)
-    check("Site phone: Seán is told his tipper's CVRT is due", "221-WW-3316" in page.get_by_label("Phone screen").inner_text() and "CVRT due" in page.get_by_label("Phone screen").inner_text())
+    check("Site phone: Seán is told his tipper's CVRT is due", "221-WW-3316" in phone_of(page, "operative").inner_text() and "CVRT due" in phone_of(page, "operative").inner_text())
     go(page, "/compliance/personnel", "table")
     sent = page.get_by_role("table", name="Cards sent from the site phone")
     check("Personnel: the card from the phone waits to be checked", sent.locator("tbody tr", has_text="Tomás Breslin").count() == 1)
@@ -242,14 +258,20 @@ def steps(page, ctx):
     check("Timesheet: with his Safe Pass renewed, Tomás can be marked today", page.get_by_label("Today for Tomás Breslin").count() == 1)
     go(page, "/schedule", "table")
     check("Week ahead: still held back by the two whose tickets run out first", "2 people planned who cannot work" in main.inner_text() and page.get_by_role("button", name="Send week to operatives").is_disabled())
-    kev = page.locator("section", has=page.get_by_role("link", name="C719 St Finian's Church")).locator("tr", has_text="Kevin Shortall")
-    kev.locator("button", has_text="Cannot work").first.click(); page.wait_for_timeout(200)
-    check("Day planner: says why someone cannot be planned that day, and will not put them on", "cannot be planned on site this day" in dlg().inner_text() and dlg().get_by_role("button", name=re.compile("^Save change|^Put on")).is_disabled())
-    dlg().get_by_role("button", name="Cancel").click()
-    block = page.locator("section", has=page.get_by_role("link", name="C725 Granary Quay Warehouses"))
-    block.get_by_label("Trade to add to C725").select_option("Scaffolder"); page.wait_for_timeout(150)
-    kopt = block.get_by_label("Person to add to C725").locator("option", has_text="Kevin Shortall").inner_text()
-    check("Week ahead: the picker says who cannot work and why", "cannot work" in kopt and "Scaffolding ticket, advanced" in kopt, kopt)
+    # Merged 19 Nov: the week ahead is one grid (sites down, days across), so the checks read it.
+    grid = page.get_by_role("table", name="Week ahead by site and day")
+    kev = grid.locator("button", has_text="Kevin Shortall").filter(has_text="Cannot work")
+    check("Week ahead: Kevin is in red, marked Cannot work, on the days his ticket has run out", kev.count() >= 1 and "bad" in (kev.first.get_attribute("class") or ""), kev.count())
+    kev.first.click(); page.wait_for_timeout(250)
+    check("Person box: his week says he cannot work", "cannot work" in dlg().inner_text(), dlg().inner_text()[:300])
+    dlg().get_by_role("button", name=re.compile("^Take off C7")).first.click(); page.wait_for_timeout(300)
+    while page.locator("dialog[open]").count():
+        page.locator("dialog[open]").last.get_by_role("button", name="Close").first.click(); page.wait_for_timeout(150)
+    mon = data(page, "(() => { const d = new Date(day + 'T12:00:00Z'); do { d.setUTCDate(d.getUTCDate() + 1) } while (d.getUTCDay() !== 1); return d.toISOString().slice(0, 10) })()")
+    grid.locator(f"td[data-cell='C725 {mon}']").get_by_role("button", name=re.compile("^Add someone to C725")).click(); page.wait_for_timeout(250)
+    box = dlg().inner_text()
+    check("Week ahead: Add leaves out someone who cannot work that day and says why", "Not offered, a ticket has run out: " in box and "Kevin Shortall (Scaffolding ticket, advanced" in box and dlg().get_by_role("button", name=re.compile("Kevin Shortall")).count() == 0, box[:400])
+    dlg().get_by_role("button", name="Close").first.click(); page.wait_for_timeout(200)
 
     # ── The scaffold register on the project page
     go(page, "/projects/C719?tab=plant", "table")
@@ -277,7 +299,9 @@ def steps(page, ctx):
     check("Site manager: Compliance without Fleet or Company papers", "Fleet" not in " ".join(links) and "Company papers" not in " ".join(links) and any(l.startswith("Personnel") for l in links), links)
     txt = page.get_by_role("table", name="Everything due").inner_text()
     check("Site manager: only their own sites, so no vans and nothing from another site", "212-D-18834" not in txt and "C722" not in txt and "C719" in txt, txt[:300])
-    check("Site manager: cannot renew tickets", page.get_by_role("table", name="Everything due").locator("tr", has_text="Kevin Shortall").get_by_role("button").count() == 0)
+    # They can still put it on their own to-do list (merged 19 Nov), just not renew it.
+    krow = page.get_by_role("table", name="Everything due").locator("tr", has_text="Kevin Shortall")
+    check("Site manager: cannot renew tickets", krow.get_by_role("button", name=re.compile("^(Renew|Record|Add proof)")).count() == 0 and krow.get_by_role("button").count() == krow.get_by_role("button", name=re.compile("^Add to my to-do")).count())
     go(page, "/compliance/machinery", "table")
     check("Site manager: can record inspections on their own sites", page.get_by_role("table", name="Scaffold registers").get_by_role("button", name="Record inspection").count() >= 1 and "C723" not in page.get_by_role("table", name="Scaffold registers").inner_text())
     as_role(page, "Contracts manager")

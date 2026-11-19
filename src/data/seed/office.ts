@@ -2,9 +2,12 @@ import { invoiceNo, invoicedLine, paidLine, salesInvoiceFile } from "@/lib/billi
 import { mondayReminder } from "@/lib/compliance";
 import { addDays } from "@/lib/dates";
 import { money0, r2 } from "@/lib/money";
+import { overtimeTotal } from "@/lib/overtime";
 import { labourCost, scopePercent } from "@/lib/project-costs";
 import { dashboardNumbers } from "../kpis";
-import type { Activity, Approval, Attendance, Automation, Client, Db, FileItem, HiredPlant, Mail, Person, Project, SalesInvoice, ScopeTask, SupplierInvoice } from "../types";
+import { basicHours } from "@/lib/payroll";
+import { fullWeek, workWeek } from "@/lib/week";
+import type { Activity, Approval, Attendance, Automation, Client, DayInstruction, Db, Expense, FileItem, OvertimeClaim, HiredPlant, Mail, PayrollCheck, PayrollExport, Person, Project, SalesInvoice, ScopeTask, SiteAccess, SupplierInvoice } from "../types";
 import { type Craft, isPastCode, type ProjectMeta } from "./projects";
 import { type Rng, at, lastWeekday, weekday, workdays } from "./util";
 
@@ -217,7 +220,7 @@ export function seedMoney(r: Rng, today: string, ctx: Ctx) {
     const past = isPastCode(p.code);
     const r = past ? ctx.rPast : rToday;
     const m = ctx.meta.get(p.code)!;
-    const labour = labourCost(ctx.attendance.filter((a) => a.projectId === p.id).map((a) => ({ status: a.status, overtimeHours: a.overtimeHours, hourlyRate: rate.get(a.personId) ?? 0 })));
+    const labour = labourCost(ctx.attendance.filter((a) => a.projectId === p.id).map((a) => ({ date: a.date, status: a.status, overtimeHours: a.overtimeHours, doubleHours: a.doubleHours, hourlyRate: rate.get(a.personId) ?? 0 })));
     const pct = p.status === "Live" ? scopePercent(ctx.scopeTasks.filter((t) => t.projectId === p.id)) : 100;
     const earned = ((p.value ?? 0) * pct) / 100;
     const known = drafts.filter((d) => d.readStatus === "confirmed").flatMap((d) => d.allocations.filter((a) => a.projectId === p.id).map((a) => (d.docType === "credit_note" ? -a.amount : a.amount))).reduce((s, x) => s + x, 0);
@@ -433,12 +436,12 @@ export function seedMail(today: string, domain: string, leave: { from: string; t
       "Invitation to tender: Kilcashel Courthouse portico stone repairs",
       "Dear Sirs,\n\nCarrowbeg County Council invites tenders for conservation repairs to the portico of Kilcashel Courthouse, a protected structure. The works comprise stone repairs to four columns and the entablature, with associated leadwork.\n\nTender documents are attached. Tenders are to be returned by 12:00 noon three weeks from today. A site visit can be arranged through this office.\n\nBernard Mulqueen\nSenior Executive Architect",
       "Dear Bernard,\n\nThank you for the invitation. We confirm we intend to tender for the portico repairs at Kilcashel Courthouse and have the documents.\n\nWe would like to take up the site visit. Colm Henebry, our quantity surveyor, is free any morning next week.\n\nKind regards,\nColm Henebry",
-      { clientId: "c-06", attachment: "Kilcashel Courthouse tender documents.zip" }),
+      { clientId: "c-06", attachment: "Kilcashel Courthouse tender documents.zip", starred: true }),
     m(3, -1, "15:14", "info", "Susan Kane", "estate.office@ardmullen.example", "Quote query", "p-cm1",
       "Walled garden quote: can it be phased?",
       "Tadhg,\n\nThank you for the quote for the north wall. Could you price it in two phases, with the gateway arch first? The owner wants the arch made safe before winter and may leave the rest until next year.\n\nSusan",
       "Dear Susan,\n\nYes, that works. Phase 1 would be the gateway arch and 6 m of wall either side, which carries most of the scaffold and set-up cost. Phase 2 would be the remaining 31 m.\n\nI will send a revised quote showing both phases separately in the next few days.\n\nKind regards,\nTadhg Morrissey",
-      { clientId: "c-02" }),
+      { clientId: "c-02", starred: true }),
     m(4, -1, "11:02", "info", "Mindaugas Petrauskas", `mindaugas.petrauskas@${domain}`, "Certificate", "p-hs",
       "MEWP ticket renewed",
       "Hi Declan,\n\nI did the renewal course on Saturday. New card attached, valid for five years.\n\nMindaugas",
@@ -481,6 +484,20 @@ export function seedMail(today: string, domain: string, leave: { from: string; t
       "Compressor CP1 off for repair",
       "Tadhg, CP1 lost pressure this morning and has gone to Oranmore Commercials. Back next week at the earliest. If anyone needs breakers in the meantime we will have to hire.\n\nPat",
       "Thanks Pat. Nobody has breakers planned this week. Let me know when it's back and I'll put it on the plant list for Derrybawn.\n\nTadhg"),
+    // Sent and filed, so neither folder opens empty. Each matches the records and Team chat.
+    { ...m(13, -4, "10:05", "orders", "Tadhg Morrissey", `orders@${domain}`, "General", "p-cm1",
+      "Order for St Finian's Church: NHL 3.5",
+      "Hello,\n\nPlease deliver 40 bags of NHL 3.5 to St Finian's Church, site code C719, by the end of next week. The site manager is Eoin Brosnan.\n\nThanks,\nTadhg Morrissey", ""),
+      folder: "Sent", read: true, replyDraft: undefined, to: "Burren Lime and Stone Supplies" },
+    { ...m(14, -1, "16:20", "info", "Niamh Lavelle", `info@${domain}`, "General", "p-off",
+      "Safe Pass course: two places in January",
+      "Hello,\n\nCould you book two places on the January Safe Pass course in Athlone? Names to follow by the end of the week.\n\nThanks,\nNiamh Lavelle", ""),
+      folder: "Sent", read: true, replyDraft: undefined, to: "Midland Safety Training" },
+    { ...m(15, -6, "11:40", "orders", "Burren Lime and Stone Supplies", "dispatch@burrenlime.example", "Supplier statement", "p-acc",
+      "Delivery note: Granary Quay Warehouses",
+      "Delivered today to Granary Quay Warehouses: 24 bags of NHL 2 and 1 tonne of washed sharp sand. Signed for on site.\n\nDispatch\nBurren Lime and Stone Supplies", "",
+      { attachment: "Delivery note 50812.pdf" }),
+      folder: "Archive", read: true, replyDraft: undefined },
   ];
 }
 
@@ -540,8 +557,8 @@ export function weeklySummary(db: Db, demoToday: string, region: "IE" | "UK" = "
   const money = (v: number) => money0(v, region);
   const monday = lastWeekday(today, 1);
   const week = db.attendance.filter((a) => a.date >= monday && a.date < today);
-  const hours = week.reduce((s, a) => s + (a.status === "full" ? 8 : 4) + a.overtimeHours, 0);
-  const overtime = week.reduce((s, a) => s + a.overtimeHours, 0);
+  const hours = week.reduce((s, a) => s + (a.status === "full" ? 8 : a.status === "half" ? 4 : 0) + overtimeTotal(a), 0);
+  const overtime = week.reduce((s, a) => s + overtimeTotal(a), 0);
   const project = (code: string) => db.projects.find((p) => p.code === code)!;
   // Only what had happened by 07:00 that Friday: on a Monday the records also hold Friday's work.
   const asOf = at(today, "07:00");
@@ -672,4 +689,81 @@ export function seedActivity(db: Db, today: string): Activity[] {
   if (confirmed?.confirmedAt) list.push(a(26, confirmed.confirmedAt, "Maeve Quirke", "Confirmed supplier invoice costs", `${confirmed.supplier} ${confirmed.invoiceNo}`, "invoicing"));
   if (lastExport) list.push(a(27, lastExport, "Maeve Quirke", "Exported invoices to accounts", `${exported} invoice${exported === 1 ? "" : "s"}`, "invoicing"));
   return list.filter((x) => x.at <= at(today, "23:59")).sort((x, y) => y.at.localeCompare(x.at));
+}
+
+/** Every finished week of hours went to Sage Payroll on the Tuesday after; last week is waiting when today is Monday or Tuesday morning's work. */
+export function seedPayrollExports(db: Db, today: string): PayrollExport[] {
+  const out: PayrollExport[] = [];
+  let mon = addDays(workWeek(today)[0]!, -7);
+  for (let i = 0; i < 8; i++, mon = addDays(mon, -7)) {
+    const sent = addDays(mon, 8);
+    if (sent >= today) continue;
+    const days = fullWeek(mon);
+    const rows = db.attendance.filter((a) => days.includes(a.date));
+    out.push({ id: `pay-${mon}`, weekStart: mon, at: at(sent, "11:15"), by: "Maeve Quirke", people: new Set(rows.map((a) => a.personId)).size, hours: rows.reduce((n, a) => n + basicHours(a.date, a.status) + overtimeTotal(a), 0) });
+  }
+  return out;
+}
+
+/** Each week that went to Sage Payroll was checked by a contracts manager the afternoon before (17 Nov). */
+export function seedPayrollChecks(exports: PayrollExport[]): PayrollCheck[] {
+  return exports.map((x) => ({ id: `chk-${x.weekStart}`, weekStart: x.weekStart, at: at(addDays(x.weekStart, 7), "16:20"), by: "Tadhg Morrissey" }));
+}
+
+/**
+ * Two claims waiting for the director, one approved and waiting for the office to pay, and one
+ * already sent for payment. Sample receipts have no picture behind them.
+ */
+export function seedExpenses(today: string): Expense[] {
+  return [
+    { id: "ex-4", personId: "p-111", createdAt: at(workdays(today, -3), "16:35"), date: workdays(today, -3), kind: "Materials", what: "Box of slate hooks and two ridge fixings, the delivery was short", amount: 31.4, projectId: "pr-C721", status: "Approved", decidedBy: "Aidan King", decidedAt: at(workdays(today, -2), "08:50") },
+    { id: "ex-3", personId: "p-104", createdAt: at(workdays(today, -1), "17:40"), date: workdays(today, -1), kind: "Materials", what: "Bag of hydrated lime and a hawk from the builders' providers, ran short on site", amount: 46.8, projectId: "pr-C724", status: "Waiting" },
+    { id: "ex-2", personId: "p-sm2", createdAt: at(today, "07:55"), date: today, kind: "Fuel", what: "Diesel for the crew van, the fuel card was declined", amount: 92.15, projectId: "pr-C720", status: "Waiting" },
+    { id: "ex-1", personId: "p-110", createdAt: at(workdays(today, -6), "16:10"), date: workdays(today, -6), kind: "Parking and tolls", what: "M50 toll and parking at the builders' providers", amount: 9.6, projectId: null, status: "Approved", decidedBy: "Aidan King", decidedAt: at(workdays(today, -5), "09:05"), exportedAt: at(workdays(today, -4), "11:20"), exportedBy: "Maeve Quirke" },
+  ];
+}
+
+/**
+ * Overtime claimed from the phones (round ten), read off the timesheets so the two agree: two
+ * claims waiting for Eoin Brosnan from the last working day, the night at Derrybawn Bridge that
+ * ran past midnight (claimed the next morning and approved as it stands on the timesheet), and
+ * one from Dunmoy Courthouse that was declined with a note.
+ */
+export function seedOvertimeClaims(db: Db, today: string): OvertimeClaim[] {
+  const site = (code: string) => db.projects.find((p) => p.code === code);
+  const managerOf = (code: string) => db.people.find((p) => p.id === site(code)?.siteManagerId)?.name ?? "";
+  const rows = (code: string, date: string) => db.attendance.filter((a) => a.projectId === site(code)?.id && a.date === date).sort((a, b) => a.personId.localeCompare(b.personId));
+  const monday = workWeek(today)[0]!;
+  const last = workdays(today, -1);
+  const out: OvertimeClaim[] = [];
+  const plain = (code: string) => rows(code, last).find((a) => a.status === "full" && a.sent && overtimeTotal(a) === 0);
+  const bridge = plain("C724");
+  if (bridge) out.push({ id: "oc-4", personId: bridge.personId, projectId: bridge.projectId, date: last, hours: 2, note: "Stayed on to reset the traffic lights after the stone delivery", createdAt: at(last, "18:10"), status: "Waiting" });
+  const church = plain("C719");
+  if (church) out.push({ id: "oc-3", personId: church.personId, projectId: church.projectId, date: last, hours: 1.5, note: "Finished pointing the east buttress before the rain came in", createdAt: at(last, "17:50"), status: "Waiting" });
+  const wednesday = addDays(monday, -5);
+  const night = rows("C724", wednesday).find((a) => (a.doubleHours ?? 0) > 0);
+  if (night)
+    out.push({ id: "oc-2", personId: night.personId, projectId: night.projectId, date: wednesday, hours: overtimeTotal(night), note: "Night road closure for the parapet lift, worked through until half one", createdAt: at(addDays(wednesday, 1), "07:35"), status: "Approved", decidedBy: managerOf("C724"), decidedAt: at(addDays(wednesday, 1), "08:40"), overtimeHours: night.overtimeHours, doubleHours: night.doubleHours ?? 0 });
+  const friday = addDays(monday, -3);
+  const court = rows("C722", friday)[0];
+  if (court)
+    out.push({ id: "oc-1", personId: court.personId, projectId: court.projectId, date: friday, hours: 2, note: "Stayed back to cover the lime plaster", createdAt: at(friday, "17:15"), status: "Declined", decidedBy: managerOf("C722"), decidedAt: at(monday, "08:15"), declineNote: "The crew finished at half four that day. Come and see me if I have that wrong." });
+  return out;
+}
+
+/**
+ * One site given to a site manager who does not run it, so Admin, Site access opens with an
+ * example: Róisín Garvey runs two live sites, so Shane Culloty can open Granary Quay as well.
+ */
+export function seedSiteAccess(today: string): SiteAccess[] {
+  return [{ id: "sa-1", personId: "p-sm5", projectId: "pr-C725", by: "Aidan King", at: at(workdays(today, -3), "16:20") }];
+}
+
+/** What two site managers put up for their crews this morning, so the operative's phone has today's instructions. */
+export function seedDayInstructions(today: string): DayInstruction[] {
+  return [
+    { id: "di-1", projectId: "pr-C719", date: today, text: "The scaffold inspector is on the belfry lift from 10:00. Keep off that lift until I give the all clear. Toolbox talk on working at height at 12:45 in the cabin.", by: "Eoin Brosnan", at: at(today, "07:35") },
+    { id: "di-2", projectId: "pr-C720", date: today, text: "The drawing room is sealed for the ceiling work. Boot covers on and dust sheets down before you go in. Keep the yard gate clear, the skip is being changed mid morning.", by: "Cathal Minogue", at: at(today, "07:50") },
+  ];
 }

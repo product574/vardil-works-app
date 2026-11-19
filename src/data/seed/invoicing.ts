@@ -44,7 +44,7 @@ export function fillInvoicing(db: Db, today: string, domain: string, company: st
       fromName: who,
       fromAddress: `accounts@${domain}`,
       subject: email.subject,
-      body: `To: ${c?.contactName ?? ""} <${i.sentTo}>\n\n${email.body}`,
+      to: `${c?.contactName ?? ""} <${i.sentTo}>`, body: `${email.body}`,
       receivedAt: i.sentAt,
       read: true,
       intent: "General",

@@ -10,6 +10,10 @@ const f = (d: string, o: Intl.DateTimeFormatOptions) => utc(d).toLocaleDateStrin
 export const dShort = (d: string | undefined) => (d ? f(d, { day: "numeric", month: "short" }) : "-");
 /** 13 Nov 2026 */
 export const dFull = (d: string | undefined) => (d ? f(d, { day: "numeric", month: "short", year: "numeric" }) : "-");
+/** 13 Nov this year, 13 Nov 2025 any other year: a list that goes back more than a year, or a date years ahead, needs its year. */
+export const dNear = (d: string | undefined, today: string) => (d && d.slice(0, 4) !== today.slice(0, 4) ? dFull(d) : dShort(d));
+/** A month kept as "2024-01", written "Jan 2024". */
+export const monthYear = (ym: string | undefined) => (ym && /^\d{4}-\d{2}$/.test(ym) ? f(`${ym}-01`, { month: "short", year: "numeric" }) : (ym ?? "-"));
 /** Fri 13 Nov */
 export const dWeekday = (d: string | undefined) => (d ? f(d, { weekday: "short", day: "numeric", month: "short" }) : "-");
 /** Friday 13 November 2026 */

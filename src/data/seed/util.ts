@@ -1,3 +1,4 @@
+import { isBuiltInBankHoliday } from "@/lib/bank-holidays";
 import { addDays, isWeekend } from "@/lib/dates";
 
 /** Small deterministic random generator, so the sample data is identical on every machine. */
@@ -19,15 +20,22 @@ export function rng(seed: number) {
 }
 export type Rng = ReturnType<typeof rng>;
 
-/** The demo's "today": the most recent working day, so site screens are never empty at a weekend. */
+/**
+ * The demo's "today": the most recent working day, so site screens are never empty at a weekend
+ * or on a bank holiday (17 Nov: nobody is marked a normal day on one).
+ */
 export function demoDay(realToday: string) {
   let d = realToday;
-  while (isWeekend(d)) d = addDays(d, -1);
+  while (isWeekend(d) || isBuiltInBankHoliday(d)) d = addDays(d, -1);
   return d;
 }
 
 /** The date itself on a working day, or the Friday before a weekend: for things that happen in office hours. */
-export const weekday = demoDay;
+export function weekday(date: string) {
+  let d = date;
+  while (isWeekend(d)) d = addDays(d, -1);
+  return d;
+}
 
 /** Move by working days (negative goes back). */
 export function workdays(from: string, n: number) {

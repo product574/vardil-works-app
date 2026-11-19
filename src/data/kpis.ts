@@ -1,5 +1,6 @@
 // The numbers on the dashboard, each worked out from the records so they can never disagree
 // with the screens they link to.
+import { withOffice } from "@/lib/requests";
 import { dueState } from "@/lib/status";
 import { nextServiceDate } from "@/lib/status";
 import { needsAccounts, owedOut, purchaseStage } from "@/lib/purchases";
@@ -34,7 +35,7 @@ export function dashboardNumbers(db: Db, today: string) {
       peopleOnSite: new Set(todays.map((a) => a.personId)).size,
       timeStampsNotSent: live.filter((p) => !sitesSent.has(p.id)).length,
       notStarted: db.projects.filter((p) => p.status === "Not started").length,
-      openRequests: db.requests.filter((r) => r.status === "Open").length,
+      openRequests: db.requests.filter(withOffice).length,
     },
     money: {
       toInvoice: db.salesInvoices.filter((i) => i.status === "To invoice").length,

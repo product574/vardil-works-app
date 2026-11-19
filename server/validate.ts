@@ -30,10 +30,10 @@ const BLOCK_TYPES: Record<"user" | "assistant", Set<string>> = {
  * required too, which makes a page elsewhere ask the browser's permission first (it never
  * gets it: there are no CORS headers). A body bigger than the limit is refused unread.
  */
-export function requestGate(url: string, headers: Headers): { status: number; error: string } | null {
+export function requestGate(url: string, headers: Headers, maxBody: number = ASK_LIMITS.body): { status: number; error: string } | null {
   if (headers.get("origin") !== new URL(url).origin) return { status: 403, error: "origin" };
   if (!/^application\/json\b/i.test(headers.get("content-type") ?? "")) return { status: 415, error: "content_type" };
-  if (Number(headers.get("content-length") ?? "0") > ASK_LIMITS.body) return { status: 413, error: "too_big" };
+  if (Number(headers.get("content-length") ?? "0") > maxBody) return { status: 413, error: "too_big" };
   return null;
 }
 

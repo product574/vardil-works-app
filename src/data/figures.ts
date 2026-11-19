@@ -1,5 +1,6 @@
 // Money figures for one project, worked out from the records. The Job costs screen and Ask AI
 // both use this, so the assistant can never give a different margin from the screen.
+import { r2 } from "@/lib/money";
 import { labourCost, scopePercent, supplierCostByCategory } from "@/lib/project-costs";
 import type { Db, Project } from "./types";
 
@@ -24,7 +25,7 @@ export type ProjectCosts = {
 
 export function projectCosts(db: Db, p: Project): ProjectCosts {
   const rate = new Map(db.people.map((x) => [x.id, x.hourlyRate]));
-  const labour = labourCost(db.attendance.filter((a) => a.projectId === p.id).map((a) => ({ status: a.status, overtimeHours: a.overtimeHours, hourlyRate: rate.get(a.personId) ?? 0 })));
+  const labour = labourCost(db.attendance.filter((a) => a.projectId === p.id).map((a) => ({ date: a.date, status: a.status, overtimeHours: a.overtimeHours, doubleHours: a.doubleHours, hourlyRate: rate.get(a.personId) ?? 0 })));
   const supplier = supplierCostByCategory(
     db.supplierInvoices.filter((s) => s.readStatus === "confirmed").flatMap((s) => s.allocations.filter((a) => a.projectId === p.id).map((a) => ({ category: a.category, amount: a.amount, credit: s.docType === "credit_note" }))),
   );
@@ -37,4 +38,17 @@ export function projectCosts(db: Db, p: Project): ProjectCosts {
   const invoiced = db.salesInvoices.filter((i) => i.projectId === p.id && (i.status === "Invoiced" || i.status === "Paid")).reduce((s, i) => s + i.net, 0);
   const waiting = db.supplierInvoices.filter((s) => s.readStatus !== "confirmed" && s.jobRef === p.code).length;
   return { labour, supplier, plant, material, other, cost, pct, earned, margin: earned > 0 ? ((earned - cost) / earned) * 100 : null, invoiced, waiting };
+}
+
+/**
+ * The checked invoices that came in for a job, as Profitability shows them, under four
+ * headings (Oisin, 17 Nov, after round ten): plant and hire (with equipment, as on Job costs),
+ * materials, subcontractors, and other (carriage and anything else). Invoices only: plant still
+ * on hire and the firm's own plant are not charged until an invoice is checked (his picks).
+ * The four add up to everything on Job costs that is not the firm's own labour.
+ */
+export function jobInvoices(db: Db, p: Project): { plantHire: number; materials: number; subcontractors: number; other: number } {
+  const { supplier } = projectCosts(db, p);
+  const get = (k: string) => supplier[k] ?? 0;
+  return { plantHire: r2(get("plant") + get("equipment")), materials: r2(get("material")), subcontractors: r2(get("labour")), other: r2(get("transport") + get("other")) };
 }

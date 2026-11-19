@@ -22,6 +22,7 @@ import { partyOf, payBy, PURCHASE_LABEL, purchaseStage } from "@/lib/purchases";
 import { REGION, r2 } from "@/lib/money";
 import { bookingFor, complianceRows, countRows, courseStage, planBlocks } from "@/lib/compliance";
 import { conversionByKind, finishedInYear, onTime, paidInYear, salesByCustomer, salesInYear, tenderWinRate, topByMargin, totals, whereMoneyGoes, yearStart } from "@/lib/reports";
+import { EARLY_START_NOTE, overtimeSplit, overtimeText, overtimeTotal } from "@/lib/overtime";
 import { currentPlan, invoicePaid, nextInvoice } from "@/lib/subscription";
 import { costBreakdown, marginPct, quoteTotal } from "@/lib/quotes";
 import { daysBetween, dueState, nextServiceDate } from "@/lib/status";
@@ -38,7 +39,11 @@ export const RECORD_LINKS: [pattern: string, what: string][] = [
   ["/dashboard?open=ap-1", "one draft in Approvals, opened on the overview"],
   ["/people?person=p-101", "one person"],
   ["/plant?item=pl-MX1", "one item of own plant"],
-  ["/plant/vehicles?vehicle=v-1", "one vehicle"],
+  ["/fleet/vehicles/v-1", "one vehicle"],
+  ["/fleet/invoices/ginv-1", "one garage invoice"],
+  ["/fleet/garages/g-01", "one garage"],
+  ["/fleet/damage?report=dmg-1", "one damage report"],
+  ["/fleet/drivers?driver=p-sm1", "one driver and their licences"],
   ["/compliance/personnel?person=p-124", "one person's training tickets in Compliance"],
   ["/compliance/subcontractors?sub=sub-1", "one subcontractor's papers in Compliance"],
   ["/files?project=C719", "one project's files in the Files section"],
@@ -136,7 +141,12 @@ export function buildSnapshot(db: Db, today: string, brand: Brand): string {
 
   // Screens
   const screens: string[] = ["## Screens you can link to (use these paths exactly)"];
-  for (const d of DEPARTMENTS) for (const g of d.groups) for (const i of g.items) screens.push(`${i.to} | ${d.title ?? d.label}: ${i.label}`);
+  for (const d of DEPARTMENTS)
+    for (const g of d.groups)
+      for (const i of g.items) {
+        screens.push(`${i.to} | ${d.title ?? d.label}: ${i.label}`);
+        for (const t of i.tabs ?? []) screens.push(`${t.to} | ${d.title ?? d.label}: ${t.label}`);
+      }
   screens.push("Links to one record:");
   for (const [p, what] of RECORD_LINKS) screens.push(`${p} | ${what}`);
   out.push(screens.join("\n"));
@@ -190,7 +200,7 @@ export function buildSnapshot(db: Db, today: string, brand: Brand): string {
         const c = projectCosts(db, p);
         return [p.code, p.name, client.get(p.clientId)?.name ?? "", `${p.location}, ${p.county}`, p.status, name(p.siteManagerId), name(p.contractsManagerId), p.startDate, `${p.endDate} (${rel(p.endDate, today)})`, p.value == null ? "not priced" : n0(p.value), `${c.pct}%`, n0(c.earned), n0(c.labour), n0(c.plant), n0(c.material), n0(c.other), n0(c.cost), c.margin == null ? "-" : `${c.margin.toFixed(1)}%`, n0(c.invoiced), [flags(p), c.waiting ? `${c.waiting} supplier invoice(s) not checked yet, so not counted` : ""].filter(Boolean).join("; ")];
       }),
-      "Margin so far = (value earned - cost to date) / value earned. Value earned = contract value x share of scope done. Labour is from timesheets at each person's rate, overtime at time and a half; other costs only from checked supplier invoices.",
+      "Margin so far = (value earned - cost to date) / value earned. Value earned = contract value x share of scope done. Labour is from timesheets at each person's rate, overtime at time and a half, or at double time where the timesheet says so; other costs only from checked supplier invoices.",
     ),
   );
   out.push(
@@ -215,7 +225,7 @@ export function buildSnapshot(db: Db, today: string, brand: Brand): string {
     for (const a of db.assignments.filter((x) => x.projectId === p.id)) {
       const pe = person.get(a.personId);
       const t = today_.find((x) => x.personId === a.personId);
-      crew.push(`- ${pe?.name ?? ""}, ${pe?.trade ?? ""}: ${t ? `${t.status} day${t.overtimeHours ? ` +${t.overtimeHours}h overtime` : ""}` : "not marked today"}`);
+      crew.push(`- ${pe?.name ?? ""}, ${pe?.trade ?? ""}: ${t ? `${t.status} day${overtimeTotal(t) ? ` + overtime ${overtimeText(t)}` : ""}` : "not marked today"}`);
     }
   }
   out.push(crew.join("\n"));
@@ -233,18 +243,20 @@ export function buildSnapshot(db: Db, today: string, brand: Brand): string {
   // Attendance
   const month = today.slice(0, 7);
   const lastMonthDate = addDays(`${month}-01`, -1).slice(0, 7);
-  const att: string[] = ["## Attendance (time stamps)", `This week (${thisWeek[0]} to ${thisWeek[4]}) day by day, then days and overtime hours this month (${month}) and last month (${lastMonthDate}).`];
+  const att: string[] = ["## Attendance (time stamps)", `This week (${thisWeek[0]} to ${thisWeek[4]}) day by day, then days and overtime hours this month (${month}) and last month (${lastMonthDate}). Overtime hours are written with their rate, x1.5 for time and a half and x2 for double time, and a day can have both. The firm's rule: time and a half on a weekday after a normal day's hours up to midnight and on Saturday from 8am to 12 noon; double time after midnight when the work carries on from the day before, on Saturday after 12 noon, on Sunday and on bank holidays. ${EARLY_START_NOTE} Weekend and bank holiday work is a time stamp with no normal day in it: every hour is overtime. Bank holidays: ${db.bankHolidays.filter((h) => h.date.startsWith(today.slice(0, 4))).map((h) => `${h.date} ${h.name}`).join(", ")}.`];
   for (const p of db.people.filter((x) => db.attendance.some((a) => a.personId === x.id))) {
     const mine = db.attendance.filter((a) => a.personId === p.id);
     const week = weekLine(thisWeek, (d) => {
       const a = mine.find((x) => x.date === d);
-      return a ? `${code(a.projectId)} ${a.status}${a.overtimeHours ? ` +${a.overtimeHours}h` : ""}` : null;
+      return a ? `${code(a.projectId)} ${a.status === "restday" ? "bank holiday work" : a.status}${overtimeTotal(a) ? ` + ${overtimeText(a)}` : ""}` : null;
     });
     const sum = (ym: string) => {
       const rows = mine.filter((a) => a.date.startsWith(ym));
-      const days = rows.reduce((s, a) => s + (a.status === "full" ? 1 : 0.5), 0);
-      const ot = rows.reduce((s, a) => s + a.overtimeHours, 0);
-      return `${days} days${ot ? `, ${ot}h overtime` : ""}`;
+      const days = rows.reduce((s, a) => s + (a.status === "full" ? 1 : a.status === "half" ? 0.5 : 0), 0);
+      const ot = rows.reduce((s, a) => s + overtimeTotal(a), 0);
+      const dbl = overtimeSplit(rows).double;
+      const rest = rows.filter((a) => a.status === "restday");
+      return `${days} days${ot ? `, ${ot}h overtime${dbl ? ` (${dbl}h of it at double time)` : ""}` : ""}${rest.length ? `, weekend or bank holiday work: ${rest.map((a) => `${a.date} ${code(a.projectId)} ${overtimeText(a)}`).join(", ")}` : ""}`;
     };
     att.push(`${p.name}: this week ${week}; ${month} ${sum(month)}; ${lastMonthDate} ${sum(lastMonthDate)}`);
   }
@@ -274,28 +286,38 @@ export function buildSnapshot(db: Db, today: string, brand: Brand): string {
   plan.splice(2, 0, `Operatives with free days next week: ${freeNext.length}${freeNext.length ? `: ${freeNext.join("; ")}` : ""}.`);
   out.push(plan.join("\n"));
 
-  out.push(table("Holidays", ["person", "from", "to", "status", "asked by", "note"], db.holidays.map((h) => [name(h.personId), h.from, h.to, h.status, h.via, h.note ?? ""])));
+  out.push(table("Holidays", ["person", "from", "to", "status", "asked by", "note", "why declined"], db.holidays.map((h) => [name(h.personId), h.from, h.to, h.status, h.via, h.note ?? "", h.status === "Declined" ? `${h.declineNote ?? "no note left"}${h.decidedBy ? `, by ${h.decidedBy}` : ""}` : ""])));
 
   // Sales
   out.push(table("Clients", ["id", "name", "type", "contact", "phone", "email", "payment terms", "account ref", "portal"], db.clients.map((c) => [c.id, c.name, c.type, c.contactName, c.contactPhone, c.contactEmail, `${c.termsDays} days`, c.accountRef, c.portalEnabled ? "on" : "off"])));
+  const earlierTender = (q: Db["quotes"][number]) => (q.status === "Accepted" || q.status === "Declined") && !!q.respondedAt && q.respondedAt.slice(0, 10) < addDays(today, -120);
   out.push(
     table(
-      "Enquiries",
+      "Enquiries, the last four months and any still open (older ones are in Quotes, by their tender)",
       ["ref", "received", "source", "client", "contact", "where", "what they want", "status", "quote"],
-      db.enquiries.map((e) => [e.ref, `${e.receivedAt.slice(0, 10)} (${rel(e.receivedAt, today)})`, e.source, client.get(e.clientId)?.name ?? "", e.contactName, `${e.location}, ${e.county}`, e.description, e.status, db.quotes.find((q) => q.id === e.quoteId)?.ref ?? "none yet"]),
+      db.enquiries.filter((e) => e.receivedAt.slice(0, 10) >= addDays(today, -120) || !e.quoteId || ["Draft", "Sent", "Opened", "Queried", "Awaiting approval"].includes(db.quotes.find((q) => q.id === e.quoteId)?.status ?? "")).map((e) => [e.ref, `${e.receivedAt.slice(0, 10)} (${rel(e.receivedAt, today)})`, e.source, client.get(e.clientId)?.name ?? "", e.contactName, `${e.location}, ${e.county}`, e.description, e.status, db.quotes.find((q) => q.id === e.quoteId)?.ref ?? "none yet"]),
     ),
   );
   out.push(
     table(
-      "Quotes",
+      "Quotes, the last four months and any not yet decided",
       ["ref", "client", "title", "status", "total before VAT", "estimated cost", "margin", "sent", "opened", "client answered", "chased", "client's question", "purchase order"],
-      db.quotes.map((q) => {
+      db.quotes.filter((q) => !earlierTender(q)).map((q) => {
         const sell = quoteTotal(q.lines);
         const cost = costBreakdown(q.costing).total;
         const m = marginPct(sell, cost);
         const d = (s?: string) => (s ? `${s.slice(0, 10)} (${rel(s, today)})` : "");
         return [q.ref, client.get(q.clientId)?.name ?? "", q.title, q.status, n2(sell), n2(cost), m == null ? "-" : `${m}%`, d(q.sentAt), d(q.openedAt), d(q.respondedAt), d(q.chasedAt), q.query ?? "", q.poNumber ?? ""];
       }),
+    ),
+  );
+
+  // Tenders decided more than four months ago, in short (merged 19 Nov, to keep the summary inside its size).
+  out.push(
+    table(
+      "Earlier tenders, decided more than four months ago",
+      ["ref", "client", "title", "kind of work", "status", "total before VAT", "answered"],
+      db.quotes.filter(earlierTender).map((q) => [q.ref, client.get(q.clientId)?.name ?? "", q.title, q.kind ?? "", q.status, n2(quoteTotal(q.lines)), (q.respondedAt ?? "").slice(0, 10)]),
     ),
   );
 
@@ -311,10 +333,9 @@ export function buildSnapshot(db: Db, today: string, brand: Brand): string {
       "Late counts days past the due date, as on Invoicing: Unpaid (aged debt). An issued invoice goes by its accounts number (SI-), the one the client has; one not issued yet by our own reference (INV-).",
     ),
   );
-  // Every invoice of the last four months, and any older one not paid yet, in full; older paid
-  // ones as one line per supplier, so the summary stays well inside the server's limit.
-  const recentFrom = addDays(today, -120);
-  const inFull = (x: Db["supplierInvoices"][number]) => x.invoiceDate >= recentFrom || purchaseStage(x) !== "paid";
+  // Older paid ones as one line per supplier, so the summary stays well inside the server's limit.
+  // Paid ones from the last two months line by line (merged 19 Nov, to keep the summary inside its size); anything not yet paid, whatever its age.
+  const inFull = (x: Db["supplierInvoices"][number]) => x.invoiceDate >= addDays(today, -60) || purchaseStage(x) !== "paid";
   out.push(
     table(
       "Supplier and subcontractor invoices (accounts check each one; it is approved into job costs, then paid by accounts). Every one from the last four months, and any older one not paid yet",
@@ -336,7 +357,7 @@ export function buildSnapshot(db: Db, today: string, brand: Brand): string {
       db.variations.map((v) => [code(v.projectId), name(v.raisedById), v.raisedAt.slice(0, 10), v.description, v.measured, n2(v.estimatedValue), v.status, v.originalLanguage ?? "en"]),
     ),
   );
-  out.push(table("Site requests (the managing director answers each yes or no in Admin, Requests)", ["project", "kind", "what", "how many", "needed from", "needed to", "asked by", "status", "yes or no"], db.requests.map((r) => [code(r.projectId), r.kind.replace("_", " "), r.description, r.quantity, r.neededFrom, r.neededTo, r.requestedBy, r.status, r.decision ? `${r.decision.toLowerCase()} by ${r.decidedBy}` : r.status === "Open" ? "waiting" : ""])));
+  out.push(table("Site requests (the managing director answers each yes or no in Admin, Requests)", ["project", "kind", "what", "how many", "needed from", "needed to", "asked by", "status", "yes or no"], db.requests.map((r) => [r.projectId ? code(r.projectId) : "general, not for one site", r.kind === "other" ? "something else" : r.kind.replace("_", " "), r.description, r.quantity, r.neededFrom, r.neededTo, r.requestedBy, r.status, r.decision ? `${r.decision.toLowerCase()} by ${r.decidedBy}${r.declineNote ? ` (note: ${r.declineNote})` : ""}` : r.status !== "Open" ? "" : r.heldBy === "site" ? "with the site manager, not yet asked of the office" : "waiting"])));
   out.push(table("Spending requests (Admin, Requests)", ["what", "supplier", "for", "amount ex VAT", "asked by", "asked", "why", "status"], db.spendRequests.map((x) => [x.what, x.supplier, x.projectId ? code(x.projectId) : "the firm", n2(x.amount), name(x.requestedById), x.createdAt.slice(0, 16).replace("T", " "), x.reason, x.status === "Waiting" ? "waiting" : `${x.status.toLowerCase()} by ${x.decidedBy}`])));
   out.push(table("Supplies on order for sites", ["from", "supplier or subcontractor", "project", "what", "ordered", "due", "status"], db.supplies.map((x) => [x.from, x.party, code(x.projectId), x.description, x.orderedOn, `${x.dueOn} (${rel(x.dueOn, today)})`, x.progress ? `${x.status}, ${x.progress}` : x.status])));
   out.push(table("Updates from subcontractors and suppliers in the portal", ["when", "from", "supplier or subcontractor", "project", "update"], db.portalNotes.map((x) => [x.at.slice(0, 16).replace("T", " "), x.from, x.party, x.projectId ? code(x.projectId) : "", x.text])));
@@ -362,20 +383,64 @@ export function buildSnapshot(db: Db, today: string, brand: Brand): string {
       }),
     ),
   );
+  // Fleet (18 Nov, from the Secure-All build): vehicles, garage invoices with spend by vehicle, base, driver and site, renewals and damage.
+  const baseName = (id: string | null) => db.bases.find((b) => b.id === id)?.name ?? "";
+  const garageName = (id: string) => db.garages.find((g) => g.id === id)?.name ?? "";
+  const reg = (id: string) => db.vehicles.find((v) => v.id === id)?.reg ?? "";
   out.push(
     table(
-      "Vehicles",
-      ["id", "registration", "model", "kind", "based at", "driver", "mileage", "tax", region.vehicleTest, "insurance", "status"],
-      db.vehicles.map((v) => [v.id, v.reg, v.model, v.kind, v.baseLocation, name(v.driverId) || "none", v.mileage, due(v.compliance.tax.expiryDate, today), due(v.compliance.test.expiryDate, today), due(v.compliance.insurance.expiryDate, today), v.active ? "in use" : `sold${v.sellPrice != null ? ` for ${n0(v.sellPrice)}` : ""}`]),
+      "Vehicles (Fleet, Vehicles)",
+      ["id", "registration", "make and model", "kind", "used for", "base", "driver", "mileage", "tax", region.vehicleTest, "insurance", "next service", "status"],
+      db.vehicles.map((v) => [v.id, v.reg, `${v.make} ${v.model}`, v.kind, v.division, baseName(v.baseId), name(v.driverId) || "pool", v.mileage, due(v.compliance.tax.expiryDate, today), due(v.compliance.test.expiryDate, today), due(v.compliance.insurance.expiryDate, today), nextServiceDate(v.service, today).date, v.active ? "on the fleet" : `removed ${v.removedAt ?? ""}${v.sellPrice != null ? `, sold for ${n0(v.sellPrice)}` : ", not sold"}`]),
+    ),
+  );
+  // The last three months line by line, and anything still to check; older ones summed per
+  // vehicle and category (merged 19 Nov, to keep the summary inside its size), so the totals
+  // still match Fleet's repair spend for any period.
+  const garageFrom = addDays(today, -91);
+  const garageFull = (i: Db["garageInvoices"][number]) => i.date >= garageFrom || i.status !== "Checked";
+  out.push(
+    table(
+      "Garage invoices (Fleet, Invoices), the last three months and any to check. One line per vehicle; amounts include VAT",
+      ["id", "number", "garage", "date", "status", "vehicle", "base", "driver", "site that day", "category", "work", "amount"],
+      db.garageInvoices.filter(garageFull).flatMap((i) => i.lines.map((l) => [i.id, i.invoiceNo, garageName(i.garageId), i.date, i.status, reg(l.vehicleId), baseName(l.baseId), name(l.driverId), code(l.siteId), l.category, l.description, n2(l.amount)])),
+    ),
+  );
+  const olderRepairs = new Map<string, { n: number; total: number; from: string; to: string }>();
+  for (const i of db.garageInvoices.filter((x) => !garageFull(x))) {
+    for (const l of i.lines) {
+      const k = reg(l.vehicleId);
+      const r = olderRepairs.get(k) ?? { n: 0, total: 0, from: i.date, to: i.date };
+      r.n++;
+      r.total += l.amount;
+      if (i.date < r.from) r.from = i.date;
+      if (i.date > r.to) r.to = i.date;
+      olderRepairs.set(k, r);
+    }
+  }
+  out.push(
+    table(
+      "Older garage invoices, all checked, summed per vehicle (amounts include VAT)",
+      ["vehicle", "repairs", "first", "last", "total"],
+      [...olderRepairs.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([k, r]) => [k, String(r.n), r.from, r.to, n2(r.total)]),
+    ),
+  );
+  out.push(table("Garages", ["id", "name", "town", "county", "phone", "email"], db.garages.map((g) => [g.id, g.name, g.town, g.county, g.phone, g.email])));
+  out.push(table("Damage reported from the site phones (Fleet, Damage reported)", ["id", "vehicle", "reported", "by", "where", "what happened", "status"], db.damageReports.map((d) => [d.id, reg(d.vehicleId), d.at.slice(0, 16).replace("T", " "), name(d.driverId), d.where, d.note, d.status])));
+  out.push(
+    table(
+      "Drivers' licences (Fleet, Drivers)",
+      ["driver", "driving licence", "Driver CPC", "sent from the phone, to check"],
+      db.people.filter((p) => p.drives).map((p) => [p.name, p.licences?.driving ? due(p.licences.driving.expiryDate, today) : "none on file", p.licences?.cpc ? due(p.licences.cpc.expiryDate, today) : "", p.licences?.driving?.fromPhoneAt || p.licences?.cpc?.fromPhoneAt ? "yes" : ""]),
     ),
   );
 
   // Inbox
   out.push(
     table(
-      "Email (shared mailboxes), the last four months",
+      "Email (shared mailboxes), the last ten weeks. Folder Filed means someone has put it under its tag, out of the Inbox",
       ["id", "folder", "mailbox", "from", "address", "received", "read", "tag", "passed to", "client", "subject", "drafted reply waiting", "text"],
-      db.mails.filter((m) => m.receivedAt.slice(0, 10) >= recentFrom).map((m) => [m.id, m.folder, m.mailbox, m.fromName, m.fromAddress, m.receivedAt.slice(0, 16).replace("T", " "), m.read ? "read" : "unread", m.intent, name(m.routedToId), m.clientId ? (client.get(m.clientId)?.name ?? "") : "", m.subject, m.replyDraft ? `yes: ${m.replyDraft.subject}` : "no", m.body.length > 600 ? `${m.body.slice(0, 600)}...` : m.body]),
+      db.mails.filter((m) => m.receivedAt.slice(0, 10) >= addDays(today, -70)).map((m) => [m.id, m.folder, m.mailbox, m.fromName, m.fromAddress, m.receivedAt.slice(0, 16).replace("T", " "), m.read ? "read" : "unread", m.intent, name(m.routedToId), m.clientId ? (client.get(m.clientId)?.name ?? "") : "", m.subject, m.replyDraft ? `yes: ${m.replyDraft.subject}` : "no", m.body.length > 450 ? `${m.body.slice(0, 450)}...` : m.body]),
     ),
   );
 

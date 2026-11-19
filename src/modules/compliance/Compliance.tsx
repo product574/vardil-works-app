@@ -4,6 +4,7 @@
  * filters (his pick). Then a screen per area: Personnel (a matrix or a list), Training courses,
  * Fleet, Machinery (with the scaffold registers), Company papers and Subcontractors.
  */
+import { driversOf } from "@/lib/fleet";
 import { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { addCert, addCourse, bookOnCourse, markCourseDone, recordSubWorker, unbookFromCourse } from "@/data/actions";
@@ -671,14 +672,21 @@ export function Fleet() {
   const Cell = ({ r }: { r?: ComplianceRow }) =>
     r ? (
       <button type="button" disabled={!canEdit} onClick={() => setOpen(r)} aria-label={`${r.who}, ${r.item}: ${stateLabel(r, day).toLowerCase()}`} className={cx("press block w-full rounded-md px-2 py-1 text-left whitespace-nowrap disabled:cursor-default", r.state !== "ok" && CELL[r.state], canEdit && "hover:ring-1 hover:ring-accent")}>
-        {r.approx ? "About " : ""}
-        {dShort(r.due!)} {r.due!.slice(0, 4) !== day.slice(0, 4) ? r.due!.slice(0, 4) : ""}
+        {r.due ? (
+          <>
+            {r.approx ? "About " : ""}
+            {dShort(r.due)} {r.due.slice(0, 4) !== day.slice(0, 4) ? r.due.slice(0, 4) : ""}
+          </>
+        ) : (
+          "None on file"
+        )}
         {r.state !== "ok" && <span className="block text-[0.87rem] font-normal">{stateLabel(r, day)}</span>}
+        {r.proofNeeded && r.state === "ok" && <span className="block text-[0.87rem] font-normal text-warn">Proof needed</span>}
       </button>
     ) : (
       <span className="text-muted">-</span>
     );
-  const drivers = db.people.filter((p) => p.active && p.licence).sort((a, b) => a.name.localeCompare(b.name));
+  const drivers = driversOf(db.people, db.vehicles).filter((d) => d.active).map((d) => db.people.find((p) => p.id === d.id)!).filter(Boolean).sort((a, b) => a.name.localeCompare(b.name));
   return (
     <>
       <PageHead title="Fleet" note={`${plural(vehicles.length, "vehicle")} and ${plural(drivers.length, "driver")}. ${c.expired} run out, ${c.due} due inside 30 days. A van without ${words.roadTax.toLowerCase()}, ${words.vehicleTest} and insurance in date may not be driven, and its driver is told on the site phone.`} />
@@ -701,10 +709,10 @@ export function Fleet() {
                 return (
                   <tr key={v.id}>
                     <td>
-                      <Link to={`/plant/vehicles?vehicle=${v.id}`} className={cx("font-medium", LINK)}>
+                      <Link to={`/fleet/vehicles/${v.id}`} className={cx("font-medium", LINK)}>
                         {v.reg}
                       </Link>{" "}
-                      {v.model}
+                      {v.make} {v.model}
                       <span className="block text-[0.87rem] text-muted">
                         {v.kind}
                         {driver ? `, ${driver.name}` : ", no driver"}
@@ -721,46 +729,36 @@ export function Fleet() {
             </tbody>
           </table>
         </Panel>
-        <Section title="Driving licences" aside="Checked once a year: the licence itself, both sides.">
+        <Section title="Drivers" aside="The licence and Driver CPC are Fleet's records; the office also looks at each licence once a year.">
           <Panel className="overflow-x-auto">
             <table className="tbl" aria-label="Driving licences">
               <thead>
                 <tr>
                   <th>Driver</th>
-                  <th>Categories</th>
-                  <th>Licence runs out</th>
-                  <th>Last checked</th>
-                  <th>Status</th>
-                  <th>Proof</th>
-                  <th />
+                  <th>Driving licence</th>
+                  <th>Driver CPC</th>
+                  <th>Yearly check</th>
                 </tr>
               </thead>
               <tbody>
                 {drivers.map((p) => {
-                  const r = mine.find((x) => x.ref.kind === "licence" && x.ref.personId === p.id)!;
+                  const check = cell(`lic:${p.id}`);
                   return (
                     <tr key={p.id}>
                       <td>
-                        <span className="font-medium">{p.name}</span>
-                        <span className="block text-[0.87rem] text-muted">{r.whoSub.split(",")[0]}</span>
-                      </td>
-                      <td>{p.licence!.categories}</td>
-                      <td className="whitespace-nowrap">{dFull(p.licence!.expires)}</td>
-                      <td className="whitespace-nowrap">
-                        {dFull(p.licence!.checkedOn)}
-                        <span className="block text-[0.87rem] text-muted">by {p.licence!.checkedBy}</span>
+                        <Link to={`/fleet/drivers?driver=${p.id}`} className={cx("font-medium", LINK)}>
+                          {p.name}
+                        </Link>
+                        <span className="block text-[0.87rem] text-muted">{check?.whoSub}</span>
                       </td>
                       <td>
-                        <StateBadge r={r} day={day} />
-                        <span className="block text-[0.87rem] text-muted">{r.item === "Driving licence" ? "The licence itself runs out" : `Next check ${dShort(r.due!)}`}</span>
+                        <Cell r={cell(`dl:${p.id}:driving`)} />
+                        {cell(`dl:${p.id}:driving`)?.sent && <span className="block px-2 text-[0.87rem] text-accent-ink">Sent from the phone</span>}
                       </td>
-                      <td className="whitespace-nowrap"><ProofCell db={db} r={r} /></td>
-                      <td className="text-right">
-                        {canEdit && (
-                          <Button size="sm" onClick={() => setOpen(r)}>
-                            {actionLabel(r)}
-                          </Button>
-                        )}
+                      <td><Cell r={cell(`dl:${p.id}:cpc`)} /></td>
+                      <td>
+                        <Cell r={check} />
+                        {p.licenceCheck && <span className="block px-2 text-[0.87rem] text-muted">Last {dShort(p.licenceCheck.checkedOn)}, {p.licenceCheck.checkedBy}</span>}
                       </td>
                     </tr>
                   );
@@ -769,7 +767,7 @@ export function Fleet() {
             </table>
           </Panel>
         </Section>
-        <p className="text-[0.93rem] text-muted">Click a date to renew it. Services are counted from the mileage and typical weekly use, so their dates are a forecast. Repairs and receipts stay under Plant, Vehicle documents.</p>
+        <p className="text-[0.93rem] text-muted">Click a date to renew it: tax, test, insurance, licences and the CPC open Fleet's own form, so both places show the same records. Services are counted from the mileage and typical weekly use, so their dates are a forecast. Repairs, receipts and the rest are in Fleet.</p>
       </PageBody>
       {open && <RenewDialog key={open.key} row={open} onClose={() => setOpen(null)} />}
     </>

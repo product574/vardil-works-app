@@ -7,7 +7,8 @@
 import { type ReactNode, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAccess } from "@/data/access";
-import { addCert, addCertProof, bookOnCourse, checkLicence, checkTicketPhoto, inspectScaffold, recordPlantService, recordSubPaper, recordSubWorker, recordVehicleService, renewCert, renewCompanyPaper, renewPlantCert, renewVehicle } from "@/data/actions";
+import { ListChecks } from "@phosphor-icons/react";
+import { addCert, addCertProof, addTodo, bookOnCourse, checkLicence, checkTicketPhoto, confirmLicence, inspectScaffold, recordPlantService, recordSubPaper, recordSubWorker, recordVehicleService, renewCert, renewCompanyPaper, renewPlantCert } from "@/data/actions";
 import { useData, useDay, usePrefs } from "@/data/store";
 import type { Db, PermKey, Proof } from "@/data/types";
 import { type Area, bookingFor, type ComplianceRow, complianceRows, type CState, isCheck, openCourse, renewedTo, rowsInScope, scaffoldUnsafe, type Words } from "@/lib/compliance";
@@ -15,6 +16,9 @@ import { addDays } from "@/lib/dates";
 import { dFull, dShort } from "@/lib/format";
 import { REGION } from "@/lib/money";
 import { daysBetween } from "@/lib/status";
+import { driversOf } from "@/lib/fleet";
+import { todoDue } from "@/lib/renewals";
+import { LicenceDialog, RenewDialog as FleetRenewDialog } from "@/modules/fleet/DocForms";
 import { Badge, Button, cx, Dialog, Empty, Field, Panel, type Tone } from "@/ui";
 import { ProofField, ProofLink, useProofPick } from "@/ui/files";
 import { toast } from "@/ui/toast";
@@ -59,7 +63,7 @@ export function blockWords(r: ComplianceRow) {
   switch (r.ref.kind) {
     case "cert":
       return "Cannot be planned or marked on site";
-    case "licence":
+    case "driverLicence":
       return "May not drive";
     case "vehicle":
       return "Do not drive";
@@ -79,7 +83,9 @@ export function proofOf(db: Db, r: ComplianceRow): Proof | undefined {
     case "cert":
       return db.people.find((p) => p.id === ref.personId)?.certs.find((c) => c.id === ref.certId)?.proof;
     case "licence":
-      return db.people.find((p) => p.id === ref.personId)?.licence?.proof;
+      return db.people.find((p) => p.id === ref.personId)?.licences?.driving?.proof;
+    case "driverLicence":
+      return db.people.find((p) => p.id === ref.personId)?.licences?.[ref.which]?.proof;
     case "plantCheck":
       return db.plant.find((p) => p.id === ref.plantId)?.renewals.find((x) => x.id === ref.renewalId)?.proof;
     case "vehicle":
@@ -98,9 +104,9 @@ export function proofOf(db: Db, r: ComplianceRow): Proof | undefined {
 }
 
 export function ProofCell({ db, r }: { db: Db; r: ComplianceRow }) {
-  if (r.sent) return <Badge tone="accent">Card sent from phone</Badge>;
+  if (r.sent) return <Badge tone="accent">{r.ref.kind === "driverLicence" ? "Sent from the phone" : "Card sent from phone"}</Badge>;
   if (r.proofNeeded) return <Badge tone="warn">Proof needed</Badge>;
-  if (r.ref.kind === "plantService" || r.ref.kind === "vehicleService" || r.ref.kind === "scaffold" || r.state === "missing") return <span className="text-muted">-</span>;
+  if (r.ref.kind === "plantService" || r.ref.kind === "vehicleService" || r.ref.kind === "scaffold" || r.ref.kind === "licence" || r.state === "missing") return <span className="text-muted">-</span>;
   const p = proofOf(db, r);
   // Papers from before the system came in are kept in the office until someone attaches a copy.
   return p ? <ProofLink proof={p} title={`${r.item}, ${r.who}`} /> : <span className="text-muted">On paper file</span>;
@@ -111,13 +117,17 @@ export const wantsProof = (db: Db, r: ComplianceRow) => r.ref.kind === "cert" &&
 
 /** The button on a row: what it does, in a word or two. */
 export function actionLabel(r: ComplianceRow, db?: Db) {
-  if (r.sent) return "Check card";
+  if (r.sent) return r.ref.kind === "driverLicence" ? "Check licence" : "Check card";
   if (db && wantsProof(db, r)) return "Add proof";
   switch (r.ref.kind) {
     case "cert":
       return r.state === "missing" ? "Record ticket" : "Renew";
     case "licence":
-      return "Check licence";
+      return "Record the check";
+    case "driverLicence":
+      return r.state === "missing" ? "Record it" : "Record renewal";
+    case "vehicle":
+      return "Record renewal";
     case "vehicleService":
     case "plantService":
       return "Record service";
@@ -172,17 +182,52 @@ export function RowTable({ rows, onRow, label, showArea = false, empty }: { rows
                 <ProofCell db={db} r={r} />
               </td>
               <td className="text-right whitespace-nowrap">
-                {access.may(permFor(r)) && (
-                  <Button size="sm" onClick={() => onRow(r)}>
-                    {actionLabel(r, db)}
-                  </Button>
-                )}
+                <span className="inline-flex items-center gap-1.5">
+                  <ToDoButton r={r} />
+                  {access.may(permFor(r)) && (
+                    <Button size="sm" onClick={() => onRow(r)}>
+                      {actionLabel(r, db)}
+                    </Button>
+                  )}
+                </span>
               </td>
             </tr>
           ))}
         </tbody>
       </table>
     </div>
+  );
+}
+
+/** The open to-do this row is on, if any: a Compliance to-do, or Fleet's own for a vehicle paper. */
+export function todoFor(db: Db, r: ComplianceRow) {
+  const ref = r.ref;
+  return db.todos.find((t) => !t.doneAt && (t.complianceKey === r.key || (ref.kind === "vehicle" && t.vehicleId === ref.vehicleId && t.item === ref.item)));
+}
+
+/**
+ * "Add to my to-do" (merged 19 Nov, as on Fleet's Renewals): the row goes on the person's own list
+ * on the Dashboard, due a week before it runs out, and is ticked off there once it is renewed.
+ */
+export function ToDoButton({ r }: { r: ComplianceRow }) {
+  const { db, day } = useCompliance();
+  const on = todoFor(db, r);
+  if (on) return <span className="text-[0.87rem] text-muted" title={`On ${on.createdBy}'s to-do list, due ${dFull(on.due)}`}>On a to-do list</span>;
+  if (r.state === "ok" && !r.proofNeeded && !r.sent) return null;
+  const ref = r.ref;
+  return (
+    <Button
+      size="sm"
+      variant="ghost"
+      aria-label={`Add to my to-do: ${r.item}, ${r.who}`}
+      title="Add to my to-do list on the Dashboard"
+      onClick={() => {
+        addTodo({ title: `${actionLabel(r, db)}: ${r.item}, ${r.who}`, due: r.due ? todoDue(r.due, day) : addDays(day, 3), complianceKey: r.key, ...(r.to ? { to: r.to } : {}), ...(ref.kind === "vehicle" ? { vehicleId: ref.vehicleId, item: ref.item } : {}) });
+        toast("Added to your to-do list on the Dashboard");
+      }}
+    >
+      <ListChecks size={16} /> To-do
+    </Button>
   );
 }
 
@@ -219,9 +264,16 @@ export function RenewDialog({ row, onClose }: { row: ComplianceRow; onClose: () 
     case "cert":
       return <TicketForm row={row} personId={ref.personId} certId={ref.certId} onClose={onClose} />;
     case "licence":
-      return <LicenceForm row={row} personId={ref.personId} onClose={onClose} />;
+      return <LicenceCheckForm row={row} personId={ref.personId} onClose={onClose} />;
+    case "driverLicence": {
+      // Fleet's own licence form (one set of records, merged 19 Nov); one sent from the phone is checked first.
+      if (row.sent) return <LicencePhoneCheck row={row} personId={ref.personId} which={ref.which} onClose={onClose} />;
+      const driver = driversOf(db.people, db.vehicles).find((d) => d.id === ref.personId);
+      return <LicenceDialog d={driver} which={ref.which} onClose={onClose} />;
+    }
     case "vehicle":
-      return <VehicleForm row={row} vehicleId={ref.vehicleId} item={ref.item} onClose={onClose} />;
+      // Fleet's own renewal form: the receipt, the date it runs to, the amount, then "Disc is on".
+      return <FleetRenewDialog v={db.vehicles.find((v) => v.id === ref.vehicleId)} item={ref.item} onClose={onClose} />;
     case "vehicleService":
     case "plantService":
       return <ServiceForm row={row} id={ref.kind === "vehicleService" ? ref.vehicleId : ref.plantId} vehicle={ref.kind === "vehicleService"} onClose={onClose} />;
@@ -383,61 +435,55 @@ function CardCheck({ row, personId, certId, onClose }: { row: ComplianceRow; per
   );
 }
 
-function LicenceForm({ row, personId, onClose }: { row: ComplianceRow; personId: string; onClose: () => void }) {
+/** The office's yearly look at a licence: the licence and CPC themselves are kept in Fleet. */
+function LicenceCheckForm({ row, personId, onClose }: { row: ComplianceRow; personId: string; onClose: () => void }) {
   const { db, day } = useCompliance();
   const person = db.people.find((p) => p.id === personId)!;
-  const [categories, setCategories] = useState(person.licence?.categories ?? "B");
-  const [expires, setExpires] = useState(person.licence && person.licence.expires > day ? person.licence.expires : addDays(day, 365 * 10));
-  const { proof, error, pick } = useProofPick();
+  const [note, setNote] = useState("");
+  const l = person.licences?.driving;
   return (
     <Box
       title={`Check ${person.name}'s driving licence`}
       onClose={onClose}
-      disabled={!categories.trim() || expires <= day}
-      saveLabel="Save the check"
+      saveLabel="Checked today"
       save={() => {
-        checkLicence(personId, { categories, expires }, proof);
-        toast(`${person.name}'s licence checked today${said(proof)}`);
+        checkLicence(personId, note);
+        toast(`${person.name}'s licence checked today. The next check is due in a year`);
       }}
     >
-      <p className="text-[0.93rem] text-muted">{row.whoSub}. Checked once a year: look at the licence itself and take a copy of both sides.</p>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Categories">{(id) => <input id={id} className="field" value={categories} onChange={(e) => setCategories(e.target.value)} />}</Field>
-        <DateField label="Licence runs out" value={expires} min={addDays(day, 1)} onChange={setExpires} />
-      </div>
-      <ProofField pick={pick} proof={proof} error={error} hint="A photo of both sides of the licence." />
-      <NoProof proof={proof} />
+      <p className="text-[0.93rem] text-muted">{row.whoSub}. Once a year, look at the licence itself, both sides, and that it covers what they drive.</p>
+      <p className="text-[0.93rem]">
+        {l ? <>Licence on file, runs to {dFull(l.expiryDate)}. </> : <>No licence on file in Fleet yet. </>}
+        {person.licenceCheck ? <>Last checked {dFull(person.licenceCheck.checkedOn)} by {person.licenceCheck.checkedBy}.</> : <>Never checked.</>}{" "}
+        <Link to={`/fleet/drivers?driver=${personId}`} className={LINK}>
+          Open in Fleet
+        </Link>
+      </p>
+      {l && l.expiryDate < day && <p className="rounded-md bg-bad-soft px-2.5 py-2 text-[0.93rem] text-bad">The licence on file has run out. Record the new one in Fleet as well.</p>}
+      <Field label="Note" hint="Optional, such as the categories seen.">
+        {(id) => <input id={id} className="field" value={note} onChange={(e) => setNote(e.target.value)} />}
+      </Field>
     </Box>
   );
 }
 
-function VehicleForm({ row, vehicleId, item, onClose }: { row: ComplianceRow; vehicleId: string; item: "tax" | "test" | "insurance"; onClose: () => void }) {
-  const { db, day } = useCompliance();
-  const v = db.vehicles.find((x) => x.id === vehicleId)!;
-  const [expires, setExpires] = useState(addDays(day, 365));
-  const [amount, setAmount] = useState(String(v.compliance[item].amount || ""));
-  const { proof, error, pick } = useProofPick();
-  const paid = Number(amount.replace(/[€£,\s]/g, ""));
-  const bad = !Number.isFinite(paid) || paid < 0;
+/** A licence or CPC a driver sent from the phone: on the record at once, flagged until the office looks at it. */
+function LicencePhoneCheck({ row, personId, which, onClose }: { row: ComplianceRow; personId: string; which: "driving" | "cpc"; onClose: () => void }) {
+  const { db } = useCompliance();
+  const person = db.people.find((p) => p.id === personId)!;
+  const l = person.licences?.[which];
   return (
     <Box
-      title={`Renew ${row.item.toLowerCase()}, ${v.reg}`}
+      title={`${person.name} sent a ${row.item.toLowerCase()} from the phone`}
       onClose={onClose}
-      disabled={expires <= day || bad}
-      saveLabel="Save renewal"
+      saveLabel="Mark checked"
       save={() => {
-        renewVehicle(vehicleId, item, expires, paid, proof);
-        toast(`${row.item} for ${v.reg} renewed to ${dFull(expires)}${said(proof)}`);
+        confirmLicence(personId, which);
+        toast(`${person.name}'s ${row.item.toLowerCase()} checked`);
       }}
     >
-      {row.blocks && <p className="rounded-md bg-bad-soft px-2.5 py-2 text-[0.93rem] text-bad">{v.reg} may not be driven until this is renewed.</p>}
-      <div className="grid gap-3 sm:grid-cols-2">
-        <DateField label="New expiry date" value={expires} min={addDays(day, 1)} onChange={setExpires} />
-        <Field label="Amount paid">{(id) => <input id={id} className="field" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} />}</Field>
-      </div>
-      {bad && <p className="text-[0.93rem] text-bad">The amount paid should be a number, such as 1250.</p>}
-      <ProofField pick={pick} proof={proof} error={error} hint="A photo or PDF of the disc, certificate or insurance schedule." />
-      <NoProof proof={proof} />
+      <p className="text-[0.93rem] text-muted">It runs to {l ? dFull(l.expiryDate) : "-"}. Check the name and the date on the copy before marking it checked.</p>
+      {l?.proof && <ProofLink proof={l.proof} title={`${row.item}, ${person.name}`} />}
     </Box>
   );
 }

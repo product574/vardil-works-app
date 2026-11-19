@@ -135,6 +135,6 @@ export function fillPurchases(db: Db, today: string, domain: string, company: st
     if (!sub || addDays(run, 30) < today) continue;
     const site = db.projects.find((p) => p.id === s.allocations[0]?.projectId);
     const email = remittanceEmail({ invoiceNo: s.invoiceNo, total: s.total, paidOn: run, paidRef: s.paidRef, contactName: sub.contactName, project: site ? `${site.code} ${site.name}` : "", sender: accounts?.name ?? "Accounts", company, region });
-    db.mails.push({ id: `mail-${s.id}`, mailbox: `accounts@${domain}`, folder: "Sent", fromName: accounts?.name ?? "Accounts", fromAddress: `accounts@${domain}`, subject: email.subject, body: `To: ${sub.contactName} <${sub.email}>\n\n${email.body}`, receivedAt: at(run, "15:10"), read: true, intent: "General", routedToId: accounts?.id ?? "p-md", purchaseInvoiceId: s.id });
+    db.mails.push({ id: `mail-${s.id}`, mailbox: `accounts@${domain}`, folder: "Sent", fromName: accounts?.name ?? "Accounts", fromAddress: `accounts@${domain}`, subject: email.subject, to: `${sub.contactName} <${sub.email}>`, body: `${email.body}`, receivedAt: at(run, "15:10"), read: true, intent: "General", routedToId: accounts?.id ?? "p-md", purchaseInvoiceId: s.id });
   }
 }

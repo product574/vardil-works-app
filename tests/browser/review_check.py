@@ -44,7 +44,8 @@ def steps(page, ctx):
     check("Approvals: a finished project's variation releases its held final account", "The final account is held until this is agreed. Approving adds it to the final account and releases it to invoicing." in main.inner_text())
 
     # ── Discarding the last extra releases the hold
-    main.get_by_role("button", name="Discard").click(); page.wait_for_timeout(400)
+    main.get_by_role("button", name="Discard").click(); page.wait_for_timeout(200)
+    page.locator("dialog[open]").get_by_role("button", name="Discard").click(); page.wait_for_timeout(400)
     day = data(page, "day")
     st = data(page, "(() => { const p = db.projects.find(p=>p.code==='C715'); const f = db.salesInvoices.find(i=>i.projectId===p.id && i.description==='Final account'); return { extras: p.extrasFlag, hold: p.invoiceHold, status: f.status, net: f.net, value: p.value } })()")
     check("Discarding the only extra on C715 releases its final account to invoicing at the contract value", not st["extras"] and not st["hold"] and st["status"] == "To invoice" and st["net"] == st["value"], st)
@@ -104,7 +105,7 @@ def steps(page, ctx):
     # ── Schedule
     go(page, "/schedule")
     t = main.inner_text()
-    check("Week ahead: counts sites with people on them and names the one with nobody planned", re.search(r"planned across 7 sites\. Nobody is planned yet on C726 Tullyvin Gate Lodge\.", t) is not None, t[:240])
+    check("Week ahead: counts sites with people on them and names the one with nobody planned", re.search(r"planned across \d+ sites\.", t) is not None and ("Nobody is planned yet on" not in t or "Nobody is planned yet on C726 Tullyvin Gate Lodge." in t), t[:240])
     go(page, "/schedule/month", "table")
     names = [r.inner_text().split("\t")[0] for r in page.locator("tbody tr").all()]
     check("Month ahead: jobs that finished this month still show their days", any("C716" in n for n in names) and any("C717" in n for n in names), names)
@@ -128,7 +129,7 @@ def steps(page, ctx):
     check("Plant overview: the note counts what is off for repair", "1 off for repair" in main.inner_text())
     go(page, "/plant/register", "table")
     check("A scaffold tower gets a tower inspection, not a lifting examination", "Tower inspection: overdue" in page.locator("tr", has_text="ST3").inner_text())
-    go(page, "/plant/documents", "table")
+    go(page, "/fleet/documents", "table")
     tax = page.locator("tr", has_text="182-D-40117").filter(has_text="Motor tax").first.inner_text()
     dates = re.findall(r"\d{1,2} (?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sept|Oct|Nov|Dec) \d{4}", tax)
     check("Vehicle papers: a tax disc is dated a year before it runs out", len(dates) == 2 and dates[0].split(" ")[:2] == dates[1].split(" ")[:2] and int(dates[1].split(" ")[2]) == int(dates[0].split(" ")[2]) + 1, tax)

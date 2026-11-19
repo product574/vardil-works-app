@@ -6,6 +6,7 @@
  * managing director sees either (Shell.tsx decides).
  */
 import { X } from "@phosphor-icons/react";
+import { AiSparkle } from "@/ui/AiSparkle";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { DEPARTMENTS } from "@/app/departments";
@@ -26,9 +27,9 @@ export function AskButton() {
       onClick={() => setOpen(!open)}
       aria-expanded={open}
       aria-controls="ask-panel"
-      className={cx("press inline-flex h-9 shrink-0 items-center rounded-md border px-3.5 text-[0.93rem] font-medium whitespace-nowrap", open ? "border-accent bg-accent-soft text-accent-ink" : "border-line-strong bg-surface text-ink hover:border-accent hover:text-accent-ink")}
+      className={cx("press inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md border px-3 text-[0.93rem] font-medium whitespace-nowrap", open ? "border-accent bg-accent-soft text-accent-ink" : "border-line-strong bg-surface text-ink hover:border-accent hover:text-accent-ink")}
     >
-      Ask AI
+      <AiSparkle size={18} /> Ask AI
     </button>
   );
 }
@@ -78,7 +79,8 @@ export function suggestionsFor(path: string, db: Db): { about?: { label: string;
   else if (path.startsWith("/sales")) about = { label: "About sales", items: ["Which quotes have had no answer?", "Which enquiries still need a quote?", "How many quotes have we won and lost?", "Draft a quote for the newest enquiry"] };
   else if (path.startsWith("/people")) about = { label: "About people", items: ["Who is free next week?", "Whose tickets run out this month?", "Who worked overtime this week?", "Which holiday requests are waiting?"] };
   else if (path.startsWith("/schedule")) about = { label: "About the schedule", items: ["Who is free next week?", "Is anyone double booked?", "Who is on each site on Monday?"] };
-  else if (path.startsWith("/plant")) about = { label: "About plant", items: ["What plant is due a service or a check?", "What hire is still on, and what has it cost so far?", "Which vehicles need tax, test or insurance soon?"] };
+  else if (path.startsWith("/plant")) about = { label: "About plant", items: ["What plant is due a service or a check?", "What hire is still on, and what has it cost so far?"] };
+  else if (path.startsWith("/fleet")) about = { label: "About the fleet", items: ["Which garage costs us most?", "Which vehicles need tax, test or insurance soon?", "Which site's vans cost most in repairs this year?", "What damage has been reported and not dealt with?"] };
   else if (path.startsWith("/inbox")) about = { label: "About email", items: ["Which emails still need a reply?", "Draft a reply to the newest enquiry email", "What came in today?"] };
   else if (path.startsWith("/files")) about = { label: "About files", items: ["What is waiting to be sorted?", "Which projects have the most files?"] };
   else if (path.startsWith("/admin/billing")) about = { label: "About billing", items: ["What do we pay for this system each month?", "When is the next invoice, and for how much?"] };
@@ -262,7 +264,9 @@ export function AskPanel() {
       className="ask-open fixed inset-0 z-50 flex flex-col bg-surface md:static md:z-auto md:w-[27rem] md:shrink-0 md:border-l md:border-line"
     >
       <div className="flex min-h-13 items-center gap-1 border-b border-line py-2 pr-2.5 pl-4">
-        <h2 className="flex-1 text-[1.15rem]">Ask AI</h2>
+        <h2 className="flex flex-1 items-center gap-1.5 text-[1.15rem]">
+          <AiSparkle size={20} /> Ask AI
+        </h2>
         {turns.length > 0 && (
           <Button variant="ghost" size="sm" disabled={busy} onClick={clear}>
             New conversation
@@ -315,7 +319,7 @@ export function AskPanel() {
             maxLength={2000}
             disabled={!!unavailable}
             aria-label="Your question"
-            placeholder="Ask about projects, money, people or plant"
+            placeholder="AI Assistant"
             className="field max-h-40 min-h-9 flex-1 resize-none"
             onChange={(e) => {
               setDraft(e.target.value);

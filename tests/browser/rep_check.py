@@ -53,7 +53,8 @@ def steps(page, ctx):
 
     # ── The bar
     names = [t.strip() for t in bar.get_by_role("link").all_inner_texts()]
-    check("Bar: Customers sits after Sales, Reports between Invoicing and Portal", names.index("Customers") == names.index("Sales") + 1 and names.index("Reports") == names.index("Invoicing") + 1 and names.index("Portal") == names.index("Reports") + 1, names)
+    # Merged 19 Nov: Profitability (from the other copy) sits between Invoicing and Reports.
+    check("Bar: Customers sits after Sales; Invoicing, Profitability, Reports, then Portal", names.index("Customers") == names.index("Sales") + 1 and names.index("Profitability") == names.index("Invoicing") + 1 and names.index("Reports") == names.index("Profitability") + 1 and names.index("Portal") == names.index("Reports") + 1, names)
 
     # ── The past year in the sample data
     past = data(page, "db.projects.filter(p => p.code >= 'C697' && p.code <= 'C708')")
@@ -303,7 +304,7 @@ def steps(page, ctx):
     check("Accounts: can open a customer and change their details", main.get_by_role("button", name="Edit details").count() == 1)
     as_role(page, "Managing director")
     go(page, "/admin/access")
-    page.get_by_role("switch", name="Site manager: Reports").click(); page.wait_for_timeout(300)
+    page.get_by_role("checkbox", name="Site manager: Reports").click(); page.wait_for_timeout(300)
     as_role(page, "Site manager")
     go(page, "/reports")
     labels = [t.strip() for t in page.locator("dl[aria-label='Key figures'] dt").all_inner_texts()]

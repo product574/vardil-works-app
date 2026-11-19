@@ -8,7 +8,9 @@
  * has run out cannot be planned or marked on site, and a machine whose examination, test or
  * insurance has run out cannot go to a site. A ticket or paper is good through its expiry day.
  */
-import type { Cert, Course, Db, Person, PlantItem, Renewal, Scaffold, SubPaperKind, Subcontractor, Vehicle } from "@/data/types";
+import type { Cert, Course, Db, LicenceCheck, LicenceKey, Person, PlantItem, Renewal, Scaffold, SubPaperKind, Subcontractor, Vehicle } from "@/data/types";
+import { driversOf } from "./fleet";
+import { testName } from "./fleet-spend";
 import { addDays } from "./dates";
 import { daysBetween, nextServiceDate } from "./status";
 
@@ -161,11 +163,14 @@ export const standing = (s: Scaffold) => !s.struckOn;
 
 // ── Driving licences ──────────────────────────────────────────────────────────
 
-/** The next date that matters on a licence: the yearly check, or the licence itself running out. */
-export function licenceDue(l: { expires: string; checkedOn: string }): { date: string; what: string } {
-  const check = addDays(l.checkedOn, 365);
-  return l.expires < check ? { date: l.expires, what: "Licence runs out" } : { date: check, what: "Yearly check" };
-}
+/**
+ * The office looks at each driver's licence once a year (Compliance, kept at Oisin's word when
+ * the two chats were merged, 19 Nov). The licence itself and the Driver CPC, with their expiry
+ * dates and copies, are Fleet's (`Person.licences`).
+ */
+export const LICENCE_CHECK_DAYS = 365;
+export const nextLicenceCheck = (c: LicenceCheck) => addDays(c.checkedOn, LICENCE_CHECK_DAYS);
+export const LICENCE_WORD: Record<LicenceKey, string> = { driving: "Driving licence", cpc: "Driver CPC" };
 
 // ── Subcontractors ────────────────────────────────────────────────────────────
 
@@ -208,7 +213,10 @@ export const AREAS: { key: Area; label: string }[] = [
 
 export type RowRef =
   | { kind: "cert"; personId: string; certId: string }
+  /** The office's yearly look at a driver's licence. */
   | { kind: "licence"; personId: string }
+  /** The driving licence or Driver CPC itself, kept in Fleet. */
+  | { kind: "driverLicence"; personId: string; which: LicenceKey }
   | { kind: "vehicle"; vehicleId: string; item: VehicleItem }
   | { kind: "vehicleService"; vehicleId: string }
   | { kind: "plantCheck"; plantId: string; renewalId: string }
@@ -237,7 +245,7 @@ export type ComplianceRow = {
   /** Live sites it belongs to, for site managers, who see only their own. Empty: not tied to a site. */
   siteIds: string[];
   ref: RowRef;
-  /** A photo of a new card sent from the site phone, waiting to be checked. */
+  /** A photo of a new card, or a licence, sent from the site phone and waiting to be checked. */
   sent?: boolean;
 };
 
@@ -271,25 +279,40 @@ export function complianceRows(db: Db, today: string, words: Words = IE_WORDS): 
     }
   }
 
-  // Fleet: tax, test, insurance, service, and the drivers' licences.
+  // Fleet: tax, test, insurance and service, read from Fleet's own records (one set, shown in
+  // both places since the two chats were merged, 19 Nov); then each driver's licence, Driver CPC
+  // and the office's yearly licence check.
+  const region = words.vehicleTest === "MOT" ? "UK" : "IE";
   for (const v of db.vehicles.filter((x) => x.active)) {
     const driver = db.people.find((p) => p.id === v.driverId);
-    const who = `${v.reg} ${v.model}`;
-    const whoSub = driver ? `${v.kind}, ${driver.name}` : v.kind;
-    const items: [VehicleItem, string][] = [["tax", words.roadTax], ["test", words.vehicleTest], ["insurance", "Insurance"]];
+    const who = `${v.reg} ${v.make} ${v.model}`;
+    const whoSub = driver ? `${v.kind}, ${driver.name}` : `${v.kind}, pool vehicle`;
+    const to = `/fleet/vehicles/${v.id}`;
+    const items: [VehicleItem, string][] = [["tax", words.roadTax], ["test", testName(v.kind, region)], ["insurance", "Insurance"]];
     for (const [k, label] of items) {
       const c = v.compliance[k];
-      const state = stateOf(c.expiryDate, today);
-      rows.push({ key: `veh:${v.id}:${k}`, area: "fleet", who, whoSub, to: `/plant/vehicles?vehicle=${v.id}`, item: label, due: c.expiryDate, state, proofNeeded: !!c.proofNeeded, blocks: state === "expired", siteIds: [], ref: { kind: "vehicle", vehicleId: v.id, item: k } });
+      const state = c.expiryDate ? stateOf(c.expiryDate, today) : "missing";
+      rows.push({ key: `veh:${v.id}:${k}`, area: "fleet", who, whoSub, to, item: label, due: c.expiryDate || null, state, proofNeeded: !!c.proofNeeded, blocks: state === "expired" || state === "missing", siteIds: [], ref: { kind: "vehicle", vehicleId: v.id, item: k } });
     }
     const svc = nextServiceDate(v.service, today);
-    rows.push({ key: `vsvc:${v.id}`, area: "fleet", who, whoSub, to: `/plant/vehicles?vehicle=${v.id}`, item: v.service.basis === "km" ? `Service, every ${v.service.intervalKm.toLocaleString("en-IE")} km` : "Service", due: svc.date, approx: v.service.basis !== "months", state: stateOf(svc.date, today), proofNeeded: false, blocks: false, siteIds: [], ref: { kind: "vehicleService", vehicleId: v.id } });
+    rows.push({ key: `vsvc:${v.id}`, area: "fleet", who, whoSub, to, item: v.service.basis === "km" ? `Service, every ${v.service.intervalKm.toLocaleString("en-IE")} km` : "Service", due: svc.date, approx: v.service.basis !== "months", state: stateOf(svc.date, today), proofNeeded: false, blocks: false, siteIds: [], ref: { kind: "vehicleService", vehicleId: v.id } });
   }
-  for (const p of db.people.filter((x) => x.active && x.licence)) {
-    const l = p.licence!;
-    const d = licenceDue(l);
+  for (const d of driversOf(db.people, db.vehicles).filter((x) => x.active)) {
+    const p = db.people.find((x) => x.id === d.id);
+    if (!p) continue;
     const van = db.vehicles.find((v) => v.active && v.driverId === p.id);
-    rows.push({ key: `lic:${p.id}`, area: "fleet", who: p.name, whoSub: van ? `Drives ${van.reg}, licence ${l.categories}` : `Licence ${l.categories}`, to: `/compliance/fleet?driver=${p.id}`, item: d.what === "Yearly check" ? "Driving licence check" : "Driving licence", due: d.date, state: stateOf(d.date, today), proofNeeded: !!l.proofNeeded, blocks: l.expires < today, siteIds: [], ref: { kind: "licence", personId: p.id } });
+    const whoSub = van ? `Drives ${van.reg}, ${van.kind.toLowerCase()}` : "Drives a pool vehicle";
+    const to = `/fleet/drivers?driver=${p.id}`;
+    for (const which of ["driving", "cpc"] as const) {
+      const l = p.licences?.[which];
+      // A Driver CPC is only for those who drive a tipper: no CPC on file and no tipper, nothing to show.
+      if (!l && (which === "driving" ? false : van?.kind !== "Tipper")) continue;
+      const state = l ? stateOf(l.expiryDate, today) : "missing";
+      const stops = which === "driving" || van?.kind === "Tipper";
+      rows.push({ key: `dl:${p.id}:${which}`, area: "fleet", who: p.name, whoSub, to, item: LICENCE_WORD[which], due: l?.expiryDate ?? null, state, proofNeeded: !!l?.proofNeeded, blocks: stops && (state === "expired" || state === "missing"), siteIds: [], ref: { kind: "driverLicence", personId: p.id, which }, sent: !!l?.fromPhoneAt });
+    }
+    const due = p.licenceCheck ? nextLicenceCheck(p.licenceCheck) : null;
+    rows.push({ key: `lic:${p.id}`, area: "fleet", who: p.name, whoSub, to: `/compliance/fleet?driver=${p.id}`, item: "Yearly licence check", due, state: due ? stateOf(due, today) : "missing", proofNeeded: false, blocks: false, siteIds: [], ref: { kind: "licence", personId: p.id } });
   }
 
   // Machinery: checks, services, and the scaffold register.

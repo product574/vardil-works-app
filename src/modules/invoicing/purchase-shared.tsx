@@ -4,7 +4,7 @@
 import { DownloadSimple } from "@phosphor-icons/react";
 import { useId, useState } from "react";
 import { useAccess } from "@/data/access";
-import { approvePurchase, markPurchasePaid, sendBackPurchase, unmarkPurchasePaid } from "@/data/actions";
+import { actAs, approvePurchase, markPurchasePaid, sendBackPurchase, unmarkPurchasePaid } from "@/data/actions";
 import { useData, useDay, usePrefs } from "@/data/store";
 import type { Allocation, SupplierInvoice } from "@/data/types";
 import { dFull } from "@/lib/format";
@@ -81,7 +81,8 @@ function Summary({ s }: { s: SupplierInvoice }) {
  * "Approve this invoice?" Nothing is approved until Confirm approval is pressed. `allocations`
  * are the lines as they stand on the check screen, when it is approved straight from there.
  */
-export function ApproveDialog({ s, allocations, onClose }: { s: SupplierInvoice; allocations?: Omit<Allocation, "id">[]; onClose: (done: boolean) => void }) {
+/** `actor`: who approves it, when it is done on a site manager's phone shown to the office (merged 19 Nov). */
+export function ApproveDialog({ s, allocations, actor, onClose }: { s: SupplierInvoice; allocations?: Omit<Allocation, "id">[]; actor?: string; onClose: (done: boolean) => void }) {
   const { project, sub } = usePurchases();
   const day = useDay();
   // A subcontractor's lapsed insurance is flagged here, not held (Compliance, 18 Nov): the approver decides.
@@ -100,7 +101,8 @@ export function ApproveDialog({ s, allocations, onClose }: { s: SupplierInvoice;
           <Button
             variant="primary"
             onClick={() => {
-              approvePurchase(s.id, allocations);
+              if (actor) actAs(actor, () => approvePurchase(s.id, allocations));
+              else approvePurchase(s.id, allocations);
               toast(credit ? `${s.supplier} ${s.invoiceNo} approved and taken off job costs` : `${s.supplier} ${s.invoiceNo} approved. It is with accounts to be paid`);
               onClose(true);
             }}
@@ -122,7 +124,7 @@ export function ApproveDialog({ s, allocations, onClose }: { s: SupplierInvoice;
 }
 
 /** Send it back instead of approving it, with the reason. A subcontractor reads the reason in their portal. */
-export function SendBackDialog({ s, onClose }: { s: SupplierInvoice; onClose: (done: boolean) => void }) {
+export function SendBackDialog({ s, actor, onClose }: { s: SupplierInvoice; actor?: string; onClose: (done: boolean) => void }) {
   const { sub } = usePurchases();
   const formId = useId();
   const [reason, setReason] = useState("");
@@ -147,7 +149,8 @@ export function SendBackDialog({ s, onClose }: { s: SupplierInvoice; onClose: (d
         onSubmit={(e) => {
           e.preventDefault();
           if (!reason.trim()) return;
-          sendBackPurchase(s.id, reason);
+          if (actor) actAs(actor, () => sendBackPurchase(s.id, reason));
+          else sendBackPurchase(s.id, reason);
           toast(`${s.supplier} ${s.invoiceNo} sent back`);
           onClose(true);
         }}

@@ -30,7 +30,8 @@ export const ROLES: RoleDef[] = [
     personId: "p-md",
     does: "Sees the whole firm: sales, sites, money and compliance.",
     home: "/dashboard",
-    departments: ["dashboard", "inbox", "sales", "customers", "projects", "schedule", "people", "plant", "compliance", "files", "invoicing", "reports", "portal", "site", "admin", "settings"],
+    // Profitability shows what each person costs, so it is the managing director's alone and cannot be given to another level (17 Nov).
+    departments: ["dashboard", "inbox", "chat", "sales", "customers", "projects", "schedule", "people", "plant", "fleet", "compliance", "files", "invoicing", "profit", "reports", "portal", "site", "admin", "settings"],
     money: [true, true],
     perms: ALL_PERMS,
     locked: true,
@@ -41,12 +42,13 @@ export const ROLES: RoleDef[] = [
     personId: "p-cm1",
     does: "Prices work, runs the projects and plans who goes where.",
     home: "/projects",
-    departments: ["dashboard", "inbox", "sales", "customers", "projects", "schedule", "people", "plant", "compliance", "files", "portal", "site"],
+    departments: ["dashboard", "inbox", "chat", "sales", "customers", "projects", "schedule", "people", "plant", "fleet", "compliance", "files", "portal", "site"],
     money: [true, true],
     // Everything except answering requests, which waits for the managing director (16 Nov),
     // approving invoices: the managing director, or a site manager for a subcontractor (18 Nov),
-    // and company papers: the managing director and accounts (Compliance, 18 Nov).
-    perms: ALL_PERMS.filter((k) => k !== "answerRequests" && k !== "approveInvoices" && k !== "approveSubInvoices" && k !== "manageCompany"),
+    // company papers: the managing director and accounts (Compliance, 18 Nov). They check the
+    // week's hours (17 Nov); the export itself is the office's.
+    perms: ALL_PERMS.filter((k) => k !== "answerRequests" && k !== "approveInvoices" && k !== "approveSubInvoices" && k !== "manageCompany" && k !== "exportPayroll"),
   },
   {
     key: "site",
@@ -54,9 +56,10 @@ export const ROLES: RoleDef[] = [
     personId: "p-sm1",
     does: "Marks attendance, ticks off scope, requests people and plant.",
     home: "/people/timesheet",
-    departments: ["projects", "schedule", "people", "plant", "compliance", "files", "site"],
+    departments: ["chat", "projects", "schedule", "people", "plant", "compliance", "files", "site"],
     money: [true, false],
-    perms: ["markTime", "correctTime", "approveSubInvoices", "recordInspections"],
+    // Planning added 17 Nov (Oisin): a site manager plans the sites they run, from the phone too.
+    perms: ["markTime", "correctTime", "planWeek", "approveSubInvoices", "recordInspections"],
   },
   {
     key: "accounts",
@@ -64,9 +67,9 @@ export const ROLES: RoleDef[] = [
     personId: "p-acc",
     does: "Checks supplier invoices, sends client invoices, pays what is approved, exports to Sage.",
     home: "/invoicing",
-    departments: ["dashboard", "inbox", "invoicing", "sales", "customers", "people", "plant", "compliance", "files"],
+    departments: ["dashboard", "inbox", "chat", "invoicing", "sales", "customers", "people", "plant", "fleet", "compliance", "files"],
     money: [true, true],
-    perms: ["allProjects", "approveDrafts", "correctTime", "seeRates", "manageInvoices", "manageCompany"],
+    perms: ["allProjects", "approveDrafts", "correctTime", "seeRates", "manageInvoices", "manageCompany", "exportPayroll"],
   },
   {
     key: "operative",

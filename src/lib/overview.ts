@@ -12,6 +12,8 @@ import { planClashes } from "./availability";
 import { invoiceNo } from "./billing";
 import { BLOCKING_CHECKS, blockText, bookingFor, planBlocks } from "./compliance";
 import { costBreakdown, marginPct, quoteTotal } from "./quotes";
+import { lastWeekStart, payrollStage, weekCheck } from "./payroll";
+import { toPay } from "./reimbursements";
 import { directorQueue } from "./requests";
 import { daysBetween } from "./status";
 import { nextWorkWeek } from "./week";
@@ -28,6 +30,9 @@ export type OverviewOptions = {
   canAsk: boolean;
   /** Admin > Requests is theirs to answer. */
   answersRequests: boolean;
+  /** They check the week's hours before payroll, or export them (People, Payroll export). Left out, payroll is not mentioned. */
+  checksPayroll?: boolean;
+  exportsPayroll?: boolean;
 };
 
 const WORDS = ["No", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten"];
@@ -147,6 +152,20 @@ export function recordsOverview(db: Db, today: string, o: OverviewOptions): Over
             ? `Only ${sentSites[0]!.name} has sent today's time stamps. ${counted(notSent, "other site")} ${notSent === 1 ? "has" : "have"} not yet.`
             : `${counted(sentSites.length, "site")} have sent today's time stamps, ${notSent} still to come.`,
     );
+
+  // Payroll, for whoever checks or exports it (the call of 17 Nov: the week's hours are a
+  // to-do on the dashboard the day before pay day). Last week only: older weeks have gone.
+  if (o.checksPayroll || o.exportsPayroll) {
+    const week = lastWeekStart(today);
+    const stage = payrollStage(week, db.attendance, db.payrollChecks, db.attendanceChanges, db.payrollExports);
+    const by = weekCheck(db.payrollChecks, db.attendanceChanges, week).check?.by;
+    const claims = toPay(db.expenses).length;
+    const also = o.exportsPayroll && claims ? ` ${counted(claims, "approved reimbursement")} ${claims === 1 ? "is" : "are"} [waiting to be paid](/people/reimbursements) too.` : "";
+    if (stage === "to-check")
+      facts.push(o.checksPayroll ? `Last week's hours are in from every site and [ready for you to check](/people/payroll) before they go to payroll.${also}` : `Last week's hours are [waiting for a manager's check](/people/payroll) before you can export them to payroll.${also}`);
+    else if (stage === "to-export") facts.push(o.exportsPayroll ? `Last week's hours were checked by ${by} and are [ready to export to payroll](/people/payroll).${also}` : `Last week's hours are checked and [waiting for the office to export](/people/payroll).`);
+    else if (also) facts.push(also.trim());
+  }
 
   if (o.seeMargins) {
     const thin = db.quotes

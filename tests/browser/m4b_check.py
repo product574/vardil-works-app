@@ -47,9 +47,10 @@ def steps(page, ctx):
     check("Own plant: a new item is added to the yard and listed", page.locator("tbody tr").count() == 34 and "Yard" in page.locator("tbody tr", has_text="MX5").inner_text())
     page.goto(BASE + "/plant"); page.wait_for_selector("table")
     check("Plant overview: the new item shows under In the yard", page.locator("section", has_text="In the yard").locator("tr", has_text="MX5").count() == 1)
-    page.goto(BASE + "/plant/vehicles"); page.wait_for_selector("table")
+    page.goto(BASE + "/fleet/vehicles"); page.wait_for_selector("table")
     b = page.get_by_role("button", name="Add vehicle").bounding_box()
-    check("Vehicles: the Add vehicle button is on screen at the top right", b and b["y"] < 120 and b["x"] > 1200, b)
+    # Since 18 Nov Fleet is a department of its own; Add vehicle is at the top right of Vehicles.
+    check("Vehicles: the Add vehicle button is on screen at the top right", b and b["y"] < 120 and b["x"] > 1000, b)
     page.set_viewport_size({"width": 390, "height": 844}); page.wait_for_timeout(250)
     b = page.get_by_role("button", name="Add vehicle").bounding_box()
     check("Vehicles: and still on screen at phone width", b and 0 <= b["x"] and b["x"] + b["width"] <= 390 and b["y"] < 400, b)

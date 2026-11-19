@@ -24,7 +24,12 @@ export const LANGUAGE_NAME: Record<Language, string> = {
 };
 
 /** A photo or scan kept as evidence, for example of a renewed ticket. Held in the browser in the demo. */
-export type Proof = { name: string; dataUrl: string; addedBy: string; addedAt: string };
+/**
+ * A file kept with a record. `sample` (sample data only) means the file is not stored but drawn
+ * when opened, from the record it belongs to ("invoice", "receipt", "licence", "damage/<name>"),
+ * and `dataUrl` is then empty. See src/lib/sample-docs.ts.
+ */
+export type Proof = { name: string; dataUrl: string; addedBy: string; addedAt: string; sample?: string };
 export type Cert = {
   id: ID;
   name: string;
@@ -37,8 +42,8 @@ export type Cert = {
   sentPhoto?: { name: string; dataUrl: string; sentAt: Stamp };
 };
 
-/** A driver's licence, checked once a year (Compliance, Fleet). */
-export type Licence = { categories: string; expires: Day; checkedOn: Day; checkedBy: string; proof?: Proof; proofNeeded?: boolean };
+/** The office's yearly look at a driver's licence (Compliance). The licence itself, with its expiry and copy, is `Licence` under Fleet. */
+export type LicenceCheck = { checkedOn: Day; checkedBy: string };
 
 export type Person = {
   id: ID;
@@ -58,8 +63,14 @@ export type Person = {
   active: boolean;
   archivedAt?: Day;
   certs: Cert[];
-  /** Only for people who drive one of the firm's vehicles. */
-  licence?: Licence;
+  /** The employee number Sage Payroll gave them (0001), so hours exported match the right person (Oldstone call, 16 Nov). */
+  sageNo?: string;
+  /** On Fleet's driver list (18 Nov); `drivesUntil` is the day they were taken off it. */
+  drives?: boolean;
+  drivesUntil?: Day;
+  licences?: { driving?: Licence; cpc?: Licence };
+  /** The office's yearly look at a driver's licence (Compliance, kept beside Fleet's licence and CPC at Oisin's word, 19 Nov). */
+  licenceCheck?: LicenceCheck;
 };
 
 export type Holiday = {
@@ -70,6 +81,9 @@ export type Holiday = {
   status: "Requested" | "Approved" | "Declined";
   via: "Email" | "Form" | "Phone";
   note?: string;
+  /** Why it was declined, if whoever declined it said (17 Nov). */
+  declineNote?: string;
+  decidedBy?: string;
 };
 
 // ── Sales ─────────────────────────────────────────────────────────────────────
@@ -198,10 +212,12 @@ export type Variation = {
   approvedBy?: string;
 };
 
-export type RequestKind = "personnel" | "own_plant" | "hired_plant";
+/** "other" is anything that is not people or plant (Oisin, 17 Nov). */
+export type RequestKind = "personnel" | "own_plant" | "hired_plant" | "other";
 export type SiteRequest = {
   id: ID;
-  projectId: ID;
+  /** The site it is for. Null for a general request from a site manager, not tied to one site (Oisin, 17 Nov). */
+  projectId: ID | null;
   kind: RequestKind;
   description: string;
   quantity: number;
@@ -209,13 +225,39 @@ export type SiteRequest = {
   neededTo: Day;
   notes: string;
   requestedBy: string;
+  /** Who asked, for a general request, so it stays on their own list. */
+  requestedById?: ID;
   createdAt: Stamp;
   status: "Open" | "Done";
   /** The managing director's yes or no (Admin > Requests). A yes stays open until the office has arranged it. */
   decision?: "Approved" | "Declined";
   decidedBy?: string;
   decidedAt?: Stamp;
+  /** Why it was declined, if whoever declined it said (17 Nov). */
+  declineNote?: string;
+  /**
+   * Who it is with (Oisin, 17 Nov). A request made on an operative's phone waits with the site
+   * manager first ("site"): he forwards it to management as his own, or marks it dealt with.
+   * Missing means it is with the office, as every request from a site manager is.
+   */
+  heldBy?: "site";
+  /** The operative who first asked, once the site manager has forwarded it as his own. */
+  raisedBy?: string;
+  forwardedAt?: Stamp;
+  /** Who marked it dealt with. */
+  dealtBy?: string;
+  /** A named person asked for on one day, from the planner on the site manager's phone. */
+  personId?: ID;
 };
+
+/**
+ * A site the managing director has let a site manager open besides the ones they run (Admin,
+ * Site access; Oisin, 17 Nov). One row per person and site.
+ */
+export type SiteAccess = { id: ID; personId: ID; projectId: ID; by: string; at: Stamp };
+
+/** What the site manager wants the crew to know on one day. It shows on the operative's phone that day (Oisin, 17 Nov). */
+export type DayInstruction = { id: ID; projectId: ID; date: Day; text: string; by: string; at: Stamp };
 
 /**
  * An invoice for this system (Admin > Billing, 16 Nov): one a month for the month before, per
@@ -239,6 +281,30 @@ export type SubscriptionInvoice = {
 };
 
 /** Money someone wants to spend that needs the managing director's yes or no (Admin > Requests). */
+/** Money someone paid out of their own pocket for the firm, claimed back from the site phone (Oisin, 17 Nov). */
+export type ExpenseKind = "Fuel" | "Materials" | "Parking and tolls" | "Tools and PPE" | "Other";
+export type Expense = {
+  id: ID;
+  personId: ID;
+  createdAt: Stamp;
+  /** The day it was paid. */
+  date: Day;
+  kind: ExpenseKind;
+  what: string;
+  /** Including VAT, as on the receipt. */
+  amount: number;
+  projectId: ID | null;
+  receipt?: { dataUrl: string; sizeKb: number };
+  status: "Waiting" | "Approved" | "Declined";
+  decidedBy?: string;
+  decidedAt?: Stamp;
+  /** When an approved claim went to the office for payment, and who exported it (17 Nov). */
+  exportedAt?: Stamp;
+  exportedBy?: string;
+  /** Why it was declined, if whoever declined it said (17 Nov). */
+  declineNote?: string;
+};
+
 export type SpendRequest = {
   id: ID;
   requestedById: ID;
@@ -254,6 +320,8 @@ export type SpendRequest = {
   status: "Waiting" | "Approved" | "Declined";
   decidedBy?: string;
   decidedAt?: Stamp;
+  /** Why it was declined, if whoever declined it said (17 Nov). */
+  declineNote?: string;
 };
 
 /** Materials or work ordered for a site from a supplier or subcontractor, until it arrives. */
@@ -292,12 +360,46 @@ export type Attendance = {
   projectId: ID;
   personId: ID;
   date: Day;
-  status: "full" | "half";
+  /**
+   * "full" or "half" for a normal working day. "restday" (Oisin, 17 Nov) is a weekend or bank
+   * holiday time stamp: no normal day in it, every hour at an overtime rate.
+   */
+  status: "full" | "half" | "restday";
+  /** Overtime hours at time and a half. */
   overtimeHours: number;
+  /** Overtime hours at double time. A day can have both rates; left off when there are none (17 Nov). */
+  doubleHours?: number;
   savedBy: string;
   savedAt: Stamp;
   /** False while a site manager has marked it but not yet sent the day's time stamps. */
   sent: boolean;
+};
+
+/**
+ * Overtime an operative claims from the phone (Oisin, 17 Nov, round ten): extra hours on one
+ * day, for the site manager to know about. It is optional and only for overtime. The site
+ * manager approves it, at the hours and rates he settles on, or declines it; an approved claim
+ * is added to that day on the timesheet.
+ */
+export type OvertimeClaim = {
+  id: ID;
+  personId: ID;
+  /** The site they worked the hours on. */
+  projectId: ID;
+  /** The day worked: today or one of the seven days before the claim was made. */
+  date: Day;
+  /** The extra hours claimed, in all. Whoever approves splits them between the rates. */
+  hours: number;
+  note: string;
+  createdAt: Stamp;
+  status: "Waiting" | "Approved" | "Declined";
+  decidedBy?: string;
+  decidedAt?: Stamp;
+  /** What was approved, at each rate. It can differ from what was claimed. */
+  overtimeHours?: number;
+  doubleHours?: number;
+  /** Why it was declined, if whoever declined it said. */
+  declineNote?: string;
 };
 
 export type AttendanceChange = {
@@ -354,37 +456,163 @@ export type HiredPlant = {
   notes: string;
 };
 
-export type ComplianceItem = { paidDate: Day; expiryDate: Day; amount: number; /** Renewed with no receipt or certificate attached yet (18 Nov). */ proofNeeded?: boolean };
+// ── Fleet (18 Nov, brought across from the Secure-All build at Oisin's word) ───────
+
+/** A yard or office that vehicles are kept at. */
+export type BaseKind = "Yard" | "Office";
+export type Base = { id: ID; name: string; county: string; region: string; kind: BaseKind };
+
+export type Garage = { id: ID; name: string; town: string; county: string; phone: string; email: string; contact?: string; notes?: string };
+
+/**
+ * One renewal (tax, the CVRT or MOT, insurance). Recording a renewal sets `discPending` until
+ * someone ticks that the new disc is on the vehicle (`discOnAt`), a few days later; after 7 days
+ * without the tick it is flagged. `proofNeeded`: renewed with no receipt or certificate attached
+ * yet (Compliance, 18 Nov).
+ */
+export type ComplianceItem = { paidDate: Day; expiryDate: Day; amount: number; discPending?: boolean; discOnAt?: Day; proofNeeded?: boolean };
+
+export type VehicleKind = "Van" | "Crew van" | "Pickup" | "Tipper" | "Car";
+export type Fuel = "Diesel" | "Petrol" | "Hybrid" | "Electric";
 export type Vehicle = {
   id: ID;
   reg: string;
+  make: string;
   model: string;
-  kind: "Van" | "Crew van" | "Pickup" | "Tipper";
-  baseLocation: string;
+  kind: VehicleKind;
+  fuel: Fuel;
+  /** What the vehicle is used for, such as Site crew van or Muck away. */
+  division: string;
+  ownership: "Owned" | "Leased";
+  baseId: ID | null;
+  /** The person who drives it; null for a pool vehicle at the yard. */
   driverId: ID | null;
-  purchasePrice: number;
-  purchaseMonth: string;
-  sellPrice: number | null;
-  active: boolean;
+  purchasePrice: number | null;
+  /** "YYYY-MM". */
+  purchaseMonth: string | null;
   mileage: number;
+  /** When the mileage was last known to be right, and where it came from. */
+  mileageAt?: Day;
+  mileageFrom?: "typed" | "invoice";
+  active: boolean;
+  /** Set when the vehicle is removed from the fleet. */
+  removedAt?: Day;
+  /** What it was sold for; null means not sold (scrapped, returned to the lessor). */
+  sellPrice: number | null;
   compliance: { tax: ComplianceItem; test: ComplianceItem; insurance: ComplianceItem };
+  /** When the next service is due (kept from ABC's own Fleet, Oisin's pick). */
   service: ServicePlan;
 };
 
-export type FleetDocCategory = "repairs" | "tax" | "test" | "insurance";
+/** A driver's daily walkaround check from the site phone (src/lib/driving.ts). */
+export type VehicleCheck = { id: ID; vehicleId: ID; personId: ID; at: Stamp; defects: { item: string; note: string }[] };
+
+export type RepairCategory = "Service" | "Tyres" | "Brakes" | "Bodywork" | "Breakdown and recovery" | "Test preparation" | "Glass" | "Electrical" | "Other";
+
+/**
+ * One vehicle's part of a garage invoice. A garage statement that covers several vehicles is
+ * split into a line per vehicle. The base, the driver and the site that driver was on are kept
+ * as they were on the day of the work, so a vehicle that moves later does not take its costs with it.
+ */
+export type RepairLine = {
+  id: ID;
+  vehicleId: ID;
+  baseId: ID | null;
+  driverId: ID | null;
+  /** The site the driver was on that day, from the timesheet (or the plan); null when none. */
+  siteId: ID | null;
+  category: RepairCategory;
+  description: string;
+  mileage: number | null;
+  /** This vehicle's share, as charged (VAT included, as on the invoice). */
+  amount: number;
+};
+
+export type InvoiceStatus = "To check" | "Checked";
+
+export type RepairInvoice = {
+  id: ID;
+  invoiceNo: string;
+  garageId: ID;
+  /** The date on the invoice. */
+  date: Day;
+  lines: RepairLine[];
+  /** The invoice total, VAT included: the sum of the lines. */
+  total: number;
+  /** The VAT on it, when the invoice shows it. */
+  vat: number | null;
+  status: InvoiceStatus;
+  checkedBy?: string;
+  checkedAt?: Stamp;
+  file?: Proof;
+  /** More pages of the same invoice, when it was added as several files. */
+  extraFiles?: Proof[];
+  /** Each time a checked invoice was put back to check, with the note saying why. */
+  backNotes?: { at: Stamp; by: string; text: string }[];
+  poNumber?: string;
+  notes?: string;
+  enteredBy: string;
+  enteredAt: Stamp;
+  editedBy?: string;
+  editedAt?: Stamp;
+};
+
+export type FleetDocCategory = "tax" | "test" | "insurance" | "other";
 export type FleetDoc = {
   id: ID;
   vehicleId: ID;
   category: FleetDocCategory;
   date: Day;
   amount: number;
-  workDone?: string;
-  garage?: string;
-  garageLocation?: string;
   expiryDate?: Day;
+  note?: string;
   fileName: string;
   proof?: Proof;
+  extraProofs?: Proof[];
 };
+
+/** Damage to a vehicle, reported on the site phone: where, what happened, photos. Fleet, Damage reported. */
+export type DamageReport = {
+  id: ID;
+  vehicleId: ID;
+  /** The person who reported it. */
+  driverId: ID | null;
+  at: Stamp;
+  where: string;
+  note: string;
+  photos: Proof[];
+  status: "New" | "Dealt with";
+  dealtBy?: string;
+  dealtAt?: Stamp;
+  dealtNote?: string;
+};
+
+/** A private, dated note on a garage. Deleted with a confirm, never edited. */
+export type GarageNote = { id: ID; garageId: ID; at: Stamp; by: string; text: string };
+
+/** A licence on file for a driver: when it runs out, and a copy. */
+export type Licence = {
+  expiryDate: Day;
+  proof?: Proof;
+  /** More pages of the same licence, such as the back of the card. */
+  extraProofs?: Proof[];
+  /** Set when the driver sent it from the site phone: it shows at once, flagged until the office has checked it. */
+  fromPhoneAt?: Stamp;
+  /** Recorded with no copy attached yet (Compliance, decision 117): shows "Proof needed" until one is. */
+  proofNeeded?: boolean;
+};
+export type LicenceKey = "driving" | "cpc";
+
+/**
+ * A driver, as Fleet sees them: a person from People who is on the driver list (`Person.drives`),
+ * with their licences. Worked out from the person (`driversOf` in src/lib/fleet.ts), never stored.
+ * "Left" means taken off the driver list, or gone from the firm.
+ */
+export type Driver = { id: ID; name: string; phone: string; email: string; trade: string; baseId: ID | null; active: boolean; leftAt?: Day; licences?: { driving?: Licence; cpc?: Licence } };
+
+/** A to-do on the Dashboard: what and when. A renewal put on the list carries the vehicle and which renewal it is. */
+/** `complianceKey` and `to`: a Compliance row put on the list (merged 19 Nov), ticked off once it is renewed, and where it opens. */
+export type Todo = { id: ID; title: string; due: Day; vehicleId?: ID; item?: "tax" | "test" | "insurance"; complianceKey?: string; to?: string; createdAt: Stamp; createdBy: string; doneAt?: Stamp; doneBy?: string };
 
 // ── Files ─────────────────────────────────────────────────────────────────────
 
@@ -545,6 +773,14 @@ export type SupplierInvoice = {
 /** A money limit somebody may approve up to. "supplier": what accounts may approve on a supplier invoice, before VAT; above it the managing director approves. */
 export type ApprovalLimit = { id: "supplier"; amount: number };
 
+
+/** A week of timesheet hours sent to Sage Payroll: hours only, pay is worked out in Sage. */
+export type PayrollExport = { id: ID; weekStart: Day; at: Stamp; by: string; people: number; hours: number };
+/** A bank holiday: every hour worked on it is at double time, and nobody is marked a normal day. */
+export type BankHoliday = { date: Day; name: string };
+/** A manager's check of a week's hours, before the office exports them to Sage Payroll by hand (17 Nov). */
+export type PayrollCheck = { id: ID; weekStart: Day; at: Stamp; by: string };
+
 /**
  * "To invoice" is a draft that has not gone to the client, "Invoiced" one that has. On screen
  * they read Draft, Sent and, once past the due date, Overdue (src/lib/invoices.ts).
@@ -621,10 +857,17 @@ export type MailIntent =
   | "Conservation officer"
   | "General";
 
+/** A file on an email. Ones attached in the demo carry the file itself; sample emails only name theirs. */
+export type MailAttachment = { name: string; sizeKb?: number; dataUrl?: string };
+
 export type Mail = {
   id: ID;
   mailbox: string;
-  folder: "Inbox" | "Sent" | "Drafts" | "Archive";
+  /**
+   * Where it is kept. "Filed" (Oisin, 17 Nov) is an email someone has put under its label: it has
+   * left the Inbox and is found under that label, as in Gmail.
+   */
+  folder: "Inbox" | "Sent" | "Drafts" | "Archive" | "Filed";
   fromName: string;
   fromAddress: string;
   subject: string;
@@ -640,6 +883,41 @@ export type Mail = {
   salesInvoiceId?: ID;
   /** The supplier or subcontractor invoice this email is about: a remittance advice. */
   purchaseInvoiceId?: ID;
+  /** Files attached when the email was written here (17 Nov). */
+  attachments?: MailAttachment[];
+  starred?: boolean;
+  /** Who a sent email went to, and who was copied. */
+  to?: string;
+  cc?: string;
+  bcc?: string;
+};
+
+// ── Team chat ─────────────────────────────────────────────────────────────────
+
+/**
+ * Team chat, laid out like Ping in the reference demos (16 Nov, Oisin): channels and direct
+ * messages, as in the firm's Teams or Slack. A channel per live site, plus office channels.
+ */
+export type ChatChannel = {
+  id: ID;
+  kind: "channel" | "dm";
+  /** Channel name. A direct message has none: it shows the other person's name. */
+  name: string;
+  projectId?: ID;
+  purpose: string;
+  memberIds: ID[];
+  /** When each member last opened it. Anything newer, from someone else, is unread. */
+  lastRead: Record<ID, Stamp>;
+};
+
+export type ChatMessage = {
+  id: ID;
+  channelId: ID;
+  authorId: ID;
+  at: Stamp;
+  text: string;
+  /** The name of a file sent with the message. */
+  attachment?: string;
 };
 
 // ── Management layer ──────────────────────────────────────────────────────────
@@ -668,11 +946,14 @@ export type Approval = {
   salesInvoiceId?: ID;
   resolvedBy?: string;
   resolvedAt?: Stamp;
+  /** Why the draft was discarded, if whoever discarded it said (17 Nov). */
+  discardNote?: string;
 };
 
 export type DepartmentKey =
   | "dashboard"
   | "inbox"
+  | "chat"
   | "sales"
   | "customers"
   | "projects"
@@ -680,8 +961,12 @@ export type DepartmentKey =
   | "people"
   | "plant"
   | "compliance"
+  /** Fleet (18 Nov): brought across from the Secure-All build, a button of its own after Plant. */
+  | "fleet"
   | "files"
   | "invoicing"
+  /** Profitability (17 Nov): the managing director's alone. */
+  | "profit"
   | "reports"
   | "portal"
   | "site"
@@ -715,7 +1000,7 @@ export type AccessRow = {
 };
 
 /** Things a person may do. The list with its wording is in src/data/permissions.ts. */
-export type PermKey = "allProjects" | "manageProjects" | "priceQuotes" | "approveDrafts" | "answerRequests" | "planWeek" | "markTime" | "correctTime" | "manageStaff" | "approveLeave" | "seeRates" | "managePlant" | "manageInvoices" | "approveInvoices" | "approveSubInvoices" | "manageCompany" | "recordInspections";
+export type PermKey = "allProjects" | "manageProjects" | "priceQuotes" | "approveDrafts" | "answerRequests" | "planWeek" | "markTime" | "correctTime" | "manageStaff" | "approveLeave" | "seeRates" | "managePlant" | "manageInvoices" | "approveInvoices" | "approveSubInvoices" | "manageCompany" | "recordInspections" | "checkPayroll" | "exportPayroll";
 export type AccessKey = PermKey | "seeValues" | "seeMargins";
 
 /**
@@ -746,6 +1031,19 @@ export type Db = {
   portalNotes: PortalNote[];
   /** Newest first. */
   subscriptionInvoices: SubscriptionInvoice[];
+  /** Weeks of hours sent to Sage Payroll, newest first. */
+  payrollExports: PayrollExport[];
+  payrollChecks: PayrollCheck[];
+  /** The days the firm treats as bank holidays: the public holidays, as changed in Admin (17 Nov). */
+  bankHolidays: BankHoliday[];
+  /** Overtime claimed from the site phone, newest first (round ten). */
+  overtimeClaims: OvertimeClaim[];
+  /** Drivers' walkaround checks, newest first. */
+  vehicleChecks: VehicleCheck[];
+  /** Reimbursements claimed from the site phone, newest first. */
+  expenses: Expense[];
+  /** Site instructions for one day, put up by the site manager. One per project and day. */
+  dayInstructions: DayInstruction[];
   assignments: Assignment[];
   attendance: Attendance[];
   attendanceChanges: AttendanceChange[];
@@ -753,7 +1051,15 @@ export type Db = {
   plant: PlantItem[];
   hiredPlant: HiredPlant[];
   vehicles: Vehicle[];
+  bases: Base[];
+  garages: Garage[];
+  /** Newest first. */
+  garageInvoices: RepairInvoice[];
   fleetDocs: FleetDoc[];
+  /** Newest first. */
+  damageReports: DamageReport[];
+  garageNotes: GarageNote[];
+  todos: Todo[];
   files: FileItem[];
   supplierInvoices: SupplierInvoice[];
   subcontractors: Subcontractor[];
@@ -765,11 +1071,16 @@ export type Db = {
   invoiceComments: InvoiceComment[];
   invoiceQueries: InvoiceQuery[];
   mails: Mail[];
+  chatChannels: ChatChannel[];
+  /** Oldest first. */
+  chatMessages: ChatMessage[];
   approvals: Approval[];
   automations: Automation[];
   activity: Activity[];
   access: AccessRow[];
   personAccess: PersonAccess[];
+  /** Sites given to site managers who do not run them. */
+  siteAccess: SiteAccess[];
 };
 
 // ── Demo roles (the mock sign-in) ─────────────────────────────────────────────

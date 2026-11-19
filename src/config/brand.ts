@@ -6,6 +6,8 @@
  * drop their logo into /public and set `logoUrl`. Nothing else needs touching.
  */
 export type Region = "IE" | "UK";
+/** The firm's team chat, shown in Team chat and Admin, Connections (step 2). */
+export type ChatApp = "teams" | "slack";
 
 export type Brand = {
   /** Short name shown top left and on the sign-in page. */
@@ -20,6 +22,8 @@ export type Brand = {
   logoUrl: string;
   /** Sets currency, VAT rate, certificate names and vehicle test names. */
   region: Region;
+  /** Which team chat the firm uses: Microsoft Teams or Slack. Changes how channels are named. */
+  chatApp: ChatApp;
   /** Email domain used for the invented staff and shared mailboxes. */
   emailDomain: string;
 };
@@ -31,6 +35,7 @@ export const DEFAULT_BRAND: Brand = {
   accent: "#4682B4",
   logoUrl: "",
   region: "IE",
+  chatApp: "teams",
   emailDomain: "abcconstruction.example",
 };
 

@@ -49,11 +49,12 @@ def steps(page, ctx):
     back.click(); page.wait_for_url("**/invoicing"); page.wait_for_timeout(200)
     back.click(); page.wait_for_url("**/dashboard"); page.wait_for_timeout(200)
     check("Back: all the way to the first screen, where it stops", page.url.endswith("/dashboard") and back.is_disabled())
-    page.go_forward(); page.wait_for_url("**/invoicing"); page.wait_for_timeout(200)
-    check("Back: it follows the browser's own forward button", back.is_enabled())
+    # Merged 19 Nov: Back keeps its own trail (the other copy's, with filters and height), so it opens the screen again rather than using the browser's history.
+    bar.get_by_role("link", name="Invoicing").click(); page.wait_for_url("**/invoicing"); page.wait_for_timeout(200)
+    check("Back: it wakes up again on the next screen opened", back.is_enabled())
     seen = []
-    for name, url in [("Email", "**/inbox"), ("Sales", "**/sales"), ("Schedule", "**/schedule"), ("People", "**/people/timesheet"), ("Plant", "**/plant"), ("Files", "**/files"), ("Portal", "**/portal"), ("Site phone", "**/site"), ("Admin", "**/admin**")]:
-        bar.get_by_role("link", name=name, exact=True).click(); page.wait_for_url(url); page.wait_for_timeout(150)
+    for name, url in [("Email", "**/inbox"), ("Sales", "**/sales"), ("Schedule", "**/schedule"), ("People", "**/people/timesheet"), ("Plant", "**/plant"), ("Fleet", "**/fleet"), ("Compliance", "**/compliance"), ("Portal", "**/portal"), ("Site phone", "**/site"), ("Admin", "**/admin**")]:
+        bar.get_by_role("link", name=re.compile(rf"(^|\s){re.escape(name)}$")).click(); page.wait_for_url(url); page.wait_for_timeout(150)
         seen.append(back.count() == 1 and back.is_enabled())
     check("Back: it is on every department's screens, the portal and the site phone included", all(seen), seen)
     page.get_by_role("button", name="Account menu").click(); page.get_by_role("menuitem", name="Settings").click(); page.wait_for_url("**/settings"); page.wait_for_timeout(200)
@@ -258,7 +259,7 @@ def steps(page, ctx):
     tick = dlg().get_by_role("checkbox")
     check("Mark paid, subcontractor: the box says they are told in the portal, with a tick to email them as well", "Corrib Scaffolding sees it as paid in their portal as soon as you confirm" in dlg().inner_text() and tick.is_checked() and "Also email a remittance advice to accounts@corribscaffolding.example" in dlg().inner_text())
     dlg().get_by_role("button", name="Confirm paid").click(); page.wait_for_timeout(300)
-    mail = data(page, "(() => { const s = db.supplierInvoices.find(s => s.invoiceNo === 'CS-INV-9921'); const m = db.mails.find(m => m.purchaseInvoiceId === s.id); return m ? [m.folder, m.subject, m.body.includes('accounts@corribscaffolding.example')] : null })()")
+    mail = data(page, "(() => { const s = db.supplierInvoices.find(s => s.invoiceNo === 'CS-INV-9921'); const m = db.mails.find(m => m.purchaseInvoiceId === s.id); return m ? [m.folder, m.subject, (m.to || '').includes('accounts@corribscaffolding.example')] : null })()")
     check("Mark paid, subcontractor: the remittance advice is filed under Email, Sent", data(page, "db.mails.length") == mails + 1 and mail == ["Sent", "Remittance advice: your invoice CS-INV-9921, C719 St Finian's Church", True] and "Gearóid Flaherty is told in the portal and by email" in toast(), mail)
     other = data(page, "db.supplierInvoices.filter(s => stage(s) === 'pay' && s.party === 'subcontractor')[0].invoiceNo")
     page.get_by_role("button", name=f"Mark {other} paid").click(); page.wait_for_timeout(250)

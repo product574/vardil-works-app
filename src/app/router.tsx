@@ -16,11 +16,16 @@ const sales = () => import("@/modules/sales");
 const projects = () => import("@/modules/projects");
 const people = () => import("@/modules/people");
 const schedule = () => import("@/modules/schedule/Schedule");
+const leave = () => import("@/modules/schedule/Leave");
+const month = () => import("@/modules/schedule/Month");
 const plant = () => import("@/modules/plant");
 const compliance = () => import("@/modules/compliance");
+const fleet = () => import("@/modules/fleet");
 const files = () => import("@/modules/files/Files");
 const invoicing = () => import("@/modules/invoicing");
+const profit = () => import("@/modules/profit");
 const inbox = () => import("@/modules/inbox/Inbox");
+const chat = () => import("@/modules/chat/TeamChat");
 const portal = () => import("@/modules/portal/Portal");
 const reports = () => import("@/modules/reports/Reports");
 const customers = () => import("@/modules/customers");
@@ -90,20 +95,21 @@ export const router = create([
           screen("projects/:code", projects, (m) => m.ProjectPage),
           screen("people/timesheet", people, (m) => m.Timesheet),
           screen("people/history", people, (m) => m.AttendanceHistory),
+          screen("people/payroll", people, (m) => m.PayrollExport),
+          screen("people/reimbursements", people, (m) => m.Reimbursements),
           screen("people", people, (m) => m.EmployeeRegister),
           // Training tickets moved to Compliance, Personnel on 18 Nov.
           { path: "people/certs", element: <Navigate to="/compliance/personnel?view=list" replace /> },
           screen("people/holidays", people, (m) => m.Holidays),
           screen("schedule", schedule, (m) => m.WeekAhead),
-          screen("schedule/month", schedule, (m) => m.MonthAhead),
+          screen("schedule/month", month, (m) => m.MonthAhead),
           screen("schedule/today", schedule, (m) => m.WhoIsWhere),
+          screen("schedule/holidays", leave, (m) => m.ScheduleHolidays),
+          screen("schedule/holiday-requests", leave, (m) => m.HolidayRequests),
           screen("plant", plant, (m) => m.PlantOverview),
           screen("plant/calendar", plant, (m) => m.PlantCalendar),
           screen("plant/register", plant, (m) => m.PlantRegister),
           screen("plant/hired", plant, (m) => m.HiredPlantList),
-          screen("plant/vehicles", plant, (m) => m.Vehicles),
-          screen("plant/documents", plant, (m) => m.VehicleDocuments),
-          screen("plant/repairs", plant, (m) => m.RepairSpend),
           screen("compliance", compliance, (m) => m.EverythingDue),
           screen("compliance/personnel", compliance, (m) => m.Personnel),
           screen("compliance/courses", compliance, (m) => m.Courses),
@@ -111,6 +117,25 @@ export const router = create([
           screen("compliance/machinery", compliance, (m) => m.Machinery),
           screen("compliance/company", compliance, (m) => m.CompanyPapers),
           screen("compliance/subcontractors", compliance, (m) => m.Subcontractors),
+          // Fleet has a department of its own since 18 Nov (from the Secure-All build); the old addresses land on its screens.
+          screen("fleet", fleet, (m) => m.FleetOverview),
+          screen("fleet/invoices", fleet, (m) => m.Invoices),
+          screen("fleet/invoices/:invoiceId", fleet, (m) => m.InvoicePage),
+          screen("fleet/vehicles", fleet, (m) => m.Vehicles),
+          screen("fleet/vehicles/:vehicleId", fleet, (m) => m.VehiclePage),
+          screen("fleet/damage", fleet, (m) => m.DamageReported),
+          screen("fleet/renewals", fleet, (m) => m.Renewals),
+          screen("fleet/documents", fleet, (m) => m.VehicleDocuments),
+          screen("fleet/garages", fleet, (m) => m.Garages),
+          screen("fleet/garages/:garageId", fleet, (m) => m.GaragePage),
+          screen("fleet/drivers", fleet, (m) => m.Drivers),
+          screen("fleet/bases", fleet, (m) => m.Bases),
+          { path: "plant/fleet", element: <Moved to={() => "/fleet/vehicles"} /> },
+          { path: "plant/fleet/documents", element: <Moved to={() => "/fleet/documents"} /> },
+          { path: "plant/fleet/repairs", element: <Moved to={() => "/fleet"} /> },
+          { path: "plant/vehicles", element: <Moved to={() => "/fleet/vehicles"} /> },
+          { path: "plant/documents", element: <Moved to={() => "/fleet/documents"} /> },
+          { path: "plant/repairs", element: <Moved to={() => "/fleet"} /> },
           screen("files", files, (m) => m.ProjectFiles),
           screen("files/photos", files, (m) => m.AllPhotos),
           screen("files/unsorted", files, (m) => m.ToBeSorted),
@@ -131,8 +156,13 @@ export const router = create([
           // The three folders are one screen. A separate component for each means the list filter
           // starts fresh when you change folder.
           screen("inbox", inbox, (m) => () => <m.Inbox folder="Inbox" />),
+          screen("inbox/starred", inbox, (m) => () => <m.Inbox folder="Starred" />),
           screen("inbox/sent", inbox, (m) => () => <m.Inbox folder="Sent" />),
+          screen("inbox/drafts", inbox, (m) => () => <m.Inbox folder="Drafts" />),
           screen("inbox/archive", inbox, (m) => () => <m.Inbox folder="Archive" />),
+          screen("inbox/label/:label", inbox, (m) => m.InboxLabel),
+          screen("chat", chat, (m) => m.TeamChat),
+          screen("chat/:channelId", chat, (m) => m.TeamChat),
           screen("portal", portal, (m) => m.Portal),
           screen("portal/subcontractors", subPortal, (m) => m.SubPortal),
           screen("site", site, (m) => m.SiteView),
@@ -140,9 +170,14 @@ export const router = create([
           screen("settings/region", settings, (m) => m.RegionAccounts),
           { path: "settings/roles", element: <Moved to={keep("/admin/access")} /> },
           screen("settings/about", settings, (m) => m.About),
+          screen("profit", profit, (m) => m.Profitability),
+          // Job costs stays in Invoicing for everyone (19 Nov, when the two chats were merged).
+          { path: "profit/costs", element: <Moved to={() => "/invoicing/costs"} /> },
           screen("admin", admin, (m) => m.Requests),
           screen("admin/access", admin, (m) => m.RolesAccess),
+          screen("admin/sites", admin, (m) => m.SiteAccess),
           screen("admin/billing", admin, (m) => m.Billing),
+          screen("admin/bank-holidays", admin, (m) => m.BankHolidays),
           screen("admin/connections", admin, (m) => m.Connections),
           screen("admin/automations", admin, (m) => m.Automations),
           screen("admin/activity", admin, (m) => m.ActivityLog),

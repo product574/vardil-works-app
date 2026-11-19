@@ -35,6 +35,8 @@
   --warn-soft: #fbf0dc;
   --bad: #b23a2b;
   --bad-soft: #fbe9e6;
+  /* The case round the phone-sized frames on the Site phone screen (merged 19 Nov). */
+  --bezel: #1b2733;
 
   --shadow-pop: 0 10px 30px rgb(27 39 51 / 0.14), 0 2px 6px rgb(27 39 51 / 0.08);
   --shadow-dock: 0 8px 28px rgb(27 39 51 / 0.16), 0 1px 3px rgb(27 39 51 / 0.1);
@@ -61,6 +63,7 @@
   --warn-soft: #3a2c12;
   --bad: #e57f70;
   --bad-soft: #3d1c17;
+  --bezel: #33404c;
 
   --shadow-pop: 0 10px 30px rgb(0 0 0 / 0.5), 0 2px 6px rgb(0 0 0 / 0.35);
   --shadow-dock: 0 8px 28px rgb(0 0 0 / 0.55), 0 1px 3px rgb(0 0 0 / 0.4);
@@ -85,6 +88,7 @@
   --color-warn-soft: var(--warn-soft);
   --color-bad: var(--bad);
   --color-bad-soft: var(--bad-soft);
+  --color-bezel: var(--bezel);
 
   --font-sans: "Barlow", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Barlow Semi Condensed", "Barlow", ui-sans-serif, system-ui, sans-serif;

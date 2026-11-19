@@ -1,18 +1,66 @@
-import { ArrowCounterClockwise, ArrowLeft, GearSix, MagnifyingGlass, Moon, SignOut, Sparkle, Sun, UserSwitch } from "@phosphor-icons/react";
+import { ArrowCounterClockwise, ArrowLeft, GearSix, MagnifyingGlass, Moon, SignOut, Sun, UserSwitch } from "@phosphor-icons/react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Navigate, NavLink, Outlet, useLocation, useNavigate, useRouteError } from "react-router-dom";
+import { Navigate, NavLink, Outlet, useLocation, useNavigate, useNavigationType, useRouteError } from "react-router-dom";
 import { useAccess } from "@/data/access";
 import { ROLES, roleDef } from "@/data/roles";
 import { useData, useDay, useDb, usePrefs } from "@/data/store";
 import { dWeekday } from "@/lib/format";
 import { Avatar, Button, Count, cx, Dialog, Menu, MenuItem } from "@/ui";
 import { Toaster } from "@/ui/toast";
+import { AiSparkle } from "@/ui/AiSparkle";
 import { AskButton, AskPanel, askFromSearch } from "@/ai/AskPanel";
 import { useAsk } from "@/ai/state";
 import { useGate } from "./AuthPages";
 import { signOut } from "./auth";
-import { useCanGoBack } from "./back";
 import { DEPARTMENTS, departmentFor } from "./departments";
+import { clearScreenState } from "./screen-state";
+import { clearTrail, previous, saveScroll, scrollFor, stepBack, useTrail, visit } from "./trail";
+
+/** Whose trail it is: the role signed in as, and the person when signed in as someone else. */
+const useTrailUser = () => usePrefs((s) => `${s.role ?? "none"}-${s.asPersonId ?? ""}-${s.operativeId ?? ""}`);
+
+/**
+ * Keeps the Back button's trail (src/app/trail.ts) in step with where the person goes, and puts
+ * the page back at the height it was left at when they come back to it. A new screen starts at
+ * the top. From the Secure-All build, 18 Nov.
+ */
+function useTrailTracker(active: boolean) {
+  const location = useLocation();
+  const type = useNavigationType();
+  const user = useTrailUser();
+  const here = location.pathname + location.search;
+  const last = useRef<string | null>(null);
+  useEffect(() => {
+    if (!active || location.pathname === "/") return;
+    const viaBack = (location.state as { viaBack?: boolean } | null)?.viaBack === true;
+    // A step that replaces the last one (an old address sent on to its screen) only replaces a step taken in this visit.
+    const list = useTrail.getState().byUser[user] ?? [];
+    const how = type === "POP" ? "pop" : type === "REPLACE" && last.current && list.at(-1) === last.current ? "replace" : "push";
+    if (!viaBack) visit(user, here, how);
+    const samePage = !!last.current && last.current.split("?")[0] === location.pathname;
+    last.current = here;
+    // A step on the same screen (a filter, a tab, a row opened in place) keeps the screen where it is.
+    if (samePage && !viaBack && type !== "POP") return;
+    const top = viaBack || type === "POP" ? scrollFor(here) : 0;
+    // The screen's own code may still be loading, so the height is set again once it has drawn.
+    const timers = [0, 80, 250].map((ms) => window.setTimeout(() => document.getElementById("main")?.scrollTo({ top }), ms));
+    return () => timers.forEach((t) => window.clearTimeout(t));
+  }, [here, active]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const main = document.getElementById("main");
+    if (!active || !main) return;
+    let timer = 0;
+    const on = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => saveScroll(here, main.scrollTop), 150);
+    };
+    main.addEventListener("scroll", on, { passive: true });
+    return () => {
+      window.clearTimeout(timer);
+      main.removeEventListener("scroll", on);
+    };
+  }, [here, active]);
+}
 
 export function Shell() {
   const gate = useGate();
@@ -20,8 +68,7 @@ export function Shell() {
   const location = useLocation();
   const dept = departmentFor(location.pathname);
   const askOpen = useAsk((s) => s.open);
-  const asPersonId = usePrefs((s) => s.asPersonId);
-  const canGoBack = useCanGoBack(`${access.role ?? ""}|${asPersonId ?? ""}`);
+  useTrailTracker(gate === true && !!access.def && access.can(dept.key));
 
   if (gate === null) return null;
   if (gate === false) return <Navigate to="/sign-in" replace />;
@@ -37,13 +84,20 @@ export function Shell() {
 
   return (
     <div className="flex h-dvh flex-col bg-canvas">
-      <TopBar canGoBack={canGoBack} />
+      <TopBar />
       <div className="flex min-h-0 flex-1">
-        {dept.key !== "site" && <Sidebar />}
-        <main id="main" className={cx("min-w-0 flex-1 overflow-y-auto", showBar && "pb-24")}>
-          <SideNavCompact />
-          <Outlet />
-        </main>
+        {dept.key !== "site" && !dept.ownLayout && <Sidebar />}
+        {dept.ownLayout ? (
+          // Email and Team chat draw their own side panel and scroll their own parts.
+          <main id="main" className="flex min-w-0 flex-1 overflow-hidden">
+            <Outlet />
+          </main>
+        ) : (
+          <main id="main" className={cx("min-w-0 flex-1 overflow-y-auto", showBar && "pb-24")}>
+            <SideNavCompact />
+            <Outlet />
+          </main>
+        )}
         {showAsk && <AskPanel />}
       </div>
       {showBar && <DepartmentBar keys={allowed.map((d) => d.key)} besideAsk={showAsk} />}
@@ -54,7 +108,7 @@ export function Shell() {
 
 // ── Top bar ───────────────────────────────────────────────────────────────────
 
-function TopBar({ canGoBack }: { canGoBack: boolean }) {
+function TopBar() {
   const navigate = useNavigate();
   const brand = usePrefs((s) => s.brand);
   const theme = usePrefs((s) => s.theme);
@@ -64,6 +118,7 @@ function TopBar({ canGoBack }: { canGoBack: boolean }) {
   const portalClientId = usePrefs((s) => s.portalClientId);
   const day = useDay();
   const reset = useData((s) => s.reset);
+  const trailUser = useTrailUser();
   const def = roleDef(role)!;
   const access = useAccess();
   const people = useDb((db) => db.people);
@@ -77,18 +132,8 @@ function TopBar({ canGoBack }: { canGoBack: boolean }) {
 
   return (
     <header className="z-20 flex h-13 shrink-0 items-center gap-2 border-b border-line bg-surface px-3 sm:gap-3 sm:px-4">
-      {/* Back, in the same place on every screen: to the screen that was open before this one. */}
-      <button
-        type="button"
-        onClick={() => navigate(-1)}
-        disabled={!canGoBack}
-        aria-label="Back"
-        title={canGoBack ? "Back to the screen you were on before" : "There is no screen to go back to yet"}
-        className={cx("press -ml-1 flex h-9 shrink-0 items-center gap-1.5 rounded-md border border-line-strong bg-surface px-2.5 text-[0.93rem] font-medium text-ink hover:border-accent hover:text-accent-ink disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-line-strong disabled:hover:text-ink max-sm:-ml-0.5 max-sm:w-9 max-sm:justify-center max-sm:px-0", away)}
-      >
-        <ArrowLeft size={18} />
-        <span className="max-sm:hidden">Back</span>
-      </button>
+      {/* Back, at the far left on every screen (decision 74), with the Secure-All build's memory of where you were (decision 128). */}
+      <BackButton className={cx("-ml-1 max-sm:-ml-0.5 max-sm:w-9 max-sm:justify-center max-sm:px-0", away)} />
       <NavLink to={access.home} className={cx("flex min-w-0 items-center gap-2", away)} aria-label={`${brand.brandName}, home`}>
         {brand.logoUrl ? <img src={brand.logoUrl} alt="" className="h-7 w-auto max-w-full" /> : <span className="truncate py-1 font-display text-[1.15rem] leading-none font-semibold text-accent-ink sm:text-[1.3rem]">{brand.brandName}</span>}
       </NavLink>
@@ -188,6 +233,9 @@ function TopBar({ canGoBack }: { canGoBack: boolean }) {
               variant="primary"
               onClick={() => {
                 reset();
+                // The sample records are new again, so the trail and each screen's filters start again too.
+                clearTrail(trailUser);
+                clearScreenState();
                 setConfirmReset(false);
               }}
             >
@@ -199,6 +247,53 @@ function TopBar({ canGoBack }: { canGoBack: boolean }) {
         <p>Every approval, edit and new record made in this browser is cleared, and the sample data goes back to how it started. Branding and theme stay as they are.</p>
       </Dialog>
     </header>
+  );
+}
+
+// ── Back ──────────────────────────────────────────────────────────────────────
+
+/** What a place on the trail is called, for the Back button's tooltip. */
+function placeName(path: string): string {
+  const p = path.split("?")[0]!;
+  for (const d of DEPARTMENTS) for (const g of d.groups) for (const i of g.items) if (i.to === p) return d.groups.length === 1 && g.items.length === 1 ? d.label : `${d.label}, ${i.label}`;
+  if (p.startsWith("/fleet/invoices/")) return "the garage invoice";
+  if (p.startsWith("/fleet/vehicles/")) return "the vehicle";
+  if (p.startsWith("/fleet/garages/")) return "the garage";
+  if (p.startsWith("/projects/")) return `project ${p.split("/")[2]}`;
+  if (p.startsWith("/sales/quotes/")) return `quote ${p.split("/")[3]}`;
+  if (p.startsWith("/inbox")) return "Email";
+  if (p.startsWith("/chat")) return "Team chat";
+  return "where you were";
+}
+
+/**
+ * Back (18 Nov, from the Secure-All build): one button, in the same place on every screen, that
+ * goes to exactly where the person was: the same screen, with the same tab, filters and open
+ * record, at the same height. It remembers across a reload and signing in again.
+ */
+function BackButton({ className }: { className?: string }) {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const user = useTrailUser();
+  const here = location.pathname + location.search;
+  // Read through the store so the button follows the trail as it changes.
+  useTrail((s) => s.byUser[user]);
+  const to = previous(user, here);
+  return (
+    <button
+      type="button"
+      disabled={!to}
+      title={to ? `Back to ${placeName(to)}` : "You have not been anywhere else yet"}
+      onClick={() => {
+        const target = stepBack(user, here);
+        if (target) navigate(target, { state: { viaBack: true } });
+      }}
+      aria-label="Back"
+      className={cx("press inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md border border-line-strong bg-surface px-2.5 text-[0.93rem] font-medium text-ink hover:border-accent hover:text-accent-ink disabled:cursor-not-allowed disabled:text-faint disabled:hover:border-line-strong disabled:hover:text-faint", className)}
+    >
+      <ArrowLeft size={18} />
+      <span className="max-sm:hidden">Back</span>
+    </button>
   );
 }
 
@@ -225,6 +320,9 @@ function Search({ autoFocus = false, onDone }: { autoFocus?: boolean; onDone?: (
   const people = useDb((db) => db.people);
   const clients = useDb((db) => db.clients);
   const quotes = useDb((db) => db.quotes);
+  const vehicles = useDb((db) => db.vehicles);
+  const garages = useDb((db) => db.garages);
+  const fleetOk = useAccess().can("fleet");
 
   const hits = useMemo<Hit[]>(() => {
     const s = q.trim().toLowerCase();
@@ -235,8 +333,11 @@ function Search({ autoFocus = false, onDone }: { autoFocus?: boolean; onDone?: (
       ...quotes.filter((x) => has(x.ref, x.title)).map((x) => ({ key: x.id, label: `${x.ref} ${x.title}`, sub: `Quote, ${x.status.toLowerCase()}`, to: `/sales/quotes/${x.ref}` })),
       ...clients.filter((c) => has(c.name, c.contactName)).map((c) => ({ key: c.id, label: c.name, sub: `Customer, ${c.contactName}`, to: `/customers/${c.id}` })),
       ...people.filter((p) => has(p.name, p.trade)).map((p) => ({ key: p.id, label: p.name, sub: p.trade, to: `/people?person=${p.id}` })),
+      // Fleet (18 Nov): a registration typed any way ("231 g 44") finds the vehicle, and garages by name.
+      ...(fleetOk ? vehicles.filter((v) => has(v.make, v.model) || (s.replace(/[^a-z0-9]/g, "").length >= 2 && v.reg.toLowerCase().replace(/[^a-z0-9]/g, "").includes(s.replace(/[^a-z0-9]/g, "")))).map((v) => ({ key: v.id, label: v.reg, sub: `Vehicle, ${v.make} ${v.model}${v.active ? "" : ", removed"}`, to: `/fleet/vehicles/${v.id}` })) : []),
+      ...(fleetOk ? garages.filter((g) => has(g.name, g.town)).map((g) => ({ key: g.id, label: g.name, sub: `Garage, ${g.town}`, to: `/fleet/garages/${g.id}` })) : []),
     ].slice(0, 8);
-  }, [q, projects, people, clients, quotes]);
+  }, [q, projects, people, clients, quotes, vehicles, garages, fleetOk]);
 
   useEffect(() => {
     const away = (e: MouseEvent) => !box.current?.contains(e.target as Node) && setOpen(false);
@@ -311,7 +412,7 @@ function Search({ autoFocus = false, onDone }: { autoFocus?: boolean; onDone?: (
           {offerAsk && (
             <li role="option" aria-selected={cursor === hits.length} className="mt-1 border-t border-line pt-1">
               <button type="button" onMouseEnter={() => setCursor(hits.length)} onClick={askIt} className={cx("flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-accent-ink", cursor === hits.length && "bg-accent-soft")}>
-                <Sparkle size={18} className="shrink-0" />
+                <AiSparkle size={18} className="shrink-0" />
                 <span className="min-w-0">
                   <span className="block font-medium">Ask AI</span>
                   <span className="block truncate text-[0.87rem] text-muted">"{typed}"</span>
@@ -330,15 +431,18 @@ function Search({ autoFocus = false, onDone }: { autoFocus?: boolean; onDone?: (
 function useNavCounts() {
   const db = useData((s) => s.db);
   const day = useDay();
-  return (count: ((d: typeof db, today: string) => number) | undefined) => (count ? count(db, day) : 0);
+  const me = useAccess().personId;
+  return (count: ((d: typeof db, today: string, me: string | null) => number) | undefined) => (count ? count(db, day, me) : 0);
 }
 
 /** A department's sidebar groups, without the managing director's own screens for anyone else, or the staff's own for a client. */
 function useGroups(pathname: string) {
   const { role, may } = useAccess();
   const md = role === "md";
+  const db = useData((s) => s.db);
+  const brand = usePrefs((s) => s.brand);
   return departmentFor(pathname)
-    .groups.map((g) => ({ ...g, items: g.items.filter((it) => (md || !it.mdOnly) && !(it.staffOnly && role === "client") && (!it.perm || may(it.perm))) }))
+    .groups.map((g) => ({ ...g, items: [...g.items, ...(g.more?.(db, brand) ?? [])].filter((it) => (md ? !it.notMd : !it.mdOnly) && !(it.staffOnly && role === "client") && (!it.perm || may(it.perm))) }))
     .filter((g) => g.items.length > 0);
 }
 
@@ -357,7 +461,7 @@ function Sidebar() {
             {g.items.map((it) => (
               <li key={it.to}>
                 <NavLink to={it.to} end={it.end} className={({ isActive }) => cx("flex min-h-9 items-center gap-2 rounded-md px-2 py-1.5 leading-tight", isActive ? "bg-surface font-medium text-accent-ink shadow-[inset_0_0_0_1px_var(--line)]" : "hover:bg-surface/70")}>
-                  <span className="min-w-0">{it.label}</span>
+                  <span className="min-w-0 flex-1">{it.label}</span>
                   <Count n={n(it.count)} tone={it.countTone ?? "accent"} />
                 </NavLink>
               </li>
@@ -391,6 +495,7 @@ function SideNavCompact() {
 function DepartmentBar({ keys, besideAsk }: { keys: string[]; besideAsk: boolean }) {
   const location = useLocation();
   const current = departmentFor(location.pathname);
+  const n = useNavCounts();
   return (
     <nav aria-label="Departments" className={cx("pointer-events-none fixed inset-x-0 bottom-3 z-30 flex justify-center px-2", besideAsk && "md:right-[27rem]")}>
       <ul className="pointer-events-auto flex max-w-full gap-1 overflow-x-auto rounded-[14px] border border-line bg-surface p-1.5 shadow-dock">
@@ -404,7 +509,14 @@ function DepartmentBar({ keys, besideAsk }: { keys: string[]; besideAsk: boolean
                 aria-current={active ? "page" : undefined}
                 className={cx("press flex h-14 w-[4.9rem] flex-col items-center justify-center gap-0.5 rounded-lg text-[0.87rem] leading-tight", active ? "bg-accent-strong font-medium text-white" : "text-muted hover:bg-accent-soft hover:text-accent-ink")}
               >
-                <Icon size={22} weight={active ? "fill" : "regular"} />
+                <span className="relative">
+                  <Icon size={22} weight={active ? "fill" : "regular"} />
+                  {n(d.badge) > 0 && (
+                    <span aria-label={`${n(d.badge)} unread`} className={cx("absolute -top-1.5 -right-3 min-w-5 rounded-full px-1 text-center text-[0.8125rem] leading-5 font-medium", active ? "bg-white text-accent-ink" : "bg-accent-strong text-white")}>
+                      {n(d.badge)}
+                    </span>
+                  )}
+                </span>
                 <span className="whitespace-nowrap">{d.label}</span>
               </NavLink>
             </li>

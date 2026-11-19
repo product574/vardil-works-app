@@ -1,19 +1,22 @@
+import { CaretLeft, CaretRight } from "@phosphor-icons/react";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { useScreenState } from "@/app/screen-state";
 import { useAccess } from "@/data/access";
-import { planPerson, type PlanMark, removeFromRoster, sendWeekAhead, setPlanDay } from "@/data/actions";
+import { planDays, type PlanMark, planRestDay, removeFromRoster, sendWeekAhead, setPlanDay } from "@/data/actions";
 import { co } from "@/data/place";
 import { useData, useDay } from "@/data/store";
 import { type Db, LANGUAGE_NAME, type Person, type Project } from "@/data/types";
-import { availabilityLine, type DayState, daysLabel, freeDays, openDays, partLoad, personWeek, planClashes, planShort } from "@/lib/availability";
+import { type DayState, daysLabel, openDays, partLoad, personWeek, planClashes, planShort } from "@/lib/availability";
 import { type Block, blocksText, bookingFor, planBlocks, ticketBlocks } from "@/lib/compliance";
-import { addDays, MONTHS } from "@/lib/dates";
+import { dayRoster, dropOutcome, firstOnSite, plannedLabel, planSteps, sitesRunning, stepsToPlan, whereDays, whereOn, type WhereState } from "@/lib/roster";
+import { bankHolidayOn, isBankHoliday, isRestDay } from "@/lib/bank-holidays";
+import { addDays } from "@/lib/dates";
 import { dShort, dWeekday, plural } from "@/lib/format";
-import { attendanceShort, nextWorkWeek, shiftMonth, workdaysOfMonth, workWeek } from "@/lib/week";
+import { fullWeek, nextWorkWeek, workWeek } from "@/lib/week";
 import { Badge, Button, cx, Dialog, Empty, Fact, Field, Mail, NumInput, PageBody, PageHead, Panel, Section, Segmented, Tel, type Tone } from "@/ui";
 import { toast } from "@/ui/toast";
 
-const lowerFirst = (t: string) => t.charAt(0).toLowerCase() + t.slice(1);
 const wd = (d: string) => new Date(d + "T12:00:00Z").toLocaleDateString("en-IE", { weekday: "short", timeZone: "UTC" });
 const onLeave = (db: Db, personId: string, date: string) => db.holidays.some((h) => h.personId === personId && h.status === "Approved" && date >= h.from && date <= h.to);
 
@@ -72,6 +75,47 @@ export function WeekAhead() {
     return personWeek(db.plan, db.holidays, liveIds, personId, ahead).map((d) => (p && d.load === 0 && ticketBlocks(p, d.date).length > 0 ? { ...d, load: 1, sites: [], blocked: true } : d));
   };
   const live = openPerson && db.people.find((p) => p.id === openPerson.person.id);
+  const [dragging, setDragging] = useState<Drag | null>(null);
+  const [busy, setBusy] = useState<{ person: Person; site: Project; date: string } | null>(null);
+  const [adding, setAdding] = useState<{ siteId: string; date: string } | null>(null);
+  // Someone just put on a site for the first time this week: ask whether they are there for the rest of it (Oisin, 17 Nov).
+  const [rest, setRest] = useState<{ person: Person; site: Project; date: string; moveFrom?: string } | null>(null);
+  const offerRest = (person: Person, site: Project, date: string, moveFrom?: string) => setRest(firstOnSite(db.plan, person.id, site.id, week, date) ? { person, site, date, moveFrom } : null);
+  const restSteps =
+    rest && week.includes(rest.date)
+      ? planSteps(personWeek(db.plan, db.holidays, liveIds, rest.person.id, week.filter((d) => d > rest.date)), rest.site.id, { running: (d) => d >= rest.site.startDate && d <= rest.site.endDate, onBusy: "skip", moveFrom: rest.moveFrom })
+      : [];
+  const restDays = stepsToPlan(restSteps);
+
+  /** What dropping a name on a site and day does: plan, move, refuse, or ask first if it would double book. */
+  const dropOn = (drag: Drag, site: Project, date: string) => {
+    setDragging(null);
+    const person = db.people.find((p) => p.id === drag.personId);
+    if (!person || !canEdit || date <= day || date < site.startDate || date > site.endDate) return;
+    // A bank holiday is not a normal day: work on it is planned with Plan overtime work (round ten).
+    if (isBankHoliday(db.bankHolidays, date)) return void toast(`${dWeekday(date)} is a bank holiday. Use Plan overtime work, under the grid`);
+    // Someone whose Safe Pass or trade ticket has run out by then cannot go on the plan (Compliance).
+    const stops = ticketBlocks(person, date);
+    if (stops.length) return void toast(`${person.name} cannot work on ${dWeekday(date)}: ${blocksText(stops, day)}. Renew it in Compliance first`);
+    const state = personWeek(db.plan, db.holidays, liveIds, person.id, [date])[0]!;
+    // Dragged from another site on the same day: a move, not a second booking.
+    if (drag.fromSiteId && drag.fromDate === date && drag.fromSiteId !== site.id) {
+      const was = db.plan.find((p) => p.projectId === drag.fromSiteId && p.personId === person.id && p.date === date);
+      setPlanDay(drag.fromSiteId, person.id, date, null);
+      setPlanDay(site.id, person.id, date, { part: was?.part === "half" ? "half" : "full", overtimeHours: was?.overtimeHours ?? 0 });
+      toast(`${person.name} moved from ${code(drag.fromSiteId)} to ${site.code}, ${dWeekday(date)}`);
+      offerRest(person, site, date, drag.fromSiteId);
+      return;
+    }
+    const outcome = dropOutcome(state, site.id);
+    if (outcome === "already") return toast(`${person.name} is already on ${site.code} on ${dWeekday(date)}`);
+    if (outcome === "leave") return toast(`${person.name} is on leave on ${dWeekday(date)}`);
+    if (outcome === "busy") return setBusy({ person, site, date });
+    const half = state.load === 0.5;
+    setPlanDay(site.id, person.id, date, { part: half ? "half" : "full", overtimeHours: 0 });
+    toast(`${person.name} put on ${site.code}, ${dWeekday(date)}${half ? ", half day" : ""}`);
+    offerRest(person, site, date);
+  };
 
   return (
     <>
@@ -107,8 +151,8 @@ export function WeekAhead() {
           )}
         </div>
       </PageHead>
-      <PageBody className="grid max-w-[88rem] items-start gap-5 xl:grid-cols-[minmax(0,1fr)_18rem]">
-        <div className="grid min-w-0 gap-5">
+      <PageBody className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_18rem]">
+        <div className="grid min-w-0 gap-4">
           {clashes.size > 0 && (
             <div className="rounded-md bg-bad-soft px-3 py-2.5 text-bad">
               <p className="font-medium">{plural(clashes.size, "double booking")} to sort out before the week can be sent</p>
@@ -140,17 +184,60 @@ export function WeekAhead() {
               </ul>
             </div>
           )}
-          {sites.length === 0 && (
+          {rest && restDays.length > 0 && (
+            <div role="group" aria-label="Here for the rest of the week?" className="sticky top-2 z-10 flex flex-wrap items-center gap-3 rounded-md border border-accent bg-surface px-3 py-2.5 shadow-pop">
+              <p className="min-w-0 flex-1">
+                <span className="font-medium">
+                  {rest.person.name} is on {rest.site.code} on {dWeekday(rest.date)}.
+                </span>{" "}
+                Here for the rest of the week?{" "}
+                <span className="text-muted">
+                  {daysLabel(restDays.map((x) => x.date), week)}
+                  {restDays.some((x) => x.action === "move") && rest.moveFrom ? `, moved from ${code(rest.moveFrom)}` : ""}
+                  {restSteps.some((x) => x.action === "busy") ? `. ${daysLabel(restSteps.filter((x) => x.action === "busy").map((x) => x.date), week)} stays as planned elsewhere` : ""}
+                </span>
+              </p>
+              <Button onClick={() => setRest(null)}>No</Button>
+              <Button
+                variant="primary"
+                onClick={() => {
+                  planDays(rest.site.id, rest.person.id, restDays.map((x) => ({ date: x.date, half: x.action === "half", ...(x.action === "move" ? { moveFrom: rest.moveFrom } : {}) })));
+                  toast(`${rest.person.name} is on ${rest.site.code} for the rest of the week: ${daysLabel(restDays.map((x) => x.date), week)}`);
+                  setRest(null);
+                }}
+              >
+                Yes
+              </Button>
+            </div>
+          )}
+          {sites.length === 0 ? (
             <Panel>
               <Empty title="No sites are running in this week">Move to another week, or check the project start and finish dates.</Empty>
             </Panel>
+          ) : (
+            <WeekGrid
+              sites={sites}
+              week={week}
+              db={db}
+              day={day}
+              canEdit={canEdit}
+              clashes={clashes}
+              liveIds={liveIds}
+              dragging={dragging}
+              onDragEnd={() => setDragging(null)}
+              onDragStart={setDragging}
+              onDrop={dropOn}
+              onPerson={(person, siteId) => setOpenPerson({ person, siteId })}
+              onAdd={(siteId, date) => setAdding({ siteId, date })}
+            />
           )}
-          {sites.map((site) => (
-            <SiteWeek key={site.id} site={site} week={week} db={db} day={day} canEdit={canEdit} clashes={clashes} blocks={blocks} weekOf={weekOf} ahead={ahead} onPerson={(person) => setOpenPerson({ person, siteId: site.id })} onDay={(person, date) => setOpenDay({ person, date, siteId: site.id, lockSite: true })} />
-          ))}
+          <WeekendPlan db={db} week={week} day={day} sites={sites} canEdit={canEdit} />
+          {canEdit && ahead.length > 0 && <p className="text-[0.93rem] text-muted">Drag a name from Not placed onto a site and day to put them there, or drag a name already in the grid to another site on the same day to move them. Each day also has an Add button, for phones and keyboards. The first time someone goes on a site in the week you are asked whether they are there for the rest of it. Click a name for their details and their week.</p>}
         </div>
-        {ahead.length > 0 && <NotPlaced db={db} week={week} ahead={ahead} weekOf={weekOf} onPerson={(person) => setOpenPerson({ person })} />}
+        {ahead.length > 0 && <NotPlaced db={db} week={week} ahead={ahead} weekOf={weekOf} canEdit={canEdit} onDragStart={setDragging} onDragEnd={() => setDragging(null)} onPerson={(person) => setOpenPerson({ person })} />}
       </PageBody>
+      {busy && <BusyDialog {...busy} db={db} onMoved={(from) => offerRest(busy.person, busy.site, busy.date, from)} onClose={() => setBusy(null)} />}
+      {adding && <AddToDayDialog {...adding} db={db} liveIds={liveIds} onAdded={offerRest} onClose={() => setAdding(null)} />}
       {openPerson && live && <PersonBox key={live.id + (openPerson.siteId ?? "")} person={live} siteId={openPerson.siteId} db={db} week={week} day={day} liveIds={liveIds} canEdit={canEdit} onDay={(date) => setOpenDay({ person: live, date, siteId: openPerson.siteId, lockSite: false })} onClose={() => setOpenPerson(null)} />}
       {openDay && <PlanDayDialog key={`${openDay.person.id}|${openDay.date}|${openDay.siteId ?? ""}`} {...openDay} db={db} liveIds={liveIds} sites={db.projects.filter((p) => (p.status === "Live" || p.status === "Not started") && p.startDate <= openDay.date && p.endDate >= openDay.date)} onClose={() => setOpenDay(null)} />}
     </>
@@ -159,8 +246,222 @@ export function WeekAhead() {
 
 type WeekOf = (personId: string) => DayState[];
 
+/**
+ * Overtime work under the week's grid (Oisin, 17 Nov; headed "Weekend" until round ten). The
+ * grid holds normal days only; a Saturday, a Sunday or a bank holiday is planned here one person
+ * at a time, since it is the exception and every hour of it is overtime. A day gone shows who
+ * was stamped in on the Timesheet; a day to come shows the plan, the same rule as the grid
+ * above, the month ahead and both phones.
+ */
+function WeekendPlan({ db, week, day, sites, canEdit }: { db: Db; week: string[]; day: string; sites: Project[]; canEdit: boolean }) {
+  const [adding, setAdding] = useState(false);
+  // The Saturday and Sunday, and any bank holiday in the week.
+  const weekend = fullWeek(week[0]!).filter((d) => isRestDay(db.bankHolidays, d));
+  const person = (id: string) => db.people.find((p) => p.id === id);
+  const lines = weekend.flatMap((d) =>
+    sites
+      .map((site) => ({ d, site, roster: dayRoster(db.attendance, db.plan, site.id, d, day) }))
+      .filter((x) => x.roster.rows.length > 0),
+  );
+  const open = weekend.filter((d) => d >= day);
+  return (
+    <Section
+      title="Overtime"
+      aside={
+        canEdit && open.length > 0 ? (
+          <Button size="sm" onClick={() => setAdding(true)}>
+            Plan overtime work
+          </Button>
+        ) : undefined
+      }
+    >
+      <Panel className="overflow-x-auto">
+        {lines.length === 0 ? (
+          <p className="px-3 py-3 text-muted">
+            Nobody is down for {weekend.map((d) => dWeekday(d)).join(", ").replace(/, ([^,]*)$/, " or $1")}.{canEdit && open.length > 0 ? " Work on a Saturday, a Sunday or a bank holiday is planned one person at a time, with Plan overtime work." : ""}
+          </p>
+        ) : (
+          <table className="tbl" aria-label="Overtime work by day and site">
+            <thead>
+              <tr>
+                <th>Day</th>
+                <th>Site</th>
+                <th>Who</th>
+              </tr>
+            </thead>
+            <tbody>
+              {lines.map(({ d, site, roster }) => (
+                <tr key={`${d}|${site.id}`}>
+                  <td className="whitespace-nowrap">
+                    {dWeekday(d)}
+                    <span className="block text-[0.87rem] text-muted">
+                      {isBankHoliday(db.bankHolidays, d) ? `${bankHolidayOn(db.bankHolidays, d)?.name}. ` : ""}
+                      {roster.from === "timesheet" ? "Worked" : "Planned"}
+                    </span>
+                  </td>
+                  <td>
+                    <span className="font-medium">{site.code}</span> {site.name}
+                  </td>
+                  <td>
+                    <ul className="flex flex-wrap gap-x-4 gap-y-1">
+                      {roster.rows.map((r) => (
+                        <li key={r.personId} className="flex items-center gap-1.5">
+                          <span>
+                            {person(r.personId)?.name}
+                            {r.note && <span className="text-muted">, {r.note}</span>}
+                          </span>
+                          {canEdit && roster.from === "plan" && (
+                            <button
+                              type="button"
+                              aria-label={`Take ${person(r.personId)?.name} off ${site.code} on ${dWeekday(d)}`}
+                              title="Take off"
+                              className="press grid size-7 place-items-center rounded text-muted hover:bg-bad-soft hover:text-bad"
+                              onClick={() => {
+                                setPlanDay(site.id, r.personId, d, null);
+                                toast(`${person(r.personId)?.name} taken off ${site.code} for ${dWeekday(d)}`);
+                              }}
+                            >
+                              <span aria-hidden>×</span>
+                            </button>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </Panel>
+      <p className="mt-2 text-[0.93rem] text-muted">Saturday is at time and a half from 8am to 12 noon and double time after. Sunday and bank holidays are all double time. The hours go in afterwards with Overtime time stamp on the Timesheet.</p>
+      {adding && <PlanWeekendDialog db={db} days={open} sites={sites} onClose={() => setAdding(false)} />}
+    </Section>
+  );
+}
+
+/** Plan overtime work, on a Saturday, a Sunday or a bank holiday: the day, the site, and who. Anyone in the firm can be put down, that site's crew first. */
+function PlanWeekendDialog({ db, days, sites, onClose }: { db: Db; days: string[]; sites: Project[]; onClose: () => void }) {
+  const [date, setDate] = useState(days[0] ?? "");
+  const [siteId, setSiteId] = useState(sites[0]?.id ?? "");
+  const [picked, setPicked] = useState<string[]>([]);
+  const [extra, setExtra] = useState<Person[]>([]);
+  const [errors, setErrors] = useState<string[]>([]);
+  const site = sites.find((s) => s.id === siteId);
+  const crew = db.assignments
+    .filter((a) => a.projectId === siteId)
+    .map((a) => db.people.find((p) => p.id === a.personId))
+    .filter((p): p is Person => !!p && p.active)
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const others = db.people.filter((p) => p.active && p.kind === "Operative" && !crew.some((c) => c.id === p.id) && !extra.some((x) => x.id === p.id)).sort((a, b) => a.name.localeCompare(b.name));
+  const down = (id: string) => db.plan.some((p) => p.projectId === siteId && p.personId === id && p.date === date);
+  const away = (id: string) => onLeave(db, id, date);
+  const save = () => {
+    if (!site || !date) return setErrors(["Pick the day and the site"]);
+    if (picked.length === 0) return setErrors(["Tick who is to come in"]);
+    const refused: string[] = [];
+    let n = 0;
+    for (const id of picked) {
+      const no = planRestDay(site.id, id, date);
+      if (no) refused.push(`${db.people.find((p) => p.id === id)?.name}: ${no}`);
+      else n++;
+    }
+    if (n > 0) toast(`${plural(n, "person", "people")} down for ${site.code} on ${dWeekday(date)}`);
+    if (refused.length === 0) onClose();
+    else {
+      setErrors(refused);
+      setPicked([]);
+    }
+  };
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      title="Plan overtime work"
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button variant="primary" onClick={save}>
+            Add to the plan
+          </Button>
+        </>
+      }
+    >
+      <div className="grid gap-3">
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Day">
+            {(id) => (
+              <select id={id} className="field" value={date} onChange={(e) => { setDate(e.target.value); setErrors([]); }}>
+                {days.map((d) => (
+                  <option key={d} value={d}>
+                    {dWeekday(d)}
+                    {isBankHoliday(db.bankHolidays, d) ? `, ${bankHolidayOn(db.bankHolidays, d)?.name}` : ""}
+                  </option>
+                ))}
+              </select>
+            )}
+          </Field>
+          <Field label="Site">
+            {(id) => (
+              <select id={id} className="field" value={siteId} onChange={(e) => { setSiteId(e.target.value); setPicked([]); setExtra([]); setErrors([]); }}>
+                {sites.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.code} {p.name}
+                  </option>
+                ))}
+              </select>
+            )}
+          </Field>
+        </div>
+        <fieldset>
+          <legend className="mb-1 text-[0.93rem] font-medium">Who is to come in</legend>
+          <ul className="grid max-h-56 gap-px overflow-y-auto rounded-md border border-line" aria-label="People to plan">
+            {[...crew, ...extra].map((p) => (
+              <li key={p.id}>
+                <label className={cx("flex min-h-9 items-center gap-2 px-2.5 py-1", down(p.id) || away(p.id) ? "text-muted" : "cursor-pointer hover:bg-accent-soft/60")}>
+                  <input type="checkbox" disabled={down(p.id) || away(p.id)} checked={picked.includes(p.id)} onChange={() => setPicked((x) => (x.includes(p.id) ? x.filter((y) => y !== p.id) : [...x, p.id]))} />
+                  <span className="font-medium">{p.name}</span>
+                  <span className="text-[0.87rem] text-muted">{p.trade}</span>
+                  <span className="ml-auto text-[0.87rem] text-muted">{down(p.id) ? "Already down" : away(p.id) ? "On leave" : extra.some((x) => x.id === p.id) ? "From another site" : ""}</span>
+                </label>
+              </li>
+            ))}
+            {crew.length + extra.length === 0 && <li className="px-2.5 py-2 text-muted">Nobody is on this site's list yet. Add people from the box below.</li>}
+          </ul>
+          <select
+            aria-label="Add someone from another site"
+            className="field mt-2"
+            value=""
+            onChange={(e) => {
+              const p = others.find((x) => x.id === e.target.value);
+              if (!p) return;
+              setExtra((x) => [...x, p]);
+              if (!away(p.id)) setPicked((x) => [...x, p.id]);
+            }}
+          >
+            <option value="">Add someone from another site</option>
+            {others.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}, {p.trade}
+              </option>
+            ))}
+          </select>
+        </fieldset>
+        <p className="text-[0.93rem] text-muted">They see it on their phone, under My week. Every hour on a Saturday or Sunday is overtime.</p>
+        {errors.length > 0 && (
+          <ul role="alert" className="grid gap-1 text-[0.93rem] text-bad">
+            {errors.map((e) => (
+              <li key={e}>{e}</li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </Dialog>
+  );
+}
+
 /** Everyone who still has a free day in the week, grouped by trade, so whoever is doing the roster can see who is left. */
-function NotPlaced({ db, week, ahead, weekOf, onPerson }: { db: Db; week: string[]; ahead: string[]; weekOf: WeekOf; onPerson: (p: Person) => void }) {
+function NotPlaced({ db, week, ahead, weekOf, canEdit, onDragStart, onDragEnd, onPerson }: { db: Db; week: string[]; ahead: string[]; weekOf: WeekOf; canEdit: boolean; onDragStart: (d: Drag) => void; onDragEnd: () => void; onPerson: (p: Person) => void }) {
   const [trade, setTrade] = useState("");
   const rows = db.people
     .filter((p) => p.active && p.kind === "Operative")
@@ -177,7 +478,7 @@ function NotPlaced({ db, week, ahead, weekOf, onPerson }: { db: Db; week: string
           Not placed <span className="font-normal text-muted">{rows.length}</span>
         </h2>
         <p className="mt-0.5 text-[0.87rem] text-muted">
-          Operatives with a free day or half day in the week of {dShort(week[0])}. {allWeek} free all week. Click a name to place them.
+          Operatives with a free day or half day in the week of {dShort(week[0])}. {allWeek} free all week. {canEdit ? "Drag a name onto a site and day, or click it for their week." : "Click a name for their week."}
         </p>
         {trades.length > 1 && (
           <select aria-label="Show one trade" className="field mt-2 h-8" value={trades.includes(trade) ? trade : ""} onChange={(e) => setTrade(e.target.value)}>
@@ -196,7 +497,19 @@ function NotPlaced({ db, week, ahead, weekOf, onPerson }: { db: Db; week: string
         <ul className="max-h-56 divide-y divide-line overflow-y-auto xl:max-h-[calc(100dvh-21rem)]">
           {shown.map(({ p, free }) => (
             <li key={p.id}>
-              <button type="button" className="press flex w-full items-baseline gap-2 px-3 py-1.5 text-left hover:bg-accent-soft" onClick={() => onPerson(p)}>
+              <button
+                type="button"
+                draggable={canEdit}
+                onDragStart={(ev) => {
+                  ev.dataTransfer.setData(DRAG_TYPE, JSON.stringify({ personId: p.id }));
+                  ev.dataTransfer.effectAllowed = "move";
+                  requestAnimationFrame(() => onDragStart({ personId: p.id }));
+                }}
+                onDragEnd={onDragEnd}
+                title={canEdit ? "Drag onto a site and day, or click for their week" : undefined}
+                className={cx("press flex min-h-11 w-full items-baseline gap-2 px-3 py-1.5 text-left hover:bg-accent-soft", canEdit && "cursor-grab active:cursor-grabbing")}
+                onClick={() => onPerson(p)}
+              >
                 <span className="min-w-0 flex-1">
                   <span className="font-medium">{p.name}</span>
                   <span className="block text-[0.87rem] text-muted">{p.trade}</span>
@@ -418,370 +731,517 @@ function PlanDayDialog({ person, date, siteId, lockSite, db, liveIds, sites, onC
   );
 }
 
-function SiteWeek({ site, week, db, day, canEdit, clashes, blocks, weekOf, ahead, onPerson, onDay }: { site: Project; week: string[]; db: Db; day: string; canEdit: boolean; clashes: Map<string, string[]>; blocks: Map<string, Block[]>; weekOf: WeekOf; ahead: string[]; onPerson: (p: Person) => void; onDay: (p: Person, date: string) => void }) {
-  const ids = new Set([...db.assignments.filter((a) => a.projectId === site.id).map((a) => a.personId), ...db.plan.filter((p) => p.projectId === site.id && week.includes(p.date)).map((p) => p.personId)]);
-  const people = [...ids].map((id) => db.people.find((p) => p.id === id)).filter((p): p is Person => !!p && p.active).sort((a, b) => a.name.localeCompare(b.name));
-  const planned = (personId: string, date: string) => db.plan.find((p) => p.projectId === site.id && p.personId === personId && p.date === date);
-  const code = (id: string) => db.projects.find((p) => p.id === id)?.code ?? "";
+/** A name being dragged: who, and where from if it was picked up in the grid. */
+type Drag = { personId: string; fromSiteId?: string; fromDate?: string };
+const DRAG_TYPE = "application/x-abc-person";
 
+/**
+ * The week as one grid (Oisin, 17 Nov): a row per site, a column per day, and in each cell
+ * everyone down for that site that day, one line each, so a busy day makes a taller cell.
+ */
+function WeekGrid({ sites, week, db, day, canEdit, clashes, liveIds, dragging, onDragStart, onDragEnd, onDrop, onPerson, onAdd }: { sites: Project[]; week: string[]; db: Db; day: string; canEdit: boolean; clashes: Map<string, string[]>; liveIds: Set<string>; dragging: Drag | null; onDragStart: (d: Drag) => void; onDragEnd: () => void; onDrop: (d: Drag, site: Project, date: string) => void; onPerson: (p: Person, siteId: string) => void; onAdd: (siteId: string, date: string) => void }) {
+  const [over, setOver] = useState<string | null>(null);
+  const code = (id: string) => db.projects.find((p) => p.id === id)?.code ?? "";
+  const person = (id: string) => db.people.find((p) => p.id === id);
+  const draggingState = (date: string) => (dragging ? personWeek(db.plan, db.holidays, liveIds, dragging.personId, [date])[0]! : null);
+  // One rule for who is on a site on a day, shared with the month ahead and both phones: the
+  // timesheet for a day gone (and today once the site has marked anyone), otherwise the plan.
+  const roster = (siteId: string, d: string) => dayRoster(db.attendance, db.plan, siteId, d, day);
+  const total = (d: string) => new Set(sites.flatMap((s) => roster(s.id, d).rows.map((r) => r.personId))).size;
   return (
-    <Section
-      title={
-        <Link to={`/projects/${site.code}`} className="underline-offset-2 hover:underline">
-          {site.code} {site.name}
-        </Link>
-      }
-      aside={`${db.people.find((p) => p.id === site.siteManagerId)?.name}, ${co(site.county)}${site.status === "Not started" ? `. Starts ${dShort(site.startDate)}` : ""}`}
-    >
-      <Panel className="overflow-x-auto">
-        <table className="tbl">
-          <thead>
-            <tr>
-              <th className="min-w-[12rem]">Name</th>
-              {week.map((d) => (
-                <th key={d} className="w-[8.25rem]">
-                  {wd(d)} {dShort(d)}
-                  <span className="ml-1.5 font-normal">{d > day ? db.plan.filter((p) => p.projectId === site.id && p.date === d).length : ""}</span>
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {people.length === 0 && (
-              <tr>
-                <td colSpan={6} className="text-muted">
-                  Nobody is planned here this week.
-                </td>
-              </tr>
-            )}
-            {people.map((person) => (
-              <tr key={person.id}>
-                <td>
-                  <button type="button" className="press -mx-1 rounded px-1 text-left hover:bg-accent-soft" title="Contact details and options" aria-label={`${person.name}: contact details and options`} onClick={() => onPerson(person)}>
-                    <span className="font-medium text-accent-ink underline decoration-line-strong underline-offset-2">{person.name}</span>
-                    <span className="block text-[0.87rem] text-muted">{person.trade}</span>
-                  </button>
-                </td>
-                {week.map((d) => {
-                  const off = d < site.startDate || d > site.endDate;
-                  const leave = onLeave(db, person.id, d);
-                  const entry = planned(person.id, d);
-                  const on = !!entry;
-                  const clash = on ? clashes.get(`${person.id}|${d}`) : undefined;
-                  if (d <= day) {
-                    const a = db.attendance.find((x) => x.projectId === site.id && x.personId === person.id && x.date === d);
-                    return (
-                      <td key={d} className="align-middle! text-muted">
-                        {a ? attendanceShort(a.status, a.overtimeHours) : leave ? "Leave" : "-"}
-                      </td>
-                    );
-                  }
-                  if (leave) return <td key={d} className="align-middle!"><span className="inline-block rounded bg-warn-soft px-1.5 py-0.5 text-[0.93rem] text-warn">Leave</span></td>;
-                  if (off) return <td key={d} className="align-middle! text-faint">{d > site.endDate ? "Finished" : "Not started"}</td>;
-                  const others = clash?.filter((s) => s !== site.id).map(code).join(", ");
-                  const text = entry ? planShort(entry) : "";
-                  const blocked = on ? blocks.get(`${person.id}|${d}`) : undefined;
-                  if (blocked)
-                    return (
-                      <td key={d} className="align-middle!">
-                        <button type="button" disabled={!canEdit} aria-label={`${person.name}, ${dWeekday(d)}: planned but cannot work, ${blocksText(blocked)}`} title={`Cannot work: ${blocksText(blocked)}. Take them off or renew the ticket`} onClick={() => onDay(person, d)} className="press block h-8 w-full truncate rounded-md bg-bad-soft px-2 text-left text-[0.93rem] font-medium whitespace-nowrap text-bad disabled:cursor-default">
-                          Cannot work
-                        </button>
-                      </td>
-                    );
-                  return (
-                    <td key={d} className="align-middle!">
-                      <button
-                        type="button"
-                        disabled={!canEdit}
-                        aria-pressed={on}
-                        aria-label={`${person.name}, ${dWeekday(d)}: ${on ? (clash ? `${text.toLowerCase()}, clashes with ${others}` : text.toLowerCase()) : "not planned"}`}
-                        title={clash ? `${text}. Also planned on ${others}: more than one day's work` : canEdit ? (on ? "Change or clear this day" : "Put on site this day") : undefined}
-                        onClick={() => onDay(person, d)}
-                        className={cx("press block h-8 w-full truncate rounded-md px-2 text-left text-[0.93rem] whitespace-nowrap disabled:cursor-default", clash ? "bg-bad-soft font-medium text-bad" : on ? "bg-accent-soft font-medium text-accent-ink" : "border border-dashed border-line-strong text-muted", canEdit && !on && "hover:border-accent hover:text-accent-ink")}
-                      >
-                        {clash ? `Clash: ${others}` : on ? text : canEdit ? "Add" : "-"}
-                      </button>
-                    </td>
-                  );
-                })}
-              </tr>
+    <div className="overflow-x-auto rounded-md border border-line bg-surface">
+      <table className="w-full min-w-[56rem] table-fixed border-collapse" aria-label="Week ahead by site and day">
+        <thead>
+          <tr className="border-b border-line-strong">
+            <th scope="col" className="w-56 px-3 py-2.5 text-left text-[0.93rem] font-medium text-muted">
+              Site
+            </th>
+            {week.map((d) => (
+              <th key={d} scope="col" className={cx("border-l border-line px-2 py-2.5 text-left", d <= day && "text-muted")}>
+                <span className="block font-display text-[1.05rem] font-semibold">{wd(d)}</span>
+                <span className="block text-[0.93rem] font-normal text-muted">
+                  {dShort(d)}, {plural(total(d), "person", "people")}
+                </span>
+                {isBankHoliday(db.bankHolidays, d) && <span className="block text-[0.87rem] font-normal text-warn">{bankHolidayOn(db.bankHolidays, d)?.name}: overtime only</span>}
+              </th>
             ))}
-          </tbody>
-        </table>
-      </Panel>
-      {canEdit && <AddToSite site={site} db={db} onSite={ids} days={ahead.filter((d) => d >= site.startDate && d <= site.endDate)} weekOf={weekOf} />}
-    </Section>
-  );
-}
-
-/** Add someone to a site: choose the trade first, then a person, with where each one already is this week. */
-function AddToSite({ site, db, onSite, days, weekOf }: { site: Project; db: Db; onSite: Set<string>; days: string[]; weekOf: WeekOf }) {
-  const today = useDay();
-  const [trade, setTrade] = useState("");
-  const [personId, setPersonId] = useState("");
-  const code = (id: string) => db.projects.find((p) => p.id === id)?.code ?? "";
-  const pool = db.people
-    .filter((p) => p.active && p.kind === "Operative" && !onSite.has(p.id))
-    .map((p) => {
-      const w = weekOf(p.id).filter((d) => days.includes(d.date));
-      const blocked = days.filter((d) => ticketBlocks(p, d).length > 0);
-      return { p, w, free: freeDays(w), blocked, why: blocked.length ? blocksText(ticketBlocks(p, blocked[0]!), today) : "" };
-    });
-  const trades = [...new Set(pool.map((x) => x.p.trade))].sort();
-  const options = pool.filter((x) => x.p.trade === trade).sort((a, b) => b.free.length - a.free.length || a.p.name.localeCompare(b.p.name));
-  const pick = options.find((x) => x.p.id === personId);
-  const first = pick?.p.name.split(" ")[0];
-  if (days.length === 0) return null;
-  return (
-    <div className="mt-2 grid gap-1.5">
-      <div className="flex flex-wrap items-center gap-2">
-        <select
-          aria-label={`Trade to add to ${site.code}`}
-          className="field h-8 w-auto max-w-full"
-          value={trade}
-          onChange={(e) => {
-            setTrade(e.target.value);
-            setPersonId("");
-          }}
-        >
-          <option value="">Add to {site.code}: choose a trade</option>
-          {trades.map((t) => {
-            const of = pool.filter((x) => x.p.trade === t);
-            return (
-              <option key={t} value={t}>
-                {t} ({of.filter((x) => x.free.length > 0).length} free of {of.length})
-              </option>
-            );
-          })}
-        </select>
-        <select aria-label={`Person to add to ${site.code}`} className="field h-8 w-auto max-w-full" disabled={!trade} value={pick ? personId : ""} onChange={(e) => setPersonId(e.target.value)}>
-          <option value="">{trade ? "Choose a person" : "Then a person"}</option>
-          {options.map(({ p, w, blocked, why }) => (
-            <option key={p.id} value={p.id}>
-              {p.name}: {blocked.length === days.length ? `cannot work, ${why}` : `${lowerFirst(availabilityLine(w, code))}${blocked.length ? `; cannot work ${daysLabel(blocked, days)}` : ""}`}
-            </option>
+          </tr>
+        </thead>
+        <tbody>
+          {sites.map((site) => (
+            <tr key={site.id} className="border-b border-line last:border-b-0">
+              <th scope="row" className="px-3 py-3 text-left align-top font-normal">
+                <Link to={`/projects/${site.code}`} className="block font-display text-[1.1rem] leading-tight font-semibold underline-offset-2 hover:underline">
+                  {site.code}
+                </Link>
+                <span className="block font-medium">{site.name}</span>
+                <span className="block text-[0.87rem] text-muted">
+                  {db.people.find((p) => p.id === site.siteManagerId)?.name}, {co(site.county)}
+                  {site.status === "Not started" ? `. Starts ${dShort(site.startDate)}` : ""}
+                </span>
+              </th>
+              {week.map((d) => {
+                const key = `${site.id}|${d}`;
+                const running = d >= site.startDate && d <= site.endDate;
+                const past = d <= day;
+                // Nobody is planned a normal day on a bank holiday (round ten): no Add, no drop.
+                const holiday = isBankHoliday(db.bankHolidays, d);
+                const editable = canEdit && running && !past && !holiday;
+                const shown = roster(site.id, d);
+                // Names from the timesheet are grey; today's plan, before anyone is marked, still reads as a plan.
+                const marked = shown.from === "timesheet";
+                const entries = shown.rows.map((r) => ({ id: r.personId, personId: r.personId, text: r.note }));
+                const sorted = entries.sort((a, b) => (person(a.personId)?.name ?? "").localeCompare(person(b.personId)?.name ?? ""));
+                const st = editable ? draggingState(d) : null;
+                const draggedPerson = dragging ? person(dragging.personId) : undefined;
+                const draggedBlocked = !!draggedPerson && ticketBlocks(draggedPerson, d).length > 0;
+                const outcome = st && dragging ? (draggedBlocked ? "blocked" : dragging.fromDate === d && dragging.fromSiteId && dragging.fromSiteId !== site.id ? "free" : dropOutcome(st, site.id)) : null;
+                const hint = outcome === "blocked" ? "Cannot work: a ticket has run out" : outcome === "free" ? (dragging?.fromSiteId && dragging.fromDate === d ? "Move here" : "Drop to put on") : outcome === "busy" ? "On another site: drop to choose" : outcome === "leave" ? "On leave" : outcome === "already" ? "Already here" : "";
+                return (
+                  <td
+                    key={d}
+                    className={cx(
+                      "border-l border-line p-1.5 align-top transition-colors",
+                      !running && "bg-canvas",
+                      dragging && !editable && "opacity-50",
+                      outcome === "free" && "bg-accent-soft",
+                      outcome === "busy" && "bg-warn-soft",
+                      (outcome === "leave" || outcome === "already" || outcome === "blocked") && "opacity-50",
+                      over === key && outcome && outcome !== "leave" && outcome !== "already" && outcome !== "blocked" && "outline-2 -outline-offset-2 outline-accent",
+                    )}
+                    data-cell={`${site.code} ${d}`}
+                    title={hint || undefined}
+                    onDragOver={(e) => {
+                      if (!editable || !e.dataTransfer.types.includes(DRAG_TYPE)) return;
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = "move";
+                      if (over !== key) setOver(key);
+                    }}
+                    onDragLeave={() => setOver((o) => (o === key ? null : o))}
+                    onDrop={(e) => {
+                      setOver(null);
+                      if (!editable) return;
+                      e.preventDefault();
+                      try {
+                        onDrop(JSON.parse(e.dataTransfer.getData(DRAG_TYPE)) as Drag, site, d);
+                      } catch {
+                        onDragEnd();
+                      }
+                    }}
+                  >
+                    <div className="flex min-h-24 flex-col gap-1" aria-label={`${site.code}, ${dWeekday(d)}: ${plural(sorted.length, "person", "people")}`}>
+                      {!running ? (
+                        <span className="px-1.5 py-1 text-[0.93rem] text-faint">{d > site.endDate ? "Finished" : "Not started"}</span>
+                      ) : (
+                        <>
+                          {sorted.map((e) => {
+                            const p = person(e.personId);
+                            if (!p) return null;
+                            const clash = !marked ? clashes.get(`${p.id}|${d}`)?.filter((x) => x !== site.id) : undefined;
+                            // Planned, but a ticket they need will have run out (Compliance): stays on the plan, marked, until taken off or renewed.
+                            const stops = !marked && d > day ? ticketBlocks(p, d) : [];
+                            return (
+                              <button
+                                key={e.id}
+                                type="button"
+                                draggable={editable}
+                                onDragStart={(ev) => {
+                                  const drag: Drag = { personId: p.id, fromSiteId: site.id, fromDate: d };
+                                  ev.dataTransfer.setData(DRAG_TYPE, JSON.stringify(drag));
+                                  ev.dataTransfer.effectAllowed = "move";
+                                  // Next frame: changing the page inside dragstart makes Chrome cancel the drag.
+                                  requestAnimationFrame(() => onDragStart(drag));
+                                }}
+                                onDragEnd={onDragEnd}
+                                onClick={() => onPerson(p, site.id)}
+                                aria-label={`${p.name}: contact details and options`}
+                                title={stops.length ? `Cannot work: ${blocksText(stops, day)}. Take them off or renew the ticket` : clash && clash.length > 0 ? `Also on ${clash.map(code).join(", ")}: more than one day's work` : editable ? "Click for details, or drag to another site on this day" : undefined}
+                                className={cx(
+                                  "press flex min-h-9 w-full flex-wrap items-baseline gap-x-1 rounded-md px-2 py-1 text-left text-[0.93rem]",
+                                  marked ? "bg-canvas text-muted" : stops.length || (clash && clash.length > 0) ? "bg-bad-soft font-medium text-bad" : "bg-accent-soft font-medium text-accent-ink",
+                                  editable && "cursor-grab active:cursor-grabbing",
+                                )}
+                              >
+                                <span className="min-w-0 flex-1 truncate">{p.name}</span>
+                                {stops.length > 0 && <span className="w-full text-[0.87rem] font-normal">Cannot work</span>}
+                                {e.text && <span className="shrink-0 font-normal">{e.text}</span>}
+                                {clash && clash.length > 0 && <span className="shrink-0 font-normal">+{clash.map(code).join(", ")}</span>}
+                              </button>
+                            );
+                          })}
+                          {sorted.length === 0 && !holiday && <span className={cx("px-1.5 py-1 text-[0.93rem]", hint ? "font-medium text-accent-ink" : "text-faint")}>{hint || (past ? "Nobody marked" : "Nobody yet")}</span>}
+                          {holiday && <span className="px-1.5 py-1 text-[0.87rem] text-muted">Bank holiday. {past ? "Any work was overtime." : canEdit ? "Not a normal day: use Plan overtime work, under the grid." : "Not a normal day."}</span>}
+                          {editable && (
+                            <button type="button" aria-label={`Add someone to ${site.code} on ${dWeekday(d)}`} tabIndex={dragging ? -1 : undefined} className={cx(dragging && "invisible", "press mt-auto flex min-h-9 items-center justify-center rounded-md border border-dashed border-line-strong text-[0.93rem] text-muted hover:border-accent hover:text-accent-ink")} onClick={() => onAdd(site.id, d)}>
+                              Add
+                            </button>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </td>
+                );
+              })}
+            </tr>
           ))}
-        </select>
-        {pick && pick.free.length > 0 && (
-          <Button
-            size="sm"
-            onClick={() => {
-              planPerson(site.id, pick.p.id, pick.free);
-              toast(`${pick.p.name} planned on ${site.code}, ${daysLabel(pick.free, days)}`);
-              setPersonId("");
-            }}
-          >
-            {pick.free.length === days.length ? "Plan for the week" : "Plan free days"}
-          </Button>
-        )}
-        {pick && pick.free.length === 0 && pick.blocked.length < days.length && (
-          <Button
-            size="sm"
-            variant="danger"
-            onClick={() => {
-              planPerson(site.id, pick.p.id, days);
-              toast(`${pick.p.name} planned on ${site.code}. This double books: sort it out before sending`);
-              setPersonId("");
-            }}
-          >
-            Plan anyway
-          </Button>
-        )}
-      </div>
-      {pick && pick.blocked.length > 0 && (
-        <p className="text-[0.93rem] text-bad">
-          {first} cannot be planned on site {pick.blocked.length === days.length ? "this week" : daysLabel(pick.blocked, days)}: {pick.why}.
-        </p>
-      )}
-      {pick && pick.free.length < days.length && pick.blocked.length < days.length && (
-        <p className="text-[0.93rem] text-warn">
-          {availabilityLine(pick.w, code)}. {pick.free.length > 0 ? `Only ${first}'s free days will be planned here.` : `${first} has no free day this week, so planning here double books. Leave days are never planned.`}
-        </p>
-      )}
+        </tbody>
+      </table>
     </div>
   );
 }
 
-/** Headcount per site for every working day of a month. Past days show who actually attended. */
-export function MonthAhead() {
-  const db = useData((s) => s.db);
-  const day = useDay();
-  const access = useAccess();
-  const [ym, setYm] = useState(day.slice(0, 7));
-  const days = workdaysOfMonth(ym);
-  const inMonth = new Set(days);
-  // A job that finished during the month still has its days worked to show.
-  const worked = new Set(db.attendance.filter((a) => inMonth.has(a.date)).map((a) => a.projectId));
-  const sites = access
-    .scope(db.projects)
-    .filter((p) => ((p.status === "Live" || p.status === "Not started") && p.startDate <= days[days.length - 1]! && p.endDate >= days[0]!) || worked.has(p.id))
-    .sort((a, b) => a.code.localeCompare(b.code));
-  const operatives = db.people.filter((p) => p.active && p.kind === "Operative");
-  // Days gone count who attended and days to come who is planned. Today counts who is marked, or
-  // who is planned on a site that has not been marked yet.
-  const markedToday = new Set(db.attendance.filter((a) => a.date === day).map((a) => a.projectId));
-  const fromPlan = (d: string, siteId: string) => d > day || (d === day && !markedToday.has(siteId));
-  const count = (siteId: string, d: string) => (fromPlan(d, siteId) ? db.plan : db.attendance).filter((x) => x.projectId === siteId && x.date === d).length;
-  const leave = (d: string) => operatives.filter((p) => onLeave(db, p.id, d)).length;
-  const busy = (d: string) => new Set([...db.attendance.filter((a) => a.date === d && !fromPlan(d, a.projectId)), ...db.plan.filter((p) => p.date === d && fromPlan(d, p.projectId))].map((x) => x.personId)).size;
-  const max = Math.max(1, ...sites.flatMap((s) => days.map((d) => count(s.id, d))));
-  const [y, m] = ym.split("-").map(Number) as [number, number];
-
+/** Dropped someone on a day they already have a full day elsewhere: move them, put them on both, or leave it. */
+function BusyDialog({ person, site, date, db, onMoved, onClose }: { person: Person; site: Project; date: string; db: Db; onMoved: (fromSiteId?: string) => void; onClose: () => void }) {
+  const elsewhere = db.plan.filter((p) => p.personId === person.id && p.date === date && p.projectId !== site.id);
+  const codes = elsewhere.map((p) => db.projects.find((x) => x.id === p.projectId)?.code ?? "").join(" and ");
   return (
-    <>
-      <PageHead title="Month ahead" note={`${MONTHS[m - 1]} ${y}. Each number is the people on that site that day: who attended for days gone, who is planned for days to come. Today shows who is marked, or who is planned where nothing is marked yet.`}>
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <Button size="sm" onClick={() => setYm(shiftMonth(ym, -1))}>
-            Earlier month
+    <Dialog
+      open
+      onClose={onClose}
+      title={`${person.name} is on ${codes} that day`}
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button
+            variant="danger"
+            onClick={() => {
+              setPlanDay(site.id, person.id, date, { part: "full", overtimeHours: 0 });
+              toast(`${person.name} put on ${site.code} as well. This double books ${dWeekday(date)}: sort it out before sending`);
+              onClose();
+            }}
+          >
+            Put on both
           </Button>
-          <Button size="sm" onClick={() => setYm(shiftMonth(ym, 1))}>
-            Later month
+          <Button
+            variant="primary"
+            onClick={() => {
+              for (const e of elsewhere) setPlanDay(e.projectId, person.id, date, null);
+              setPlanDay(site.id, person.id, date, { part: "full", overtimeHours: 0 });
+              toast(`${person.name} moved from ${codes} to ${site.code}, ${dWeekday(date)}`);
+              onMoved(elsewhere.length === 1 ? elsewhere[0]!.projectId : undefined);
+              onClose();
+            }}
+          >
+            Move to {site.code}
           </Button>
-          {ym !== day.slice(0, 7) && (
-            <Button size="sm" variant="ghost" onClick={() => setYm(day.slice(0, 7))}>
-              Back to this month
-            </Button>
-          )}
-        </div>
-      </PageHead>
-      <PageBody>
-        <Panel className="overflow-x-auto">
-          {sites.length === 0 ? (
-            <Empty title="No sites are running in this month" />
-          ) : (
-            <table className="tbl text-[0.93rem]">
-              <thead>
-                <tr>
-                  <th className="min-w-[13rem]">Site</th>
-                  {days.map((d) => (
-                    <th key={d} className={cx("px-1! text-center", d === day && "bg-accent-soft! text-accent-ink!", new Date(d + "T12:00:00Z").getUTCDay() === 1 && "border-l border-line")}>
-                      <span className="block font-normal">{wd(d).slice(0, 2)}</span>
-                      {Number(d.slice(8))}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {sites.map((s) => (
-                  <tr key={s.id}>
-                    <td>
-                      <Link to={`/projects/${s.code}`} className="font-medium underline-offset-2 hover:underline">
-                        {s.code}
-                      </Link>{" "}
-                      {s.name}
-                    </td>
-                    {days.map((d) => {
-                      const n = count(s.id, d);
-                      const off = d < s.startDate || d > s.endDate;
-                      return (
-                        <td key={d} className={cx("px-1! text-center", new Date(d + "T12:00:00Z").getUTCDay() === 1 && "border-l border-line", d <= day && "text-muted")} style={n > 0 ? { background: `color-mix(in srgb, var(--accent) ${Math.round(8 + (n / max) * 26)}%, transparent)` } : undefined}>
-                          {off ? "" : n || <span className="text-faint">0</span>}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                {(
-                  [
-                    ["On a site", (d: string) => busy(d)],
-                    ["On leave", (d: string) => leave(d)],
-                    ["Free", (d: string) => (d <= day ? null : Math.max(0, operatives.length - busy(d) - leave(d)))],
-                  ] as [string, (d: string) => number | null][]
-                ).map(([label, fn], i) => (
-                  <tr key={label}>
-                    <td className={cx("font-medium", i === 0 && "border-t border-line-strong")}>{label}</td>
-                    {days.map((d) => {
-                      const n = fn(d);
-                      return (
-                        <td key={d} className={cx("px-1! text-center", i === 0 && "border-t border-line-strong", new Date(d + "T12:00:00Z").getUTCDay() === 1 && "border-l border-line", label === "Free" && n != null && n > 3 && "font-medium text-warn")}>
-                          {n == null ? "" : n || <span className="text-faint">0</span>}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
-              </tfoot>
-            </table>
-          )}
-        </Panel>
-        <p className="mt-2 text-[0.93rem] text-muted">"Free" counts operatives with no site and no leave that day. More than three free is shown in amber: people are being paid with nowhere to go.</p>
-      </PageBody>
-    </>
+        </>
+      }
+    >
+      <p>
+        {person.name.split(" ")[0]} already has a full day on {codes} on {dWeekday(date)}. Move them to {site.code} for that day, or put them on both, which double books the day and stops the week being sent until it is sorted.
+      </p>
+    </Dialog>
   );
 }
 
-type Where = "On site" | "Planned" | "On leave" | "Not planned";
-const WHERE_TONE: Record<Where, Tone> = { "On site": "ok", Planned: "accent", "On leave": "warn", "Not planned": "bad" };
+/** The Add button in a cell: everyone free that day, by trade, one tap to put them on. */
+function AddToDayDialog({ siteId, date, db, liveIds, onAdded, onClose }: { siteId: string; date: string; db: Db; liveIds: Set<string>; onAdded: (person: Person, site: Project, date: string) => void; onClose: () => void }) {
+  const site = db.projects.find((p) => p.id === siteId)!;
+  const [trade, setTrade] = useState("");
+  const free = db.people
+    .filter((p) => p.active && p.kind === "Operative")
+    .map((p) => ({ p, st: personWeek(db.plan, db.holidays, liveIds, p.id, [date])[0]! }))
+    .filter(({ st }) => dropOutcome(st, siteId) === "free")
+    .sort((a, b) => a.p.trade.localeCompare(b.p.trade) || a.p.name.localeCompare(b.p.name));
+  // Free, but a ticket they need will have run out by then (Compliance): named, not offered.
+  const blocked = free.filter(({ p }) => ticketBlocks(p, date).length > 0);
+  const offered = free.filter(({ p }) => ticketBlocks(p, date).length === 0);
+  const trades = [...new Set(offered.map((x) => x.p.trade))];
+  const shown = offered.filter((x) => !trade || x.p.trade === trade);
+  return (
+    <Dialog open onClose={onClose} title={`Add to ${site.code}, ${dWeekday(date)}`}>
+      <div className="grid gap-3">
+        <p className="text-[0.93rem] text-muted">{plural(offered.length, "person", "people")} free that day. Choose one to put them on {site.code} {site.name} for the day.</p>
+        {blocked.length > 0 && (
+          <p className="rounded-md bg-bad-soft px-2.5 py-2 text-[0.93rem] text-bad">
+            Not offered, a ticket has run out: {blocked.map(({ p }) => `${p.name} (${blocksText(ticketBlocks(p, date))})`).join("; ")}.
+          </p>
+        )}
+        {trades.length > 1 && (
+          <select aria-label="Show one trade" className="field" value={trade} onChange={(e) => setTrade(e.target.value)}>
+            <option value="">All trades</option>
+            {trades.map((t) => (
+              <option key={t} value={t}>
+                {t} ({offered.filter((x) => x.p.trade === t).length})
+              </option>
+            ))}
+          </select>
+        )}
+        {offered.length === 0 ? (
+          <Empty title="Nobody is free that day">Take someone off another site first, or drag them here to move them.</Empty>
+        ) : (
+          <ul className="grid max-h-[50dvh] gap-1.5 overflow-y-auto" aria-label="Free that day">
+            {shown.map(({ p, st }) => (
+              <li key={p.id}>
+                <button
+                  type="button"
+                  className="press flex min-h-11 w-full items-baseline gap-2 rounded-md border border-line-strong px-3 py-2 text-left hover:border-accent hover:bg-accent-soft"
+                  onClick={() => {
+                    const half = st.load === 0.5;
+                    setPlanDay(site.id, p.id, date, { part: half ? "half" : "full", overtimeHours: 0 });
+                    toast(`${p.name} put on ${site.code}, ${dWeekday(date)}${half ? ", half day" : ""}`);
+                    onAdded(p, site, date);
+                    onClose();
+                  }}
+                >
+                  <span className="min-w-0 flex-1 font-medium">{p.name}</span>
+                  <span className="text-[0.87rem] text-muted">
+                    {p.trade}
+                    {st.load === 0.5 ? ", half day free" : ""}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </Dialog>
+  );
+}
 
-/** Every operative and where they are today. */
+/** A day's note as words: a full day, a half day, a full day with overtime, or overtime hours on a rest day. */
+const dayText = (note: string) => (!note ? "Full day" : note.startsWith("+") ? `Full day ${note}` : note.charAt(0).toUpperCase() + note.slice(1));
+const WHERE_TONE: Record<WhereState, Tone> = { "On site": "ok", Planned: "accent", "On leave": "warn", "Not planned": "bad" };
+
+/**
+ * Every operative and where they are on a day (Oisin, 18 Nov: laid out like Attendance history,
+ * "so it is easy to flick through and see who is at what site for that day"). A Day box with
+ * arrows either side (weekends skipped), Site and Status boxes, and Everyone or Per site at the
+ * top right, Per site first. A day gone is read from the timesheet and a day to come from the
+ * plan, the same rule as the week and month ahead (`whereOn` in src/lib/roster.ts).
+ */
 export function WhoIsWhere() {
   const db = useData((s) => s.db);
-  const day = useDay();
-  const [show, setShow] = useState<"All" | Where>("All");
-  const rows = db.people
-    .filter((p) => p.active && p.kind === "Operative")
-    .map((p) => {
-      const marked = db.attendance.filter((a) => a.personId === p.id && a.date === day);
-      const plannedOn = db.plan.filter((x) => x.personId === p.id && x.date === day);
-      const roster = db.assignments.filter((a) => a.personId === p.id);
-      const where: Where = marked.length ? "On site" : onLeave(db, p.id, day) ? "On leave" : plannedOn.length || roster.length ? "Planned" : "Not planned";
-      const siteIds = marked.length ? marked.map((a) => a.projectId) : plannedOn.length ? plannedOn.map((x) => x.projectId) : roster.map((a) => a.projectId);
-      return { p, where, sites: where === "On leave" ? [] : [...new Set(siteIds)].map((id) => db.projects.find((x) => x.id === id)!).filter((x) => x && x.status === "Live") };
-    })
-    .sort((a, b) => (a.sites[0]?.code ?? "~").localeCompare(b.sites[0]?.code ?? "~") || a.p.name.localeCompare(b.p.name));
-  const n = (w: Where) => rows.filter((r) => r.where === w).length;
-  const shown = rows.filter((r) => show === "All" || r.where === show);
+  const today = useDay();
+  const days = useMemo(() => whereDays(today), [today]);
+  const [picked, setDay] = useScreenState<string>("where.day", today);
+  const day = days.includes(picked) ? picked : today;
+  const [layout, setLayout] = useScreenState<"sites" | "all">("where.layout", "sites");
+  const [siteId, setSiteId] = useScreenState<string>("where.site", "all");
+  const [show, setShow] = useScreenState<"All" | WhereState>("where.status", "All");
+  const name = (id: string) => db.people.find((p) => p.id === id)?.name ?? "";
+  const running = sitesRunning(db.projects, day).sort((a, b) => a.code.localeCompare(b.code));
+  const rows = whereOn(
+    { people: db.people.filter((p) => p.active && p.kind === "Operative"), attendance: db.attendance, plan: db.plan, assignments: db.assignments, holidays: db.holidays, liveIds: new Set(db.projects.filter((p) => p.status === "Live").map((p) => p.id)) },
+    day,
+    today,
+  )
+    .map((r) => ({ ...r, p: db.people.find((x) => x.id === r.personId)! }))
+    .sort((a, b) => {
+      const ca = db.projects.find((x) => x.id === a.sites[0]?.projectId)?.code ?? "~";
+      const cb = db.projects.find((x) => x.id === b.sites[0]?.projectId)?.code ?? "~";
+      return ca.localeCompare(cb) || a.p.name.localeCompare(b.p.name);
+    });
+  const planned = plannedLabel(day, today);
+  const statusName = (w: WhereState) => (w === "Planned" ? planned : w);
+  const n = (w: WhereState) => rows.filter((r) => r.where === w).length;
+  const inSite = (r: (typeof rows)[number]) => siteId === "all" || r.sites.some((s) => s.projectId === siteId);
+  const shown = rows.filter((r) => (show === "All" || r.where === show) && inSite(r));
+  const siteList = siteId === "all" ? running : running.filter((p) => p.id === siteId);
+  // A site that was not running that day but had someone on it (a weekend stamp, a late finish) still gets its heading.
+  const extra = siteId === "all" ? [...new Set(shown.flatMap((r) => r.sites.map((s) => s.projectId)))].filter((id) => !running.some((p) => p.id === id)).map((id) => db.projects.find((p) => p.id === id)!).filter(Boolean) : [];
+  const elsewhere = shown.filter((r) => r.sites.length === 0);
+  const at = days.indexOf(day);
+  const bank = bankHolidayOn(db.bankHolidays, day);
+  const when = day === today ? "Today" : dWeekday(day);
+  // On a phone the Day and Phone columns fold under the status and the name, so the table fits.
+  const cols = (
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th className="sm:w-40">Status</th>
+        <th className="w-44 max-sm:hidden">Day</th>
+        <th className="w-36 max-sm:hidden">Phone</th>
+      </tr>
+    </thead>
+  );
+  const nameCell = (p: Person) => (
+    <td>
+      <span className="font-medium">{p.name}</span>
+      <span className="block text-[0.87rem] text-muted">{p.trade}</span>
+      <span className="block text-[0.93rem] sm:hidden">
+        <Tel number={p.phone} />
+      </span>
+    </td>
+  );
 
   return (
     <>
-      <PageHead title="Who is where" note={`${dWeekday(day)}: ${n("On site")} marked on site, ${n("Planned")} expected but not marked yet, ${n("On leave")} on leave, ${n("Not planned")} with nowhere to be.`} actions={<Segmented label="Where people are" value={show} onChange={setShow} options={[{ value: "All", label: "All", count: rows.length }, { value: "On site", label: "On site", count: n("On site") }, { value: "Planned", label: "Not marked yet", count: n("Planned") }, { value: "On leave", label: "On leave", count: n("On leave") }, { value: "Not planned", label: "Not planned", count: n("Not planned") }]} />} />
-      <PageBody>
-        <Panel className="max-w-5xl overflow-x-auto">
-          {shown.length === 0 ? (
-            <Empty title="Nobody in this group today" />
-          ) : (
-            <table className="tbl">
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Trade</th>
-                  <th>Site today</th>
-                  <th>Status</th>
-                  <th>Phone</th>
-                </tr>
-              </thead>
-              <tbody>
-                {shown.map(({ p, where, sites }) => (
-                  <tr key={p.id}>
-                    <td className="font-medium">{p.name}</td>
-                    <td>{p.trade}</td>
-                    <td>
-                      {sites.length === 0 ? (
-                        <span className="text-muted">-</span>
-                      ) : (
-                        sites.map((s, i) => (
-                          <span key={s.id}>
-                            {i > 0 && ", "}
-                            <Link to={`/projects/${s.code}`} className="underline-offset-2 hover:underline">
-                              {s.code} {s.name}
-                            </Link>
-                          </span>
-                        ))
-                      )}
-                    </td>
-                    <td>
-                      <Badge tone={WHERE_TONE[where]}>{where === "Planned" ? "Not marked yet" : where}</Badge>
-                    </td>
-                    <td className="whitespace-nowrap">{p.phone}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      <PageHead
+        title="Who is where"
+        note={`${when}${day === today ? `, ${dWeekday(day)}` : ""}${bank ? `, ${bank.name}` : ""}: ${n("On site")} marked on site, ${n("Planned")} ${planned.toLowerCase()}, ${n("On leave")} on leave, ${n("Not planned")} with nowhere to be.`}
+        actions={<Segmented label="Who is where layout" value={layout} onChange={setLayout} options={[{ value: "all", label: "Everyone" }, { value: "sites", label: "Per site" }]} />}
+      >
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-1">
+            <Button aria-label="Previous day" className="px-2" disabled={at <= 0} onClick={() => setDay(days[at - 1]!)}>
+              <CaretLeft size={16} />
+            </Button>
+            <select aria-label="Day" className="field w-auto max-w-full" value={day} onChange={(e) => setDay(e.target.value)}>
+              {days.map((d) => (
+                <option key={d} value={d}>
+                  {dWeekday(d)}
+                  {d === today ? " (today)" : ""}
+                </option>
+              ))}
+            </select>
+            <Button aria-label="Next day" className="px-2" disabled={at >= days.length - 1} onClick={() => setDay(days[at + 1]!)}>
+              <CaretRight size={16} />
+            </Button>
+          </div>
+          {day !== today && (
+            <Button variant="ghost" onClick={() => setDay(today)}>
+              Today
+            </Button>
           )}
-        </Panel>
+          <select aria-label="Site" className="field w-auto max-w-full" value={siteId} onChange={(e) => setSiteId(e.target.value)}>
+            <option value="all">All sites</option>
+            {running.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.code} {p.name}
+              </option>
+            ))}
+            {siteId !== "all" && !running.some((p) => p.id === siteId) && <option value={siteId}>{db.projects.find((p) => p.id === siteId)?.code} (not running that day)</option>}
+          </select>
+          <select aria-label="Status" className="field w-auto max-w-full" value={show} onChange={(e) => setShow(e.target.value as typeof show)}>
+            <option value="All">Everyone ({rows.length})</option>
+            <option value="On site">On site ({n("On site")})</option>
+            <option value="Planned">
+              {planned} ({n("Planned")})
+            </option>
+            <option value="On leave">On leave ({n("On leave")})</option>
+            <option value="Not planned">Not planned ({n("Not planned")})</option>
+          </select>
+        </div>
+      </PageHead>
+      <PageBody className="grid max-w-5xl grid-cols-[minmax(0,1fr)] gap-6">
+        {day < today && <p className="text-muted">A day gone: who was marked in on the timesheet. Anyone planned who was not marked in shows as {planned.toLowerCase()}.</p>}
+        {day > today && <p className="text-muted">A day to come: who is planned, from the week and month ahead.</p>}
+        {layout === "sites" && (
+          <>
+            {[...siteList, ...extra].map((site) => {
+              const people = shown.filter((r) => r.sites.some((s) => s.projectId === site.id));
+              const on = people.filter((r) => r.where === "On site").length;
+              return (
+                <Section
+                  key={site.id}
+                  title={
+                    <Link to={`/projects/${site.code}`} className="underline-offset-2 hover:underline">
+                      {site.code} {site.name}
+                    </Link>
+                  }
+                  aside={`${name(site.siteManagerId)}, ${co(site.county)}. ${on} on site${people.length > on ? `, ${people.length - on} ${planned.toLowerCase()}` : ""}`}
+                >
+                  <Panel className="overflow-x-auto">
+                    {people.length === 0 ? (
+                      <p className="px-3 py-3 text-muted">
+                        {show === "All" ? `Nobody ${day < today ? "was" : "is"} on this site ${day === today ? "today" : "that day"}.` : `Nobody in this group on this site ${day === today ? "today" : "that day"}.`}
+                      </p>
+                    ) : (
+                      <table className="tbl table-fixed" aria-label={`${site.code} ${site.name}, ${dWeekday(day)}`}>
+                        {cols}
+                        <tbody>
+                          {people.map(({ p, where, sites }) => {
+                            const mine = sites.find((s) => s.projectId === site.id);
+                            const others = sites.filter((s) => s.projectId !== site.id);
+                            return (
+                              <tr key={p.id}>
+                                {nameCell(p)}
+                                <td>
+                                  <Badge tone={WHERE_TONE[where]}>{statusName(where)}</Badge>
+                                  <span className="block text-[0.87rem] text-muted sm:hidden">{dayText(mine?.note ?? "")}</span>
+                                </td>
+                                <td className="max-sm:hidden">
+                                  {dayText(mine?.note ?? "")}
+                                  {others.length > 0 && <span className="block text-[0.87rem] text-muted">Also {others.map((x) => db.projects.find((pr) => pr.id === x.projectId)?.code).join(", ")}</span>}
+                                </td>
+                                <td className="whitespace-nowrap max-sm:hidden">
+                                  <Tel number={p.phone} />
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    )}
+                  </Panel>
+                </Section>
+              );
+            })}
+            {siteId === "all" && elsewhere.length > 0 && (
+              <Section title={`Not on a site ${day === today ? "today" : "that day"}`} aside={`${elsewhere.length} on leave or with nowhere to be`}>
+                <Panel className="overflow-x-auto">
+                  <table className="tbl table-fixed" aria-label={`Not on a site, ${dWeekday(day)}`}>
+                    {cols}
+                    <tbody>
+                      {elsewhere.map(({ p, where }) => (
+                        <tr key={p.id}>
+                          {nameCell(p)}
+                          <td>
+                            <Badge tone={WHERE_TONE[where]}>{statusName(where)}</Badge>
+                          </td>
+                          <td className="text-muted max-sm:hidden">-</td>
+                          <td className="whitespace-nowrap max-sm:hidden">
+                            <Tel number={p.phone} />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </Panel>
+              </Section>
+            )}
+          </>
+        )}
+        {layout === "all" && (
+          <Panel className="overflow-x-auto">
+            {shown.length === 0 ? (
+              <Empty title={`Nobody in this group ${day === today ? "today" : "that day"}`} />
+            ) : (
+              <table className="tbl" aria-label={`Everyone, ${dWeekday(day)}`}>
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Site</th>
+                    <th>Status</th>
+                    <th className="max-sm:hidden">Phone</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {shown.map(({ p, where, sites }) => (
+                    <tr key={p.id}>
+                      {nameCell(p)}
+                      <td>
+                        {sites.length === 0 ? (
+                          <span className="text-muted">-</span>
+                        ) : (
+                          sites.map((s, i) => {
+                            const site = db.projects.find((x) => x.id === s.projectId);
+                            return (
+                              <span key={s.projectId} className="block">
+                                {i > 0 && <span className="sr-only">, </span>}
+                                <Link to={`/projects/${site?.code}`} className="underline-offset-2 hover:underline">
+                                  {site?.code} {site?.name}
+                                </Link>
+                                {s.note && <span className="text-muted">, {s.note}</span>}
+                              </span>
+                            );
+                          })
+                        )}
+                      </td>
+                      <td>
+                        <Badge tone={WHERE_TONE[where]}>{statusName(where)}</Badge>
+                      </td>
+                      <td className="whitespace-nowrap max-sm:hidden">
+                        <Tel number={p.phone} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </Panel>
+        )}
       </PageBody>
     </>
   );

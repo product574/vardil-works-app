@@ -15,16 +15,19 @@ import { shrinkImage } from "@/lib/image";
 import { hireEstimate } from "@/lib/job-costs";
 import { CATEGORIES } from "@/lib/job-costs";
 import { money0, money2, pct1 } from "@/lib/money";
+import { overtimeText, overtimeTotal } from "@/lib/overtime";
 import { labourCost, scopePercent, supplierCostByCategory } from "@/lib/project-costs";
+import { mayHandleCrewRequest, withSite } from "@/lib/requests";
 import { dueLabel, dueState, nextServiceDate } from "@/lib/status";
-import { Badge, Button, cx, Dialog, Empty, Fact, Field, PageBody, PageHead, Panel, Section, Segmented, Switch } from "@/ui";
+import { Badge, Button, cx, DeclineNote, Dialog, Empty, Fact, Field, PageBody, PageHead, Panel, Section, Segmented, Switch } from "@/ui";
 import { PickFile } from "@/ui/files";
+import { CrewRequestButtons } from "./CrewRequestButtons";
 import { HoldBadge, Progress, ProjectBadge, Tabs } from "@/ui/status";
 import { toast } from "@/ui/toast";
 import { FilesTab } from "./ProjectFiles";
 
 type Tab = "overview" | "scope" | "photos" | "files" | "plant" | "requests" | "extras" | "costs" | "history";
-export const REQUEST_LABEL: Record<RequestKind, string> = { personnel: "Personnel", own_plant: "Own plant", hired_plant: "Hired plant" };
+export const REQUEST_LABEL: Record<RequestKind, string> = { personnel: "Personnel", own_plant: "Own plant", hired_plant: "Hired plant", other: "Something else" };
 
 export function ProjectPage() {
   const { code } = useParams();
@@ -153,7 +156,7 @@ function OverviewTab({ p, db }: TabProps) {
                       <tr key={person.id}>
                         <td className="font-medium">{person.name}</td>
                         <td>{person.trade}</td>
-                        <td>{a ? <Badge tone="ok">{a.status === "half" ? "Half day" : a.overtimeHours > 0 ? `Full day + ${a.overtimeHours}h` : "Full day"}</Badge> : <span className="text-muted">Not marked</span>}</td>
+                        <td>{a ? <Badge tone="ok">{a.status === "half" ? "Half day" : overtimeTotal(a) > 0 ? `Full day + ${overtimeText(a)}` : "Full day"}</Badge> : <span className="text-muted">Not marked</span>}</td>
                       </tr>
                     );
                   })}
@@ -695,6 +698,8 @@ function PlantTab({ p, db }: TabProps) {
 
 function RequestsTab({ p, db }: TabProps) {
   const day = useDay();
+  const access = useAccess();
+  const canHandle = mayHandleCrewRequest(p, access.personId, access.siteAccess);
   const [kind, setKind] = useState<RequestKind>("personnel");
   const [description, setDescription] = useState("");
   const [quantity, setQuantity] = useState("1");
@@ -757,10 +762,17 @@ function RequestsTab({ p, db }: TabProps) {
                       {r.quantity > 1 && <span className="font-normal text-muted"> x {r.quantity}</span>}
                     </p>
                     <p className="text-[0.93rem] text-muted">
-                      {dShort(r.neededFrom)} to {dShort(r.neededTo)}. Asked by {r.requestedBy}, {whenInline(r.createdAt, day)}.{r.notes && ` ${r.notes}.`}
+                      {r.neededFrom === r.neededTo ? dShort(r.neededFrom) : `${dShort(r.neededFrom)} to ${dShort(r.neededTo)}`}. Asked by {r.requestedBy}, {whenInline(r.forwardedAt ?? r.createdAt, day)}.{r.raisedBy && ` First asked by ${r.raisedBy}.`}
+                      {r.notes && ` ${r.notes}.`}
                     </p>
+                    {r.decision === "Declined" && <DeclineNote note={r.declineNote} className="text-[0.93rem]" />}
+                    {withSite(r) && canHandle && (
+                      <div className="mt-2">
+                        <CrewRequestButtons id={r.id} what={r.description} />
+                      </div>
+                    )}
                   </div>
-                  <Badge tone={r.status === "Open" ? "accent" : "ok"}>{r.status === "Open" ? "Open" : "Dealt with"}</Badge>
+                  <Badge tone={withSite(r) ? "warn" : r.status === "Open" ? "accent" : r.decision === "Declined" ? "neutral" : "ok"}>{withSite(r) ? "With the site manager" : r.status === "Open" ? "With the office" : r.decision === "Declined" ? `Turned down by ${r.decidedBy}` : r.heldBy === "site" ? "Dealt with on site" : "Dealt with"}</Badge>
                 </li>
               ))}
             </ul>
@@ -889,7 +901,7 @@ function CostsTab({ p, db, pct }: TabProps & { pct: number }) {
   const region = usePrefs((s) => s.brand.region);
   const rate = new Map(db.people.map((x) => [x.id, x.hourlyRate]));
   const att = db.attendance.filter((a) => a.projectId === p.id);
-  const labour = labourCost(att.map((a) => ({ status: a.status, overtimeHours: a.overtimeHours, hourlyRate: rate.get(a.personId) ?? 0 })));
+  const labour = labourCost(att.map((a) => ({ date: a.date, status: a.status, overtimeHours: a.overtimeHours, doubleHours: a.doubleHours, hourlyRate: rate.get(a.personId) ?? 0 })));
   const supplier = supplierCostByCategory(db.supplierInvoices.filter((s) => s.readStatus === "confirmed").flatMap((s) => s.allocations.filter((a) => a.projectId === p.id).map((a) => ({ category: a.category, amount: a.amount, credit: s.docType === "credit_note" }))));
   const supplierTotal = Object.values(supplier).reduce((s, n) => s + n, 0);
   const cost = labour + supplierTotal;
@@ -906,7 +918,7 @@ function CostsTab({ p, db, pct }: TabProps & { pct: number }) {
               <tr>
                 <td>
                   Labour
-                  <span className="block text-[0.87rem] text-muted">{plural(att.length, "attendance entry", "attendance entries")} at each person's hourly rate, overtime at time and a half</span>
+                  <span className="block text-[0.87rem] text-muted">{plural(att.length, "attendance entry", "attendance entries")} at each person's hourly rate, overtime at the rate marked on the timesheet (time and a half or double time)</span>
                 </td>
                 <td className="num">{money2(labour, region)}</td>
               </tr>
