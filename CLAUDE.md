@@ -63,7 +63,7 @@ send him a fresh zip first, or bring his changes across with care, so the two do
 This copy's own decisions from 18 Nov were numbered 64 to 118 on `invoicing-section` and
 clashed with the other branch's; they are now 130 to 184, in the same order.
 
-**The main offering, 19 Nov:** decisions 198 to 208: Vardil HQ (our own level, staff only), the main offering package, one phone for everyone, client apps saved on the server, and Vardil Works in every client's Admin. Branch `main-offering`.
+**The main offering, 19 Nov:** decisions 198 to 208: Vardil HQ (our own level, staff only), the main offering package, one phone for everyone, client apps saved on the server, and Vardil Works in every client's Admin. Built on the branch `main-offering`; published on 19 Nov at Oisin's word ("publish it"): `invoicing-section` and his `main` fast-forwarded to 76ee96f, Cloudflare's build passed, and the artifact "Construction demo (Oisin's copy)" republished.
 
 **Round eleven, 18 Nov:** decisions 118 to 129. Fleet is now the Secure-All build's Fleet
 (`product574/vardil-works-security`, Vardil's own code, brought across with ABC's data), as a
