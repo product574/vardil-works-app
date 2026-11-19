@@ -86,7 +86,7 @@ def steps(page, ctx):
     check("Profitability: its old Job costs address lands in Invoicing", page.url.endswith("/invoicing/costs"), page.url)
     go(page, "/admin")
     admin_links = [t.split("\n")[0].strip() for t in side().get_by_role("link").all_inner_texts()]
-    check("Admin: the other copy's screens are all there", all(n in admin_links for n in ["Requests", "Roles and access", "Site access", "Bank holidays", "Billing", "Connections", "Automations", "Activity log"]), admin_links)
+    check("Admin: the other copy's screens are all there", all(n in admin_links for n in ["Requests", "Roles and access", "Site access", "Company holidays", "Billing", "Connections", "Automations", "Activity log"]), admin_links)
 
     # ── 5. The site phone: both phones side by side, each phone-sized, scrolling inside itself
     go(page, "/site")

@@ -14,6 +14,7 @@ import { Avatar, Badge, Button, cx, DeclineNote, Dialog, Field, NumInput } from 
 import { PickFile } from "@/ui/files";
 import { toast } from "@/ui/toast";
 import { EXTRAS, MORE, WORDS } from "./words";
+import { CompanyHolidays, MyCerts } from "./one-sheets";
 
 // What both phones share (the operative's in SiteView.tsx, the site manager's in ManagerPhone.tsx):
 // the large buttons, the profile, and the sheets for a photo, extra work, a request, the driving
@@ -343,7 +344,7 @@ export function DrivingSheet({ me, day, onClose }: { me: Person; day: string; on
 }
 
 /** The operative's own details, their leave, a way to ask for holidays, and signing out (Oisin, 17 Nov). */
-export function ProfileSheet({ me, lang, day, onClose }: { me: Person; lang: Language; day: string; onClose: () => void }) {
+export function ProfileSheet({ me, lang, day, onClose, simple }: { me: Person; lang: Language; day: string; onClose: () => void; /** The one phone of the main offering: My certificates and company holidays (19 Nov). */ simple?: boolean }) {
   const db = useData((s) => s.db);
   const role = usePrefs((s) => s.role);
   const setRole = usePrefs((s) => s.setRole);
@@ -378,7 +379,7 @@ export function ProfileSheet({ me, lang, day, onClose }: { me: Person; lang: Lan
             </>
           )}
         </dl>
-        <MyTickets me={me} lang={lang} day={day} />
+        {simple ? <MyCerts me={me} day={day} /> : <MyTickets me={me} lang={lang} day={day} />}
         <div lang="en">
           <h3 className="mb-1 text-base">Holidays</h3>
           {leave.length === 0 ? (
@@ -429,6 +430,7 @@ export function ProfileSheet({ me, lang, day, onClose }: { me: Person; lang: Lan
           )}
         </div>
         <MyClaims me={me} />
+        {simple && <CompanyHolidays day={day} />}
         <Button
           size="lg"
           variant="danger"
@@ -543,10 +545,10 @@ export function MyClaims({ me }: { me: Person }) {
             <span className="min-w-0 flex-1">
               {x.kind}, {dShort(x.date)}
               {x.status === "Declined" && <DeclineNote note={x.declineNote} />}
-              {x.status === "Approved" && <span className="block text-[0.87rem] text-muted">{x.exportedAt ? `With the office for payment since ${dShort(x.exportedAt.slice(0, 10))}` : "On the office's list to pay"}</span>}
+              {x.status === "Approved" && <span className="block text-[0.87rem] text-muted">{x.paidAt ? `Paid ${dShort(x.paidAt.slice(0, 10))}` : x.exportedAt ? `With the office for payment since ${dShort(x.exportedAt.slice(0, 10))}` : "On the office's list to pay"}</span>}
             </span>
             <span className="tabular-nums">{region === "UK" ? "£" : "€"}{x.amount.toFixed(2)}</span>
-            <Badge tone={x.status === "Approved" ? "ok" : x.status === "Declined" ? "bad" : "accent"}>{x.status === "Approved" ? (x.exportedAt ? "Sent for payment" : "Approved") : x.status}</Badge>
+            <Badge tone={x.status === "Approved" ? "ok" : x.status === "Declined" ? "bad" : "accent"}>{x.status === "Approved" ? (x.paidAt ? "Paid" : x.exportedAt ? "Sent for payment" : "Approved") : x.status}</Badge>
           </li>
         ))}
       </ul>

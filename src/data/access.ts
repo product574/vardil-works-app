@@ -11,6 +11,7 @@
  */
 import { DEPARTMENTS } from "@/app/departments";
 import { staff } from "@/app/staff";
+import { useApps } from "@/app/workspace";
 import { opensSite } from "@/lib/site-access";
 import { ALL_PERMS } from "./permissions";
 import { ROLES, type RoleDef, roleDef } from "./roles";
@@ -95,7 +96,8 @@ export function useAccess() {
   const operativeId = usePrefs((s) => s.operativeId);
   const asPersonId = usePrefs((s) => s.asPersonId);
   const staffPref = usePrefs((s) => s.staffMode);
-  const companyOff = usePrefs((s) => s.companyOff);
+  const apps = useApps();
+  const companyOff = apps.off;
   const mdOverride = usePrefs((s) => s.mdOverride);
   const askAiOff = usePrefs((s) => s.askAiOff);
   const people = useDb((db) => db.people);
@@ -119,6 +121,8 @@ export function useAccess() {
     staffMode,
     /** Ask AI: the managing director's, unless Vardil has switched it off for this demo. */
     askAi: role === "md" && (staffMode || !askAiOff),
+    /** The apps this firm has (src/app/workspace.ts), whatever this person may open. */
+    apps,
     /** May they open this department? */
     can: (d: DepartmentKey) => resolved.departments.includes(d),
     /** May they do this? See src/data/permissions.ts for the list. */

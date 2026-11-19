@@ -146,7 +146,7 @@ def steps(page, ctx):
     check("Week ahead: sites down the side, the five days with their dates across the top", heads[0] == "Site" and len(heads) == 6 and heads[1].startswith("Mon ") and grid.locator("tbody tr").count() >= 7, heads)
     first_row = grid.locator("tbody tr").first.locator("th").inner_text()
     check("Week ahead: each row starts with the site code and name", re.match(r"C7\d\d\n", first_row) is not None, first_row)
-    check("Week ahead: the double booking is called out and blocks sending", "1 double booking" in main.inner_text() and "Ionuț Marin is on" in main.inner_text() and page.get_by_role("button", name="Send week to operatives").is_disabled())
+    check("Week ahead: the double booking is called out and blocks sending", "1 double booking" in main.inner_text() and "Ionuț Marin is on" in main.inner_text() and page.get_by_role("button", name="Send the week").is_disabled())
     side = page.get_by_role("complementary", name="Not placed this week")
     check("Week ahead: someone on approved leave all week is in no cell and not in Not placed", grid.get_by_role("button", name="Cormac Hession: contact details and options").count() == 0 and "Cormac Hession" not in side.inner_text())
     clash = grid.locator("button.bg-bad-soft", has_text="Ionuț Marin")
@@ -159,7 +159,7 @@ def steps(page, ctx):
     dlg.get_by_role("button", name=re.compile("^Take off C7")).click(); page.wait_for_timeout(250)
     check("Week ahead: taking him off one site clears the clash", "double booking" not in main.inner_text())
     # People whose Safe Pass or trade ticket has run out by a day they are planned (Compliance, kept when the two chats were merged, 19 Nov).
-    check("Week ahead: people planned who cannot work are named and marked in the grid, and hold the week back", "planned who cannot work" in main.inner_text() and "Tomás Breslin: Safe Pass ran out" in main.inner_text() and grid.locator("button", has_text="Cannot work").count() > 0 and page.get_by_role("button", name="Send week to operatives").is_disabled())
+    check("Week ahead: people planned who cannot work are named and marked in the grid, and hold the week back", "planned who cannot work" in main.inner_text() and "Tomás Breslin: Safe Pass ran out" in main.inner_text() and grid.locator("button", has_text="Cannot work").count() > 0 and page.get_by_role("button", name="Send the week").is_disabled())
     for _ in range(20):
         b = grid.locator("button", has_text="Cannot work")
         if b.count() == 0:
@@ -168,7 +168,7 @@ def steps(page, ctx):
         page.locator("dialog[open]").last.get_by_role("button", name=re.compile("^Take off C7")).first.click(); page.wait_for_timeout(250)
         while page.locator("dialog[open]").count():
             page.locator("dialog[open]").last.get_by_role("button", name="Close").first.click(); page.wait_for_timeout(150)
-    check("Week ahead: with them taken off, the week can be sent", "planned who cannot work" not in main.inner_text() and page.get_by_role("button", name="Send week to operatives").is_enabled())
+    check("Week ahead: with them taken off, the week can be sent", "planned who cannot work" not in main.inner_text() and page.get_by_role("button", name="Send the week").is_enabled())
     # A busy person dropped on another site: asked first, then moved
     sean = data(page, "db.people.find(p=>p.name==='Seán Dunphy').id")
     home = data(page, f"db.projects.find(p => p.id === db.plan.find(x => x.personId==='{sean}' && x.date==='{days[0]}').projectId).code")
@@ -181,12 +181,20 @@ def steps(page, ctx):
     check("Week ahead: Move puts him on the new site that day only, with no double booking", where == [target] and chip(target, 1, "Seán Dunphy").count() == 1 and chip(home, 1, "Seán Dunphy").count() == 0 and chip(home, 2, "Seán Dunphy").count() == 1 and "double booking" not in main.inner_text(), where)
     drag(page, chip(home, 2, "Seán Dunphy"), cell(target, 3), lambda: page.locator("dialog[open]").count() > 0)
     page.locator("dialog[open]").last.get_by_role("button", name="Put on both").click(); page.wait_for_timeout(250)
-    check("Week ahead: Put on both double books and blocks sending", "Seán Dunphy is on" in main.inner_text() and page.get_by_role("button", name="Send week to operatives").is_disabled())
+    check("Week ahead: Put on both double books and blocks sending", "Seán Dunphy is on" in main.inner_text() and page.get_by_role("button", name="Send the week").is_disabled())
     chip(target, 3, "Seán Dunphy").click(); page.wait_for_timeout(250)
     page.locator("dialog[open]").last.get_by_role("button", name=f"Take off {target}").click(); page.wait_for_timeout(250)
     check("Week ahead: taking him off that site clears it again", "double booking" not in main.inner_text() and chip(target, 1, "Seán Dunphy").count() == 0)
-    page.get_by_role("button", name="Send week to operatives").click(); page.wait_for_timeout(250)
-    check("Week ahead: sending is confirmed and logged", "sent to" in page.locator("[aria-live=polite]").last.inner_text() and data(page, "db.activity[0].what") == "Sent the week ahead to operatives")
+    # Since 19 Nov the week goes by email and WhatsApp, so email is connected first (Admin, Connections).
+    page.get_by_role("button", name="Send the week").click(); page.wait_for_timeout(250)
+    check("Week ahead: sending asks for email or WhatsApp to be connected first", "Connect email or WhatsApp" in page.locator("dialog[open]").last.inner_text())
+    page.locator("dialog[open]").last.get_by_role("link", name="Open Connections").click(); page.wait_for_timeout(300)
+    main.get_by_role("button", name="Connect", exact=True).first.click(); page.wait_for_timeout(200)
+    page.locator("dialog[open]").last.get_by_role("button", name="Sign in with Microsoft").click(); page.wait_for_timeout(200)
+    page.goto(BASE + "/schedule"); page.wait_for_selector("table")
+    page.get_by_role("button", name="Send the week").click(); page.wait_for_timeout(250)
+    page.locator("dialog[open]").last.get_by_role("button", name=re.compile(r"^Send \d+ messages?")).click(); page.wait_for_timeout(250)
+    check("Week ahead: sending is confirmed and logged", "sent to" in page.locator("[aria-live=polite]").last.inner_text() and data(page, "db.activity[0].what") == "Sent the week ahead to operatives" and data(page, "db.rosterSends.length") == 1)
     page.get_by_role("button", name="Earlier week").click(); page.wait_for_timeout(250)
     check("Week ahead: the current week shows who attended on days gone, with no Add on them", grid.locator("button[aria-label$='contact details and options']").count() > 20 and grid.locator(f"td[data-cell$=' {day_of(page)}']").get_by_role("button", name=re.compile("^Add someone")).count() == 0)
     page.screenshot(path=f"{OUT}/66-week-ahead-current.png")
@@ -205,7 +213,7 @@ def steps(page, ctx):
     check("Site manager: timesheet offers only his own live sites", all(o.startswith(("C719", "C724")) for o in opts) and len(opts) == 2, opts)
     page.goto(BASE + "/schedule"); page.wait_for_selector("table")
     rows = [t.split("\n")[0] for t in page.get_by_role("table", name="Week ahead by site and day").locator("tbody th").all_inner_texts()]
-    check("Site manager: plans the week for his own sites only (17 Nov)", rows == ["C719", "C724"] and page.get_by_role("button", name="Send week to operatives").count() == 1, rows)
+    check("Site manager: plans the week for his own sites only (17 Nov)", rows == ["C719", "C724"] and page.get_by_role("button", name="Send the week").count() == 1, rows)
     page.goto(BASE + "/people"); page.wait_for_selector("table")
     check("Site manager: hourly rates are hidden on the register", "Hourly rate" not in page.locator("thead").inner_text())
 

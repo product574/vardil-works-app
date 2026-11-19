@@ -25,6 +25,8 @@ describe("sample data", () => {
 
   it("has unique ids in every table", () => {
     for (const [table, rows] of Object.entries(db)) {
+      // The firm's connections (19 Nov) are settings, not a table of records.
+      if (!Array.isArray(rows)) continue;
       // Bank holidays are known by their date: there is one a day at most.
       const ids = (rows as { id?: string; date?: string }[]).map((r) => r.id ?? r.date);
       expect(ids.every(Boolean), table).toBe(true);

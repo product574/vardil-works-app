@@ -4,6 +4,7 @@ import { RouterProvider } from "react-router-dom";
 import { useBrandTheme } from "./app/brand";
 import { router } from "./app/router";
 import { initStaff } from "./app/staff";
+import { initWorkspace } from "./app/workspace";
 import "./styles.css";
 
 function App() {
@@ -12,7 +13,7 @@ function App() {
 }
 
 // Vardil staff are recognised before anything is drawn, so their extra department is in place on the first screen.
-void initStaff().finally(() =>
+void Promise.all([initStaff(), initWorkspace()]).finally(() =>
   createRoot(document.getElementById("root")!).render(
     <StrictMode>
       <App />

@@ -9,7 +9,7 @@ import { ASK_ACTIVITY } from "@/ai/tools";
 import { filedFolder, MAX_ATTACHMENTS } from "@/lib/mail";
 import { finalAccountNet, holdReason, invoiceNo, invoicedLine, paidLine, salesInvoiceFile } from "@/lib/billing";
 import { plantBlocks, renewedTo, ticketBlocks } from "@/lib/compliance";
-import { bankHolidayOn, isBankHoliday, isRestDay } from "@/lib/bank-holidays";
+import { bankHolidayOn, closureDays, isBankHoliday, isRestDay } from "@/lib/bank-holidays";
 import { addDays, dayOfWeek, isWeekend } from "@/lib/dates";
 import { billingEmail, grossOf, linesNet, nextAccountsNo, routeWords } from "@/lib/invoices";
 import { nextFileNo, partyOf, purchaseStage, receiptEmail, remittanceEmail } from "@/lib/purchases";
@@ -29,7 +29,7 @@ import { ROLES } from "./roles";
 import { costingFor, linesFor, WORK, type WorkKind } from "./seed/commercial";
 import { rng } from "./seed/util";
 import { getDay, useData, usePrefs } from "./store";
-import type { AccessKey, AccessRow, Allocation, Attendance, Cert, Client, Course, Db, Expense, DepartmentKey, Enquiry, ID, LevelKey, PermKey, Person, PhotoStage, Language, Mail, MailAttachment, MailIntent, Proof, RequestKind, RoleKey, FileCategory, FileKind, FleetDocCategory, InvoiceLine, InvoiceQuery, Project, SalesInvoice, Scaffold, SendRoute, SubPaper, Variation, Vehicle, Base, BaseKind, ComplianceItem, Day, Garage, InvoiceStatus, LicenceKey, RepairCategory, RepairInvoice, RepairLine, Todo } from "./types";
+import type { AccessKey, AccessRow, Allocation, Attendance, Cert, Client, Course, Db, Expense, DepartmentKey, Enquiry, ID, LevelKey, PermKey, Person, PhotoStage, Language, Mail, MailAttachment, MailIntent, Proof, RequestKind, RoleKey, FileCategory, FileKind, FleetDocCategory, InvoiceLine, InvoiceQuery, Project, SalesInvoice, Scaffold, SendRoute, SubPaper, Variation, Vehicle, Base, BaseKind, ComplianceItem, Day, Garage, InvoiceStatus, LicenceKey, RepairCategory, RepairInvoice, RepairLine, Todo, RepairReport, RepairStatus, CertSubmission, RosterSend } from "./types";
 
 const mutate = (fn: (db: Db) => void) => useData.getState().mutate(fn);
 
@@ -3097,4 +3097,165 @@ export function startDirectMessage(personId: ID): ID | null {
     out = id;
   });
   return out;
+}
+
+// ── The main offering (19 Nov) ────────────────────────────────────────────────
+
+/** A repair reported from the phone: anything broken, one of the firm's own or typed. It waits in Admin, Repairs. */
+export function reportRepair(r: { personId: ID; item: RepairReport["item"]; where: string; what: string }, photos: FileIn[]): ID {
+  const id = newId("rep");
+  mutate((db) => {
+    const who = db.people.find((p) => p.id === r.personId)?.name ?? actorName(db);
+    db.repairs.unshift({ id, personId: r.personId, item: { ...r.item, name: r.item.name.trim().slice(0, 120) }, where: r.where.trim().slice(0, 200), what: r.what.trim().slice(0, 1000), photos: stampAll(db, photos), at: nowStamp(), status: "Reported", steps: [] });
+    log(db, "Reported a repair from the phone", `${who}: ${r.item.name}`, "admin", who);
+  });
+  return id;
+}
+
+/** A manager moves a repair on: In hand, then Fixed, each with a note if they want. The person who reported it sees each step. */
+export function moveRepair(id: ID, status: RepairStatus, note?: string) {
+  mutate((db) => {
+    const r = db.repairs.find((x) => x.id === id);
+    if (!r || r.status === status) return;
+    r.status = status;
+    r.steps.push({ status, at: nowStamp(), by: actorName(db), ...(cleanNote(note) ? { note: cleanNote(note) } : {}) });
+    // A machine of the firm's own goes off for repair while it is in hand, and comes back when fixed.
+    const plant = r.item.kind === "plant" ? db.plant.find((p) => p.id === r.item.refId) : undefined;
+    if (plant && status === "In hand" && plant.status !== "Off for repair") plant.status = "Off for repair";
+    if (plant && status === "Fixed" && plant.status === "Off for repair") plant.status = plant.projectId ? "On site" : "Available";
+    log(db, status === "Fixed" ? "Marked a repair fixed" : "Took a repair in hand", withNote(r.item.name, note), "admin");
+  });
+}
+
+/** A certificate or licence sent from the phone. It counts for nothing until the office accepts it. */
+export function submitCert(s: Omit<CertSubmission, "id" | "sentAt" | "status">) {
+  mutate((db) => {
+    const p = db.people.find((x) => x.id === s.personId);
+    if (!p) return;
+    // A second one for the same ticket or licence replaces the first while it is still waiting.
+    db.certSubmissions = db.certSubmissions.filter((x) => !(x.status === "Waiting" && x.personId === s.personId && ((s.certId && x.certId === s.certId) || (s.licence && x.licence === s.licence))));
+    db.certSubmissions.unshift({ ...s, id: newId("cs"), sentAt: nowStamp(), status: "Waiting" });
+    log(db, "Sent a certificate from the phone", `${p.name}, ${s.name}`, "compliance", p.name);
+  });
+}
+
+/**
+ * The office's answer to a certificate from the phone. Accepted, it goes on the record with the
+ * date it runs to (corrected if need be) and the photo as its copy; turned down, it is not used,
+ * and the person sees why.
+ */
+export function decideCert(id: ID, accept: { expires: string } | null, note?: string) {
+  const db0 = useData.getState().db;
+  const s = db0.certSubmissions.find((x) => x.id === id);
+  if (!s || s.status !== "Waiting") return;
+  const copy = s.photo.dataUrl ? [{ name: s.photo.name, dataUrl: s.photo.dataUrl }] : [];
+  if (accept && s.kind === "licence" && s.licence) setDriverLicence(s.personId, s.licence, accept.expires, copy);
+  mutate((db) => {
+    const x = db.certSubmissions.find((y) => y.id === id);
+    const p = db.people.find((y) => y.id === x?.personId);
+    if (!x || !p) return;
+    x.status = accept ? "Accepted" : "Turned down";
+    x.decidedBy = actorName(db);
+    x.decidedAt = nowStamp();
+    if (cleanNote(note)) x.note = cleanNote(note);
+    if (accept && x.kind === "ticket") {
+      const proof = copy[0] ? { proof: { ...copy[0], addedBy: actorName(db), addedAt: nowStamp() } } : {};
+      const c = p.certs.find((y) => y.id === x.certId) ?? p.certs.find((y) => y.name.toLowerCase() === x.name.toLowerCase());
+      if (c) {
+        c.issued = getDay();
+        c.expires = accept.expires;
+        Object.assign(c, proof);
+        if (copy[0]) delete c.proofNeeded;
+        delete c.sentPhoto;
+        closeTodos(db, `cert:${c.id}`);
+      } else p.certs.push({ id: newId("cert"), name: x.name, issued: getDay(), expires: accept.expires, ...proof, ...(copy[0] ? {} : { proofNeeded: true }) });
+    }
+    log(db, accept ? "Accepted a certificate sent from the phone" : "Turned down a certificate sent from the phone", withNote(`${p.name}, ${x.name}${accept ? `, to ${accept.expires}` : ""}`, note), "compliance");
+  });
+}
+
+/** An approved reimbursement marked paid in Admin, after the confirm box. The phone then shows Paid. */
+export function markExpensePaid(id: ID) {
+  mutate((db) => {
+    const x = db.expenses.find((e) => e.id === id);
+    if (!x || x.status !== "Approved" || x.paidAt) return;
+    x.paidAt = nowStamp();
+    x.paidBy = actorName(db);
+    log(db, "Marked a reimbursement paid", `${db.people.find((p) => p.id === x.personId)?.name}, ${x.amount.toFixed(2)}`, "admin");
+  });
+}
+
+/** Undo Mark paid, for a slip. */
+export function undoExpensePaid(id: ID) {
+  mutate((db) => {
+    const x = db.expenses.find((e) => e.id === id);
+    if (!x?.paidAt) return;
+    delete x.paidAt;
+    delete x.paidBy;
+    log(db, "Took back a reimbursement marked paid", `${db.people.find((p) => p.id === x.personId)?.name}, ${x.amount.toFixed(2)}`, "admin");
+  });
+}
+
+/**
+ * A company closure from one day to another (Christmas closedown, say): every working day in it
+ * becomes a day the firm is shut, so nobody is planned or marked a normal day on it. Anyone
+ * planned on one of those days still to come is taken off. Returns what is wrong, or how many
+ * days were added and taken off the plan.
+ */
+export function addClosure(from: string, to: string, name: string): { error: string } | { days: number; off: number } {
+  const db0 = useData.getState().db;
+  if (!name.trim()) return { error: "Give the closure a name" };
+  if (!from || !to) return { error: "Pick the first and last day" };
+  if (to < from) return { error: "The last day is before the first" };
+  const days = closureDays(db0.bankHolidays, from, to);
+  if (days.length === 0) return { error: "Every working day in that range is already a company holiday" };
+  let off = 0;
+  mutate((db) => {
+    const closure = newId("clo");
+    for (const d of days) db.bankHolidays.push({ date: d, name: name.trim(), closure });
+    db.bankHolidays.sort((a, b) => a.date.localeCompare(b.date));
+    const ahead = new Set(days.filter((d) => d > getDay()));
+    off = db.plan.filter((p) => ahead.has(p.date)).length;
+    db.plan = db.plan.filter((p) => !ahead.has(p.date));
+    log(db, "Added a company closure", `${name.trim()}, ${from} to ${to}, ${days.length} working days${off ? `. ${off} planned days taken off` : ""}`, "admin");
+  });
+  return { days: days.length, off };
+}
+
+export function removeClosure(closure: ID) {
+  mutate((db) => {
+    const days = db.bankHolidays.filter((h) => h.closure === closure);
+    if (!days.length) return;
+    db.bankHolidays = db.bankHolidays.filter((h) => h.closure !== closure);
+    log(db, "Removed a company closure", `${days[0]!.name}, ${days[0]!.date} to ${days[days.length - 1]!.date}`, "admin");
+  });
+}
+
+/** Connect the firm's email or WhatsApp (Admin, Connections). In the demo a pretend sign-in: nothing leaves the browser. */
+export function connectEmail(provider: "Gmail" | "Outlook", account: string) {
+  mutate((db) => {
+    db.connections.email = { provider, account: account.trim(), at: nowStamp(), by: actorName(db) };
+    log(db, "Connected email", `${provider}, ${account.trim()}`, "admin");
+  });
+}
+export function connectWhatsApp(number: string) {
+  mutate((db) => {
+    db.connections.whatsapp = { number: number.trim(), at: nowStamp(), by: actorName(db) };
+    log(db, "Connected WhatsApp Business", number.trim(), "admin");
+  });
+}
+export function disconnect(which: "email" | "whatsapp") {
+  mutate((db) => {
+    delete db.connections[which];
+    log(db, which === "email" ? "Disconnected email" : "Disconnected WhatsApp", "", "admin");
+  });
+}
+
+/** The week's roster sent to each person by email and WhatsApp (shown in the demo, filed as sent). */
+export function sendRoster(weekStart: string, messages: RosterSend["messages"]) {
+  mutate((db) => {
+    db.rosterSends.unshift({ id: newId("ros"), weekStart, at: nowStamp(), by: actorName(db), messages });
+    const people = new Set(messages.map((m) => m.personId)).size;
+    log(db, "Sent the week's roster by email and WhatsApp", `Week of ${weekStart}, ${people} people, ${messages.length} messages`, "schedule");
+  });
 }

@@ -1,15 +1,17 @@
 import { Link } from "react-router-dom";
 import { useAccess } from "@/data/access";
-import { decideExpense, decideHoliday, decideSiteRequest, decideSpend } from "@/data/actions";
+import { decideCert, decideExpense, decideHoliday, decideOvertimeClaim, decideSiteRequest, decideSpend, markExpensePaid, moveRepair, undoExpensePaid } from "@/data/actions";
 import { useState } from "react";
 import { useData, useDay, usePrefs } from "@/data/store";
-import type { Db } from "@/data/types";
+import type { CertSubmission, Db, Expense, OvertimeClaim } from "@/data/types";
+import { restDayKindOf } from "@/lib/bank-holidays";
+import { suggestedSplit } from "@/lib/overtime-claims";
 import { dFull, dShort, plural, when } from "@/lib/format";
 import { money0, money2 } from "@/lib/money";
 import { type Approver, approverWords, mayApprove } from "@/lib/purchases";
 import { ApproveDialog, SendBackDialog } from "@/modules/invoicing/purchase-shared";
 import { directorQueue, recentlyDecided } from "@/lib/requests";
-import { Badge, Button, type DeclineAsk, DeclineDialog, DeclineNote, Empty, PageBody, PageHead, Panel, Section } from "@/ui";
+import { Badge, Button, type DeclineAsk, DeclineDialog, DeclineNote, Dialog, Empty, Field, NumInput, PageBody, PageHead, Panel, Section } from "@/ui";
 import { toast } from "@/ui/toast";
 
 const KIND: Record<string, string> = { personnel: "People", own_plant: "Our plant", hired_plant: "Plant to hire", other: "Something else" };
@@ -20,18 +22,47 @@ const KIND: Record<string, string> = { personnel: "People", own_plant: "Our plan
  */
 export function Requests() {
   const db = useData((s) => s.db);
+  const region = usePrefs((s) => s.brand.region);
+  const access = useAccess();
+  const q = directorQueue(db, { crewToOffice: !access.apps.on("projects") });
+  const limit = db.approvalLimits.find((x) => x.id === "supplier")?.amount ?? 500;
+  const total = Object.values(q).reduce((n, list) => n + list.length, 0);
+  return (
+    <>
+      <PageHead
+        title="Requests"
+        note={total === 0 ? "Nothing is waiting for a yes or no." : `${plural(total, "thing")} waiting for you: leave, requests from the phones and the sites, overtime claims, repairs, certificates to check, reimbursements${access.apps.on("invoicing") ? `, and supplier invoices over the ${money0(limit, region)} accounts may approve` : ""}.`}
+      />
+      <PageBody className="grid max-w-6xl gap-6">
+        <RequestsBody />
+      </PageBody>
+    </>
+  );
+}
+
+/**
+ * Everything waiting, section by section. Admin, Requests shows it all; the Dashboard shows the
+ * same sections (19 Nov) without the list of answers already given.
+ */
+export function RequestsBody({ embedded }: { embedded?: boolean }) {
+  const db = useData((s) => s.db);
   const day = useDay();
   const region = usePrefs((s) => s.brand.region);
   const access = useAccess();
   const canLeave = access.may("approveLeave");
   const canAnswer = access.may("answerRequests");
-  const q = directorQueue(db);
+  const q = directorQueue(db, { crewToOffice: !access.apps.on("projects") });
+  const canPay = canAnswer || access.may("exportPayroll");
+  const canCerts = access.may("manageStaff");
+  const [claimBox, setClaimBox] = useState<OvertimeClaim | null>(null);
+  const [certBox, setCertBox] = useState<CertSubmission | null>(null);
+  const [payBox, setPayBox] = useState<Expense | null>(null);
   // Supplier invoices waiting for the managing director: Invoicing's rule and limit (merged 19 Nov).
   const limit = db.approvalLimits.find((x) => x.id === "supplier")?.amount ?? 500;
   const approver: Approver = { personId: access.personId, handles: access.may("manageInvoices"), approvesAll: access.may("approveInvoices"), approvesOwnSites: access.may("approveSubInvoices") };
   const [invBox, setInvBox] = useState<{ what: "approve" | "back"; id: string } | null>(null);
   const boxInv = db.supplierInvoices.find((x) => x.id === invBox?.id);
-  const total = q.leave.length + q.site.length + q.spend.length + q.invoices.length + q.expenses.length;
+  const total = Object.values(q).reduce((n, list) => n + list.length, 0);
   const person = (id: string) => db.people.find((p) => p.id === id);
   const project = (id: string | null) => db.projects.find((p) => p.id === id);
   const planned = (personId: string, from: string, to: string) => db.plan.filter((p) => p.personId === personId && p.date >= from && p.date <= to).length;
@@ -54,14 +85,9 @@ export function Requests() {
 
   return (
     <>
-      <PageHead
-        title="Requests"
-        note={total === 0 ? "Nothing is waiting for a yes or no." : `${plural(total, "request")} waiting for a yes or no: leave, people and plant the sites have asked for, money people want to spend, reimbursements, and supplier invoices over the ${money0(limit, region)} accounts may approve.`}
-      />
-      <PageBody className="grid max-w-6xl gap-6">
         {total === 0 && (
           <Panel>
-            <Empty title="Nothing is waiting">Leave requests, requests from the sites and spending all arrive here for a yes or no.</Empty>
+            <Empty title="Nothing is waiting">Leave, requests from the phones, overtime claims, repairs, certificates and reimbursements all arrive here.</Empty>
           </Panel>
         )}
 
@@ -168,6 +194,134 @@ export function Requests() {
           </Section>
         )}
 
+        {q.claims.length > 0 && (
+          <Section title={`Overtime claims (${q.claims.length})`} aside="Claimed on the phone. Approved hours go on the timesheet for that day">
+            <Panel className="overflow-x-auto">
+              <table className="tbl" aria-label="Overtime claims">
+                <thead>
+                  <tr>
+                    <th>Who</th>
+                    <th>Day</th>
+                    <th>Site</th>
+                    <th className="num">Hours</th>
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {q.claims.map((c) => {
+                    const p = person(c.personId);
+                    const site = project(c.projectId);
+                    return (
+                      <tr key={c.id}>
+                        <td>
+                          <span className="font-medium">{p?.name}</span>
+                          {c.note && <span className="block text-[0.87rem] text-muted">{c.note}</span>}
+                        </td>
+                        <td className="whitespace-nowrap">{dFull(c.date)}</td>
+                        <td>{site ? `${site.code} ${site.name}` : "-"}</td>
+                        <td className="num">{c.hours}</td>
+                        {canAnswer ? (
+                          <td className="text-right whitespace-nowrap">
+                            <Button size="sm" variant="ghost" aria-label={`Decline: overtime for ${p?.name}`} onClick={() => setNo({ title: "Decline this overtime claim?", about: `${p?.name}, ${c.hours} hours on ${dFull(c.date)}.`, run: (note) => { const problem = decideOvertimeClaim(c.id, false, { note }); toast(problem ?? `Overtime declined for ${p?.name}`); } })}>
+                              Decline
+                            </Button>{" "}
+                            <Button size="sm" aria-label={`Approve: overtime for ${p?.name}`} onClick={() => setClaimBox(c)}>
+                              Approve
+                            </Button>
+                          </td>
+                        ) : (
+                          <td className="text-[0.93rem] text-muted">Waiting</td>
+                        )}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </Panel>
+          </Section>
+        )}
+
+        {q.repairs.length > 0 && (
+          <Section title={`Repairs reported (${q.repairs.length})`} aside={<Link to="/admin/repairs" className="font-medium text-accent-ink underline-offset-2 hover:underline">All repairs</Link>}>
+            <Panel className="overflow-x-auto">
+              <table className="tbl" aria-label="Repairs reported">
+                <thead>
+                  <tr>
+                    <th>What</th>
+                    <th>Where</th>
+                    <th>Reported by</th>
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {q.repairs.map((r) => (
+                    <tr key={r.id}>
+                      <td>
+                        <span className="font-medium">{r.item.name}</span>
+                        <span className="block text-[0.87rem] text-muted">{r.what}</span>
+                      </td>
+                      <td>{r.where}</td>
+                      <td>
+                        {person(r.personId)?.name}
+                        <span className="block text-[0.87rem] text-muted">{when(r.at, day)}</span>
+                      </td>
+                      <td className="text-right whitespace-nowrap">
+                        {canAnswer ? (
+                          <Button size="sm" onClick={() => { moveRepair(r.id, "In hand"); toast(`${r.item.name}: in hand. ${person(r.personId)?.name?.split(" ")[0]} sees it on the phone`); }}>
+                            Take in hand
+                          </Button>
+                        ) : (
+                          <span className="text-[0.93rem] text-muted">Waiting</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </Panel>
+          </Section>
+        )}
+
+        {q.certs.length > 0 && (
+          <Section title={`Certificates to check (${q.certs.length})`} aside="Sent from the phone. They count once accepted">
+            <Panel className="overflow-x-auto">
+              <table className="tbl" aria-label="Certificates to check">
+                <thead>
+                  <tr>
+                    <th>Who</th>
+                    <th>Certificate</th>
+                    <th>Runs out</th>
+                    <th>Sent</th>
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {q.certs.map((c) => (
+                    <tr key={c.id}>
+                      <td className="font-medium">{person(c.personId)?.name}</td>
+                      <td>
+                        {c.name}
+                        <span className="block text-[0.87rem] text-muted">{c.certId || c.licence ? "A new one for the one on file" : "Not on file yet"}</span>
+                      </td>
+                      <td className="whitespace-nowrap">{dFull(c.expires)}</td>
+                      <td className="text-muted">{when(c.sentAt, day)}</td>
+                      <td className="text-right">
+                        {canCerts ? (
+                          <Button size="sm" onClick={() => setCertBox(c)}>
+                            Check
+                          </Button>
+                        ) : (
+                          <span className="text-[0.93rem] text-muted">Waiting</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </Panel>
+          </Section>
+        )}
+
         {q.spend.length > 0 && (
           <Section title={`Spending (${q.spend.length})`}>
             <Panel className="overflow-x-auto">
@@ -212,7 +366,7 @@ export function Requests() {
         )}
 
         {q.expenses.length > 0 && (
-          <Section title={`Reimbursements (${q.expenses.length})`} aside={<>Claimed from the site phone. Approved ones go to <Link to="/people/reimbursements" className="font-medium text-accent-ink underline-offset-2 hover:underline">Reimbursements to pay</Link></>}>
+          <Section title={`Reimbursements (${q.expenses.length})`} aside="Claimed from the phone. Approve, then mark paid once the money has gone">
             <Panel className="overflow-x-auto">
               <table className="tbl">
                 <thead>
@@ -256,7 +410,7 @@ export function Requests() {
                         {yesNo(
                           canAnswer,
                           (note) => { decideExpense(x.id, false, note); toast(`Reimbursement declined for ${p?.name}${note ? ", with your note" : ""}`); },
-                          () => { decideExpense(x.id, true); toast(`Reimbursement approved for ${p?.name}. It is on the office's list to pay`); },
+                          () => { decideExpense(x.id, true); toast(`Reimbursement approved for ${p?.name}. Mark it paid below once the money has gone`); },
                           `reimbursement for ${p?.name}`,
                         )}
                       </tr>
@@ -268,7 +422,50 @@ export function Requests() {
           </Section>
         )}
 
-        {q.invoices.length > 0 && (
+        {q.toPay.length > 0 && (
+          <Section title={`Reimbursements to pay (${q.toPay.length})`} aside="Approved. Mark each one paid once the money has gone">
+            <Panel className="overflow-x-auto">
+              <table className="tbl" aria-label="Reimbursements to pay">
+                <thead>
+                  <tr>
+                    <th>Who</th>
+                    <th>What for</th>
+                    <th className="num">Amount</th>
+                    <th>Approved</th>
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {q.toPay.map((x) => (
+                    <tr key={x.id}>
+                      <td className="font-medium">{person(x.personId)?.name}</td>
+                      <td>
+                        {x.kind}
+                        <span className="block text-[0.87rem] text-muted">{x.what}</span>
+                      </td>
+                      <td className="num">{money2(x.amount, region)}</td>
+                      <td className="text-muted">
+                        {x.decidedBy}
+                        <span className="block text-[0.87rem]">{x.decidedAt ? when(x.decidedAt, day) : ""}</span>
+                      </td>
+                      <td className="text-right">
+                        {canPay ? (
+                          <Button size="sm" aria-label={`Mark paid: ${person(x.personId)?.name}, ${money2(x.amount, region)}`} onClick={() => setPayBox(x)}>
+                            Mark paid
+                          </Button>
+                        ) : (
+                          <span className="text-[0.93rem] text-muted">To pay</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </Panel>
+          </Section>
+        )}
+
+        {q.invoices.length > 0 && access.apps.on("invoicing") && (
           <Section title={`Supplier invoices over ${money0(limit, region)} before VAT (${q.invoices.length})`} aside={<Link to="/invoicing/approve" className="font-medium text-accent-ink underline-offset-2 hover:underline">To approve in Invoicing</Link>}>
             <Panel className="overflow-x-auto">
               <table className="tbl" aria-label="Supplier invoices waiting for your approval">
@@ -322,9 +519,11 @@ export function Requests() {
         )}
         {invBox && boxInv && (invBox.what === "approve" ? <ApproveDialog s={boxInv} onClose={(done) => { setInvBox(null); if (done) toast(`${boxInv.supplier} ${boxInv.invoiceNo} approved into job costs. It is on To be paid`); }} /> : <SendBackDialog s={boxInv} onClose={() => setInvBox(null)} />)}
 
-        {decided.length > 0 && <Decided db={db} day={day} items={decided} />}
+        {!embedded && decided.length > 0 && <Decided db={db} day={day} items={decided} />}
         <DeclineDialog ask={no} onClose={() => setNo(null)} />
-      </PageBody>
+        {claimBox && <ClaimDialog c={claimBox} onClose={() => setClaimBox(null)} />}
+        {certBox && <CertDialog s={certBox} onClose={() => setCertBox(null)} />}
+        {payBox && <PayDialog x={payBox} onClose={() => setPayBox(null)} />}
     </>
   );
 }
@@ -360,5 +559,117 @@ function Decided({ db, day, items }: { db: Db; day: string; items: ReturnType<ty
         </ul>
       </Panel>
     </Section>
+  );
+}
+
+/** Approve an overtime claim: the hours at each rate, starting from the day's rule, which can be changed. */
+function ClaimDialog({ c, onClose }: { c: OvertimeClaim; onClose: () => void }) {
+  const db = useData((s) => s.db);
+  const split = suggestedSplit(restDayKindOf(db.bankHolidays, c.date), c.hours);
+  const [half, setHalf] = useState(split.timeAndHalf);
+  const [dbl, setDbl] = useState(split.double);
+  const [error, setError] = useState("");
+  const who = db.people.find((p) => p.id === c.personId)?.name;
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      title={`Approve overtime for ${who}`}
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button
+            variant="primary"
+            disabled={half + dbl <= 0}
+            onClick={() => {
+              const problem = decideOvertimeClaim(c.id, true, { timeAndHalf: half, double: dbl });
+              if (problem) return setError(problem);
+              toast(`Overtime approved for ${who}: on the timesheet for ${dFull(c.date)}`);
+              onClose();
+            }}
+          >
+            Confirm approval
+          </Button>
+        </>
+      }
+    >
+      <p>
+        {c.hours} extra hours claimed on {dFull(c.date)}
+        {c.note ? `: ${c.note}` : ""}.
+      </p>
+      <div className="mt-3 flex flex-wrap gap-4">
+        <Field label="Time and a half">{(id) => <NumInput id={id} label="Hours at time and a half" className="w-24" value={half} onChange={setHalf} />}</Field>
+        <Field label="Double time">{(id) => <NumInput id={id} label="Hours at double time" className="w-24" value={dbl} onChange={setDbl} />}</Field>
+      </div>
+      <p className="mt-2 text-[0.93rem] text-muted">Split by the day's rule to start with. The hours go on the timesheet for that day.</p>
+      {error && <p role="alert" className="mt-2 text-bad">{error}</p>}
+    </Dialog>
+  );
+}
+
+/** Check a certificate sent from the phone: the photo, the date it runs to (which can be corrected), then Accept or Turn down. */
+function CertDialog({ s, onClose }: { s: CertSubmission; onClose: () => void }) {
+  const db = useData((x) => x.db);
+  const [expires, setExpires] = useState(s.expires);
+  const [note, setNote] = useState("");
+  const who = db.people.find((p) => p.id === s.personId)?.name;
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      title={`${s.name}, ${who}`}
+      footer={
+        <>
+          <Button variant="ghost" className="mr-auto" onClick={() => { decideCert(s.id, null, note); toast(`Turned down. ${who?.split(" ")[0]} sees why on the phone`); onClose(); }}>
+            Turn down
+          </Button>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button variant="primary" onClick={() => { decideCert(s.id, { expires }); toast(`${s.name} accepted for ${who}, to ${dFull(expires)}`); onClose(); }}>
+            Accept
+          </Button>
+        </>
+      }
+    >
+      <div className="grid gap-3">
+        {s.photo.dataUrl ? <img src={s.photo.dataUrl} alt={`${s.name} sent by ${who}`} className="mx-auto max-h-[40dvh] rounded-md border border-line" /> : <p className="rounded-md bg-surface px-3 py-6 text-center text-muted">Sample: no photo behind this one</p>}
+        <p className="text-[0.93rem] text-muted">Sent from the phone {dFull(s.sentAt.slice(0, 10))}. Check the name and the dates on the card before accepting it.</p>
+        <Field label="Runs out on">{(id) => <input id={id} type="date" className="field" value={expires} onChange={(e) => setExpires(e.target.value)} />}</Field>
+        <Field label="Note if you turn it down (optional)">{(id) => <input id={id} className="field" value={note} onChange={(e) => setNote(e.target.value)} placeholder="The photo is blurred, send another" />}</Field>
+      </div>
+    </Dialog>
+  );
+}
+
+/** Mark a reimbursement paid, after saying what will happen (Oisin, 19 Nov: a confirm pop-up). */
+function PayDialog({ x, onClose }: { x: Expense; onClose: () => void }) {
+  const db = useData((s) => s.db);
+  const region = usePrefs((s) => s.brand.region);
+  const who = db.people.find((p) => p.id === x.personId)?.name;
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      title="Mark this reimbursement paid?"
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button
+            variant="primary"
+            onClick={() => {
+              markExpensePaid(x.id);
+              toast(`${money2(x.amount, region)} to ${who} marked paid`, { label: "Undo", run: () => undoExpensePaid(x.id) });
+              onClose();
+            }}
+          >
+            Confirm paid
+          </Button>
+        </>
+      }
+    >
+      <p>
+        {money2(x.amount, region)} to {who}, for {x.kind.toLowerCase()}: {x.what}.
+      </p>
+      <p className="mt-2 text-muted">Only mark it paid once the money has gone to them. Their phone then shows Paid.</p>
+    </Dialog>
   );
 }

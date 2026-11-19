@@ -301,6 +301,9 @@ export type Expense = {
   /** When an approved claim went to the office for payment, and who exported it (17 Nov). */
   exportedAt?: Stamp;
   exportedBy?: string;
+  /** Marked paid in Admin, after a confirm box (19 Nov). The phone then shows Paid. */
+  paidAt?: Stamp;
+  paidBy?: string;
   /** Why it was declined, if whoever declined it said (17 Nov). */
   declineNote?: string;
 };
@@ -777,7 +780,8 @@ export type ApprovalLimit = { id: "supplier"; amount: number };
 /** A week of timesheet hours sent to Sage Payroll: hours only, pay is worked out in Sage. */
 export type PayrollExport = { id: ID; weekStart: Day; at: Stamp; by: string; people: number; hours: number };
 /** A bank holiday: every hour worked on it is at double time, and nobody is marked a normal day. */
-export type BankHoliday = { date: Day; name: string };
+/** A day the firm is closed. `closure` groups the days of one company closure added as a range (19 Nov). */
+export type BankHoliday = { date: Day; name: string; closure?: ID };
 /** A manager's check of a week's hours, before the office exports them to Sage Payroll by hand (17 Nov). */
 export type PayrollCheck = { id: ID; weekStart: Day; at: Stamp; by: string };
 
@@ -1083,6 +1087,69 @@ export type Db = {
   personAccess: PersonAccess[];
   /** Sites given to site managers who do not run them. */
   siteAccess: SiteAccess[];
+  /** Repairs reported from the phone, for any plant or vehicle (19 Nov). */
+  repairs: RepairReport[];
+  /** New certificates and licences sent from the phone, waiting for the office to check (19 Nov). */
+  certSubmissions: CertSubmission[];
+  /** Each time a week's roster went out by email and WhatsApp (19 Nov). */
+  rosterSends: RosterSend[];
+  /** The firm's own email and WhatsApp, connected in Admin, Connections (19 Nov). */
+  connections: Connections;
+};
+
+/**
+ * A repair reported on the phone (19 Nov, the main offering): anything broken, picked from the
+ * firm's plant and vehicles or typed. It waits in Admin for a manager, who moves it from Reported
+ * to In hand to Fixed; each step shows on the phone of whoever reported it.
+ */
+export type RepairStatus = "Reported" | "In hand" | "Fixed";
+export type RepairReport = {
+  id: ID;
+  personId: ID;
+  /** What is broken: one of the firm's own (with its id), or typed. */
+  item: { kind: "plant" | "vehicle" | "other"; refId?: ID; name: string };
+  where: string;
+  what: string;
+  photos: Proof[];
+  at: Stamp;
+  status: RepairStatus;
+  /** Every step after it was reported, oldest first. */
+  steps: { status: RepairStatus; at: Stamp; by: string; note?: string }[];
+};
+
+/**
+ * A certificate or licence sent from the phone's My profile (19 Nov). It counts for nothing until
+ * the office accepts it (with the date it runs to, which they can correct), or turns it down.
+ */
+export type CertSubmission = {
+  id: ID;
+  personId: ID;
+  /** A training ticket (a renewal of one on file, `certId`, or a new one), or a driving licence or Driver CPC. */
+  kind: "ticket" | "licence";
+  certId?: ID;
+  licence?: LicenceKey;
+  name: string;
+  expires: Day;
+  photo: { name: string; dataUrl: string };
+  sentAt: Stamp;
+  status: "Waiting" | "Accepted" | "Turned down";
+  decidedBy?: string;
+  decidedAt?: Stamp;
+  note?: string;
+};
+
+/** One week's roster as it went to each person (19 Nov). Shown in the demo; nothing leaves the browser. */
+export type RosterSend = {
+  id: ID;
+  weekStart: Day;
+  at: Stamp;
+  by: string;
+  messages: { personId: ID; name: string; to: string; via: "email" | "whatsapp"; text: string }[];
+};
+
+export type Connections = {
+  email?: { provider: "Gmail" | "Outlook"; account: string; at: Stamp; by: string };
+  whatsapp?: { number: string; at: Stamp; by: string };
 };
 
 // ── Demo roles (the mock sign-in) ─────────────────────────────────────────────

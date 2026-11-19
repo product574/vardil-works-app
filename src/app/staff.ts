@@ -1,11 +1,11 @@
 /**
- * Vardil Works: the level above the managing director, for Vardil's own people (19 Nov).
+ * Vardil HQ (Vardil Works until 19 Nov): the level above the managing director, for Vardil's own people (19 Nov).
  *
  * Nothing about it may reach a demo client, so it is kept apart from the app in two ways:
  *
  *  1. Its screens live in their own files (`src/staff/`), built into a folder of their own
  *     (`/staff/`). On the hosted demo a second Cloudflare Access application guards that folder
- *     and lets in only Vardil email addresses (see README, "Vardil Works"). A client who is let
+ *     and lets in only Vardil email addresses (see README, "Vardil HQ"). A client who is let
  *     into the demo gets a refusal for those files, so their browser never holds the code.
  *  2. The app only asks for those files when the signed-in email ends in a Vardil domain, so a
  *     client's browser does not even try.

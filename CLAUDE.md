@@ -63,6 +63,8 @@ send him a fresh zip first, or bring his changes across with care, so the two do
 This copy's own decisions from 18 Nov were numbered 64 to 118 on `invoicing-section` and
 clashed with the other branch's; they are now 130 to 184, in the same order.
 
+**The main offering, 19 Nov:** decisions 198 to 208: Vardil HQ (our own level, staff only), the main offering package, one phone for everyone, client apps saved on the server, and Vardil Works in every client's Admin. Branch `main-offering`.
+
 **Round eleven, 18 Nov:** decisions 118 to 129. Fleet is now the Secure-All build's Fleet
 (`product574/vardil-works-security`, Vardil's own code, brought across with ABC's data), as a
 department of its own; the phones gained Report damage and Send a licence; Who is where reads
@@ -403,6 +405,16 @@ the recommended answer unless it says otherwise):
 | 196 | Tickets on the operative's phone | In the profile (My tickets, with "Send a photo of the new card"), and the red "you cannot work" card at the top of the front page |
 | 197 | Delivery | Pushed to `invoicing-section`, his `main` made the same commit, the artifact "Construction demo (Oisin's copy)" republished, and the checklist given in the chat |
 | 198 | Vardil Works, a level above the managing director | Oisin, 19 Nov: "if we log on as Vardil Works we can edit the Managing Directors features and the whole company's features ... Managing director or anyone else down the chain will not be able to see we have this access". Four question buttons, his picks: who is staff is the Cloudflare email check (an address ending in vardil.com, `VITE_STAFF_DOMAINS`); powers are all four (sign in as any level, edit the managing director's and the whole company's features, switch apps off, reset and re-brand); its own tile in the bar, after Admin; a strip along the top that only staff see while viewing as someone else, with Back to Vardil Works. Built: `src/app/staff.ts` (the check, run before the app is drawn), `src/staff/` (the department, Sign in as, Features and access, Demo tools, the strip and the role page line). The staff files are built into `/staff/` (vite `chunkFileNames`), only in the hosted build or with `VITE_STAFF=1`; every other build, the single-file preview included, leaves them out. A second Cloudflare Access application on `/staff/*` lets in only Vardil emails, so a client's browser is refused the code (README, "Vardil Works"). The managing director's switches (`mdOverride`), the whole-demo switches (`companyOff`) and Ask AI off (`askAiOff`) are preferences kept in the browser of whoever set them, applied by `applyStaffChanges` in `access.ts`; the other three levels' ticks are the same records as Admin, Roles and access. Signing in as any level ends Vardil mode (`setRole`). The Activity log still records changes to the three levels, as it does from Roles and access |
+| 199 | The main offering | Oisin, 19 Nov: "for us we are pitching to clients and these are our main offering". Five rounds of question buttons; his picks follow. A package button in Vardil HQ, Packages and access (`PACKAGES` in `src/lib/apps.ts`): Main offering is Dashboard, Schedule, People, Compliance, Site phone and Admin (Settings stays the managing director's), with Automations off; Everything is the full demo. A package sets the Whole demo column; single apps can still be changed after |
+| 200 | Where a client's apps are kept | On the server, per client: Vardil HQ, Client apps saves a client's apps by their sign-in email or `@` and their firm's domain (`functions/api/workspace.ts`, `server/workspace.ts`, D1 tables `clients`, `announcements`, `app_requests`, made on first use). A client then sees the same on any computer. Only Vardil staff may change them: the server checks the signed Access token's email against `STAFF_DOMAINS` (default vardil.com), never the page. A client with nothing saved sees every app. On a copy with no server, the browser's own package applies, announcements and app requests are kept in the browser, and Client apps says it needs the hosted demo (`src/app/workspace.ts`) |
+| 201 | One phone for everyone | His words: "one app with the same features for all employees". With Projects off (the main offering) the Site phone is one phone, the same for every employee whatever their level (`OnePhone` in `SiteView.tsx`): Report a repair, Claim a reimbursement, Make a request, My week, My hours and overtime, My profile. The office picks anyone to look at. With Projects on the two phones are as before. The driving check is Fleet's offering: it shows only with Fleet, on every phone, as do Report damage and Send a licence |
+| 202 | Report a repair | For any plant or vehicle (his words), picked from the firm's own list or typed ("Something else"), with where, what is wrong and up to 4 photos (`RepairSheet` in `site/one-sheets.tsx`, `reportRepair`, `db.repairs`). It goes to Admin, Repairs for whoever has "Answer requests", who moves it Reported, In hand, Fixed, each with an optional note (`moveRepair`; a machine of the firm's own is Off for repair while in hand). Each step shows on the reporter's phone |
+| 203 | Everything from the phone to Admin | Overtime claims and Make a request go to Admin, Requests for managers (his pick) when there is no Projects app (`directorQueue(db, { crewToOffice })`); an overtime claim is approved there with its split between the rates (`ClaimDialog`). Reimbursements: Approve, then Mark paid with a confirm box (`PayDialog`, `markExpensePaid`, Undo in the message); the phone shows Waiting, Approved, Paid |
+| 204 | My certificates | In My profile on the one phone: every ticket and licence with when it runs out, Send a new one, and Add a certificate. What is sent counts for nothing until the office checks it (his pick): Admin, Requests, Certificates to check, Accept (with the date, which can be corrected) or Turn down with a note (`CertSubmission`, `submitCert`, `decideCert`) |
+| 205 | Company holidays | Admin, Bank holidays is Company holidays: this year and next only, single days as before, and a company closure added as a range (Christmas closedown), each working day in it shut for everyone and anyone planned on one taken off (`addClosure`, `removeClosure`, `closureDays`, `holidayRows`). Shown on the phone, in My profile |
+| 206 | Send the week | Schedule, Week ahead, Send the week: each person their own week (his pick), by email and WhatsApp, through what is connected in Admin, Connections (Gmail or Outlook, WhatsApp Business; a pretend sign-in in the demo, `connectEmail`, `connectWhatsApp`). Every message is shown before it goes, and filed as sent (`rosterMessages` in `src/lib/roster-send.ts`, `sendRoster`, `db.rosterSends`). Nothing leaves the browser in the demo |
+| 207 | Dashboard and Admin follow the apps | The dashboard shows Waiting for your yes or no (the same sections as Admin, Requests: leave, requests, overtime claims, repairs, certificates, reimbursements) when there are no drafts to approve, Compliance monitoring (four figures and what to see to first), the AI overview limited to the firm's apps (`apps` in `recordsOverview`), Ask AI for the managing director (his pick: both), and the firm at a glance only with more than one of its apps. Roles and access lists only the apps the firm has, and leaves out permissions for apps it does not have (his pick: hide them). Automations is a switch in Vardil HQ, off in the main offering (`NavItem.automations`). A sidebar item can belong to another app (`NavItem.app`) |
+| 208 | Vardil Works and Vardil HQ | Our staff tile is renamed Vardil HQ (his pick). Vardil Works is now the page every client has in Admin, System: announcements from Vardil (written in Vardil HQ, Announcements), then their apps, on, and the others, blurred with the switch off and "Ask about this app", which lands in Vardil HQ, App requests with their firm and email (his pick). Read-only: only Vardil switches apps (his pick) |
 
 Standing preferences (these come from Aodhan and are not optional):
 
@@ -1735,6 +1747,42 @@ with the real model (the hosted copy is Aodhan's), `fn_check.py`.
   its Invoicing changes).
 - The browser's own forward button does not follow the Back button's steps.
 - The phone's frame and sheets were checked in Chrome only.
+
+## The main offering, 19 Nov (on the co-founder's copy)
+
+Branch `main-offering`, from `invoicing-section` with Vardil HQ (decision 198) on it. Decisions 199 to 208.
+
+**Tested.** 715 automated tests in 68 files (new: `src/lib/apps.test.ts`, `src/lib/roster-send.test.ts`,
+`src/data/main-offering.test.ts`, `server/workspace.test.ts`; `overview.test.ts` counts the new kinds
+waiting in Admin, and `seed.test.ts` skips `connections`, which is settings, not a table). Both type
+checks. Browser: the new `main_offering_check.py` (45 checks, on a copy built with `VITE_STAFF=1` on port
+4180: Vardil HQ on the role page, the Main offering package, an announcement, the bar of six for the
+managing director, Ask AI, the dashboard's waiting section and compliance panel without Approvals or
+the firm at a glance, the Admin sidebar without Automations, Mark paid with its confirm box, a
+certificate accepted, an overtime claim approved, Roles and access without Invoicing or Sales, Vardil
+Works with six apps on and the rest to ask about, Company holidays for this year and next with a
+Christmas closure, email and WhatsApp connected, Send the week on an empty week, the one phone with
+its six buttons and no driving check, a repair reported and taken in hand, My profile with
+certificates and the closure, the app request in Vardil HQ, and Everything bringing the two phones
+back). The suites from before: all 28 run; `m3`, `m3b`, `s1`, `s3`, `s7`, `s8`, `s9`, `s10`,
+`comp`, `merge` and `preview_check3` changed for the renamed send button (Send the week, which now
+connects email first), Company holidays, the new Admin items and counts, and Reimbursements to pay;
+all pass. `pay_check.py` has two Back checks that fail now and then, on the code from before this
+work too (checked three times on `invoicing-section`). `csp_check.py`: 78 screens, no violations.
+Not tested: `/api/workspace` in Cloudflare's runtime and on the hosted demo (it needs the D1 binding
+and the second Access application, both Oisin's or Aodhan's to set up); a real phone; Safari and
+Firefox; the new Polish, Lithuanian, Romanian and Portuguese button names (Report a repair, My
+certificates), written by Claude.
+
+**Known gaps.**
+
+- The phone sheets are in English, as before; only button names are translated.
+- A client with nothing saved on the server sees every app. Per-client switches for the managing
+  director's own access and Ask AI stay in the browser of whoever set them.
+- Real email and WhatsApp sending is a later build per client; the demo shows the messages.
+- The Admin sidebar count for Requests does not move a crew request still with a site manager into
+  the office's count when Projects is off (the Requests page and the dashboard do).
+- With one phone, a request made on a day the person is on no site goes in as a general request.
 
 ## Build status
 

@@ -23,7 +23,7 @@ with sync_playwright() as p:
     for name, expect in [("Attendance history","Totals"),("Employee register","Add employee"),("Training tickets","Record a new ticket"),("Holidays","Record leave")]:
         side.get_by_role("link", name=name).click(); page.wait_for_selector(f"text={expect}")
     bar.get_by_role("link", name="Schedule").click(); page.wait_for_selector("text=double booking")
-    assert page.get_by_role("button", name="Send week to operatives").is_disabled()
+    assert page.get_by_role("button", name="Send the week").is_disabled()
     side.get_by_role("link", name="Month ahead").click(); page.wait_for_selector("text=On a site")
     side.get_by_role("link", name="Who is where").click(); page.wait_for_selector("text=Not marked yet")
     fonts=page.evaluate("document.fonts.check('14px Barlow') && document.fonts.check('600 20px \"Barlow Semi Condensed\"')")

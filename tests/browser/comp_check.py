@@ -257,7 +257,7 @@ def steps(page, ctx):
     go(page, "/people/timesheet?site=pr-C722", "table")
     check("Timesheet: with his Safe Pass renewed, Tomás can be marked today", page.get_by_label("Today for Tomás Breslin").count() == 1)
     go(page, "/schedule", "table")
-    check("Week ahead: still held back by the two whose tickets run out first", "2 people planned who cannot work" in main.inner_text() and page.get_by_role("button", name="Send week to operatives").is_disabled())
+    check("Week ahead: still held back by the two whose tickets run out first", "2 people planned who cannot work" in main.inner_text() and page.get_by_role("button", name="Send the week").is_disabled())
     # Merged 19 Nov: the week ahead is one grid (sites down, days across), so the checks read it.
     grid = page.get_by_role("table", name="Week ahead by site and day")
     kev = grid.locator("button", has_text="Kevin Shortall").filter(has_text="Cannot work")

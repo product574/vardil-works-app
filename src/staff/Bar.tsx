@@ -20,7 +20,7 @@ export function StaffBar() {
   if (access.staffMode || !def) return null;
   const who = people.find((p) => p.id === access.personId)?.name;
   return (
-    <div role="region" aria-label="Vardil Works" className="flex min-h-10 items-center gap-3 border-b border-line bg-accent-soft px-4 py-1 text-[0.93rem]">
+    <div role="region" aria-label="Vardil HQ" className="flex min-h-10 items-center gap-3 border-b border-line bg-accent-soft px-4 py-1 text-[0.93rem]">
       <Crown size={18} className="shrink-0 text-accent-ink" />
       <p className="min-w-0 flex-1">
         <span className="font-medium">Viewing as {def.title}</span>
@@ -35,7 +35,7 @@ export function StaffBar() {
           navigate("/vardil");
         }}
       >
-        Back to Vardil Works
+        Back to Vardil HQ
       </Button>
     </div>
   );
@@ -59,8 +59,8 @@ export function StaffRoleEntry({ onPick }: { onPick: () => void }) {
         <Crown size={20} />
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block font-medium">Vardil Works</span>
-        <span className="block text-[0.93rem] text-muted">Our own level, above the managing director: sign in as anyone and change what any level has.</span>
+        <span className="block font-medium">Vardil HQ</span>
+        <span className="block text-[0.93rem] text-muted">Our own level, above the managing director: packages, client apps, announcements, and signing in as anyone.</span>
       </span>
       <span className="text-[0.93rem] font-medium text-accent-ink">Sign in</span>
     </button>

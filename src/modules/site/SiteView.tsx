@@ -1,4 +1,4 @@
-import { CalendarBlank, Camera, CarProfile, Clock, HandPalm, IdentificationCard, Phone, PlusCircle, Receipt, Truck } from "@phosphor-icons/react";
+import { CalendarBlank, Camera, CarProfile, Clock, HandPalm, IdentificationCard, Phone, PlusCircle, Receipt, Truck, Wrench } from "@phosphor-icons/react";
 import { useState } from "react";
 import { useAccess } from "@/data/access";
 import { bookingFor, stateOf, ticketBlocks, vehicleBlocks } from "@/lib/compliance";
@@ -14,6 +14,7 @@ import { Badge, cx, Dialog, PageBody, PageHead, Segmented } from "@/ui";
 import { CheckLine, DamageSheet, LicenceSheet } from "./fleet-sheets";
 import { HoursSheet } from "./hours";
 import { OfficeFeed } from "./OfficeFeed";
+import { RepairSheet } from "./one-sheets";
 import { PhoneFrame } from "./PhoneFrame";
 import { ManagerPhone } from "./ManagerPhone";
 import { AskSheet, BIG, DrivingSheet, ExpenseSheet, ExtraSheet, longDate, ManagerCard, PhotoSheet, ProfileButton, ProfileSheet } from "./sheets";
@@ -31,6 +32,13 @@ type PhoneOf = "operative" | "manager";
  * real phone, with no frame.
  */
 export function SiteView() {
+  const access = useAccess();
+  // The main offering (19 Nov): without Projects there are no jobs on a phone, so every employee
+  // has the same one phone, whatever their level.
+  return access.apps.on("projects") ? <TwoPhones /> : <OnePhoneView />;
+}
+
+function TwoPhones() {
   const db = useData((s) => s.db);
   const day = useDay();
   const role = usePrefs((s) => s.role);
@@ -144,6 +152,7 @@ function Phone_({ me, lang, day }: { me: Person; lang: Language; day: string }) 
   const translated = site ? INSTRUCTIONS[site.code]?.[lang] : undefined;
   const instructions = lang === "en" || showOriginal || !translated ? site?.siteInstructions : translated;
   const close = () => setSheet(null);
+  const fleetOn = useAccess().apps.on("fleet");
   // Their own overtime claims still waiting for the site manager.
   const claimsOpen = db.overtimeClaims.filter((c) => c.personId === me.id && c.status === "Waiting").length;
   // Compliance on the phone (18 Nov): a ticket that stops work, and the van they drive.
@@ -249,6 +258,7 @@ function Phone_({ me, lang, day }: { me: Person; lang: Language; day: string }) 
         <button type="button" className={BIG} onClick={() => setSheet("expense")}>
           <Receipt size={24} className="text-accent-ink" /> {m.expense}
         </button>
+        {fleetOn && (
         <button type="button" className={BIG} onClick={() => setSheet("driving")}>
           <Truck size={24} className="shrink-0 text-accent-ink" />
           <span className="min-w-0 flex-1">
@@ -256,13 +266,18 @@ function Phone_({ me, lang, day }: { me: Person; lang: Language; day: string }) 
             <CheckLine me={me} day={day} />
           </span>
         </button>
-        {/* From the Secure-All build's Ops phone (18 Nov): damage to a vehicle, and a new licence. */}
+        )}
+        {/* From the Secure-All build's Ops phone (18 Nov): damage to a vehicle, and a new licence. Fleet's, so only with Fleet (19 Nov). */}
+        {fleetOn && (
+        <>
         <button type="button" className={BIG} onClick={() => setSheet("damage")}>
           <CarProfile size={24} className="text-accent-ink" /> {m.damage}
         </button>
         <button type="button" className={BIG} onClick={() => setSheet("licence")}>
           <IdentificationCard size={24} className="text-accent-ink" /> {m.licence}
         </button>
+        </>
+        )}
         <button type="button" className={BIG} onClick={() => setSheet("week")}>
           <CalendarBlank size={24} className="text-accent-ink" /> {t.week}
         </button>
@@ -360,5 +375,136 @@ function WeekSheet({ me, lang, day, onClose }: { me: Person; lang: Language; day
       </Dialog>
       {card && <ManagerCard manager={card.manager} site={card.site} lang={lang} onClose={() => setCard(null)} />}
     </>
+  );
+}
+
+/**
+ * The main offering's phone (Oisin, 19 Nov): "one app with the same features for all employees".
+ * Report a repair, Claim a reimbursement, Make a request, My week and My hours with overtime
+ * claims, and My profile (holidays, certificates, company holidays). Everything it sends goes to
+ * Admin for a manager. The office can look at anyone's.
+ */
+function OnePhoneView() {
+  const db = useData((s) => s.db);
+  const day = useDay();
+  const role = usePrefs((s) => s.role);
+  const access = useAccess();
+  const operativeId = usePrefs((s) => s.operativeId);
+  const setOperative = usePrefs((s) => s.setOperative);
+  const everyone = db.people.filter((p) => p.active && (p.kind === "Operative" || p.kind === "Management")).sort((a, b) => a.name.localeCompare(b.name));
+  const own = role === "operative" ? operativeId : role !== "md" && role !== "contracts" && role !== "accounts" ? access.personId : null;
+  const [pick, setPick] = useState(operativeId);
+  const me = everyone.find((p) => p.id === (own ?? pick)) ?? everyone[0];
+  const [english, setEnglish] = useState(true);
+  const office = !own;
+  if (!me) return null;
+  const lang: Language = english ? "en" : me.language;
+  return (
+    <>
+      <PageHead title="Site phone view" note={office ? "The one app every employee has: the same buttons for everyone. Pick anyone to see their phone." : "What you see on your own phone."} />
+      <PageBody className={cx("grid items-start gap-6", office && "min-[90rem]:grid-cols-[auto_minmax(0,1fr)]")}>
+        <div className="grid w-full justify-items-center gap-2 sm:w-auto">
+          <div className="flex min-h-11 flex-wrap items-center justify-center gap-2">
+            {office && (
+              <label className="flex items-center gap-2 text-[0.93rem]">
+                <span className="text-muted">Employee</span>
+                <select aria-label="Employee to view the phone as" className="field w-auto max-w-[16rem]" value={me.id} onChange={(e) => { setPick(e.target.value); if (everyone.find((p) => p.id === e.target.value)?.kind === "Operative") setOperative(e.target.value); setEnglish(true); }}>
+                  {everyone.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}, {p.trade}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {me.language !== "en" && <Segmented label="Language shown" value={english ? "en" : "own"} onChange={(v) => setEnglish(v === "en")} options={[{ value: "en", label: "English" }, { value: "own", label: LANGUAGE_NAME[me.language] }]} />}
+          </div>
+          <PhoneFrame label="Employee's phone">
+            <OnePhone key={me.id} me={me} lang={lang} day={day} />
+          </PhoneFrame>
+        </div>
+        {office && <OfficeFeed day={day} />}
+      </PageBody>
+    </>
+  );
+}
+
+type OneSheet = "repair" | "expense" | "ask" | "week" | "hours" | "driving" | "profile" | null;
+
+function OnePhone({ me, lang, day }: { me: Person; lang: Language; day: string }) {
+  const db = useData((s) => s.db);
+  const fleetOn = useAccess().apps.on("fleet");
+  const t = WORDS[lang];
+  const m = MORE[lang];
+  const [sheet, setSheet] = useState<OneSheet>(null);
+  const close = () => setSheet(null);
+  const live = new Set(db.projects.filter((p) => p.status === "Live").map((p) => p.id));
+  const mine = db.assignments.filter((a) => a.personId === me.id && live.has(a.projectId)).map((a) => db.projects.find((p) => p.id === a.projectId)!);
+  const site = db.projects.find((p) => p.id === siteOn(me.id, day, db.attendance, db.plan, live)) ?? mine[0] ?? null;
+  const claimsOpen = db.overtimeClaims.filter((c) => c.personId === me.id && c.status === "Waiting").length;
+  const repairsOpen = db.repairs.filter((r) => r.personId === me.id && r.status !== "Fixed").length;
+  const blocks = ticketBlocks(me, day);
+  const short = (d: string) => new Date(d + "T12:00:00Z").toLocaleDateString(lang === "en" ? "en-IE" : lang, { day: "numeric", month: "short", timeZone: "UTC" });
+  const brand = usePrefs((s) => s.brand);
+  return (
+    <div className="min-h-full w-full bg-canvas" lang={lang}>
+      <div className="bg-accent-strong px-4 py-3 text-white">
+        <div className="flex items-center gap-2">
+          <ProfileButton name={me.name} label={m.profile} onClick={() => setSheet("profile")} />
+          <p className="text-[0.93rem] opacity-90">{longDate(day, lang === "en" ? "en-IE" : lang)}</p>
+        </div>
+        <p className="font-display text-[1.35rem] leading-tight font-semibold">{me.name}</p>
+        <p className="text-[0.93rem] opacity-90">
+          {me.trade}, {brand.brandName}
+        </p>
+      </div>
+      <div className="grid gap-3 px-4 py-4">
+        {blocks.length > 0 && (
+          <div className="rounded-lg bg-bad-soft px-3 py-3 text-bad" role="status">
+            <p className="font-medium">{blocks.map((b) => (b.expires ? `${b.ticket} ${t.ranOut} ${short(b.expires)}` : b.ticket)).join(", ")}</p>
+            <p className="mt-0.5">{t.cannotWork}</p>
+          </div>
+        )}
+        <button type="button" className={BIG} onClick={() => setSheet("repair")}>
+          <Wrench size={24} className="shrink-0 text-accent-ink" />
+          <span className="min-w-0 flex-1">{m.repair}</span>
+          {repairsOpen > 0 && <Badge tone="accent">{repairsOpen}</Badge>}
+        </button>
+        <button type="button" className={BIG} onClick={() => setSheet("expense")}>
+          <Receipt size={24} className="text-accent-ink" /> {m.expense}
+        </button>
+        <button type="button" className={BIG} onClick={() => setSheet("ask")}>
+          <HandPalm size={24} className="text-accent-ink" /> {t.ask}
+        </button>
+        <button type="button" className={BIG} onClick={() => setSheet("week")}>
+          <CalendarBlank size={24} className="text-accent-ink" /> {t.week}
+        </button>
+        <button type="button" className={BIG} onClick={() => setSheet("hours")}>
+          <Clock size={24} className="shrink-0 text-accent-ink" />
+          <span className="min-w-0 flex-1">{m.hours}</span>
+          {claimsOpen > 0 && <Badge tone="accent">{claimsOpen}</Badge>}
+        </button>
+        {/* The driving check belongs to the Fleet offering (19 Nov). */}
+        {fleetOn && (
+          <button type="button" className={BIG} onClick={() => setSheet("driving")}>
+            <Truck size={24} className="shrink-0 text-accent-ink" />
+            <span className="min-w-0 flex-1">
+              {m.driving}
+              <CheckLine me={me} day={day} />
+            </span>
+          </button>
+        )}
+        <button type="button" className={BIG} onClick={() => setSheet("profile")}>
+          <IdentificationCard size={24} className="text-accent-ink" /> {m.profile}
+        </button>
+      </div>
+      {sheet === "repair" && <RepairSheet me={me} onClose={close} />}
+      {sheet === "expense" && <ExpenseSheet me={me} day={day} siteId={site?.id ?? null} sites={mine} onClose={close} />}
+      {sheet === "ask" && <AskSheet site={site} me={me} lang={lang} day={day} onClose={close} />}
+      {sheet === "week" && <WeekSheet me={me} lang={lang} day={day} onClose={close} />}
+      {sheet === "hours" && <HoursSheet me={me} day={day} onClose={close} />}
+      {sheet === "driving" && <DrivingSheet me={me} day={day} onClose={close} />}
+      {sheet === "profile" && <ProfileSheet me={me} lang={lang} day={day} simple onClose={close} />}
+    </div>
   );
 }

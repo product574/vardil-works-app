@@ -58,7 +58,7 @@ const keep = (path: string) => (q: URLSearchParams) => (q.toString() ? `${path}?
 const ToCustomer = () => <Moved to={(q) => (q.get("client") ? `/customers/${q.get("client")}` : "/customers")} />;
 
 /**
- * Vardil Works screens (19 Nov). The files are built only where they are meant to be (see
+ * Vardil HQ screens (19 Nov). The files are built only where they are meant to be (see
  * src/app/staff.ts); anywhere else these addresses are plain not-found pages.
  */
 function staffScreen(path: string, pick: (m: StaffModule) => ComponentType): RouteObject {
@@ -190,9 +190,14 @@ export const router = create([
           screen("admin/connections", admin, (m) => m.Connections),
           screen("admin/automations", admin, (m) => m.Automations),
           screen("admin/activity", admin, (m) => m.ActivityLog),
+          screen("admin/repairs", admin, (m) => m.Repairs),
+          screen("admin/vardil", admin, (m) => m.VardilWorks),
           staffScreen("vardil", (m) => m.Overview),
           staffScreen("vardil/features", (m) => m.Features),
           staffScreen("vardil/demo", (m) => m.DemoTools),
+          staffScreen("vardil/clients", (m) => m.ClientApps),
+          staffScreen("vardil/announcements", (m) => m.Announcements),
+          staffScreen("vardil/requests", (m) => m.AppRequests),
           { path: "*", element: <NotFound /> },
         ],
       },

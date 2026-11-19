@@ -12,7 +12,7 @@ import { AskButton, AskPanel, askFromSearch } from "@/ai/AskPanel";
 import { useAsk } from "@/ai/state";
 import { useGate } from "./AuthPages";
 import { signOut } from "./auth";
-import { DEPARTMENTS, departmentFor } from "./departments";
+import { DEPARTMENTS, departmentFor, type NavItem } from "./departments";
 import { staff } from "./staff";
 import { clearScreenState } from "./screen-state";
 import { clearTrail, previous, saveScroll, scrollFor, stepBack, useTrail, visit } from "./trail";
@@ -439,12 +439,14 @@ function useNavCounts() {
 
 /** A department's sidebar groups, without the managing director's own screens for anyone else, or the staff's own for a client. */
 function useGroups(pathname: string) {
-  const { role, may } = useAccess();
+  const { role, may, apps } = useAccess();
   const md = role === "md";
   const db = useData((s) => s.db);
   const brand = usePrefs((s) => s.brand);
+  // An item that belongs to another app, or to Automations, goes when the firm does not have it (19 Nov).
+  const has = (it: NavItem) => (!it.app || apps.on(it.app)) && (!it.automations || apps.automations);
   return departmentFor(pathname)
-    .groups.map((g) => ({ ...g, items: [...g.items, ...(g.more?.(db, brand) ?? [])].filter((it) => (md ? !it.notMd : !it.mdOnly) && !(it.staffOnly && role === "client") && (!it.perm || may(it.perm))) }))
+    .groups.map((g) => ({ ...g, items: [...g.items, ...(g.more?.(db, brand) ?? [])].filter((it) => has(it) && (md ? !it.notMd : !it.mdOnly) && !(it.staffOnly && role === "client") && (!it.perm || may(it.perm))) }))
     .filter((g) => g.items.length > 0);
 }
 

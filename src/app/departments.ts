@@ -20,8 +20,10 @@ import type { Db, DepartmentKey, ID, PermKey } from "@/data/types";
  * `staffOnly`: not shown to a client signed in to their portal.
  * `perm`: shown only to people with that permission (Compliance's firm-wide screens need "See every project").
  * `tabs`: other addresses inside the same page (its tabs), which Ask AI may link to but the sidebar does not list.
+ * `app`: shown only when the firm has that app too (19 Nov: a screen that only makes sense with Projects, say).
+ * `automations`: shown only when the firm's package includes Automations.
  */
-export type NavItem = { to: string; label: string; count?: (db: Db, today: string, me: ID | null) => number; countTone?: "accent" | "warn" | "bad"; end?: boolean; mdOnly?: boolean; notMd?: boolean; staffOnly?: boolean; perm?: PermKey; tabs?: { to: string; label: string }[] };
+export type NavItem = { to: string; label: string; app?: DepartmentKey; automations?: boolean; count?: (db: Db, today: string, me: ID | null) => number; countTone?: "accent" | "warn" | "bad"; end?: boolean; mdOnly?: boolean; notMd?: boolean; staffOnly?: boolean; perm?: PermKey; tabs?: { to: string; label: string }[] };
 /** `more`: items worked out from the records, such as one per Team chat channel. */
 export type NavGroup = { label: string; items: NavItem[]; more?: (db: Db, brand: Brand) => NavItem[] };
 export type Department = {
@@ -261,15 +263,17 @@ export const DEPARTMENTS: Department[] = [
   {
     key: "admin", label: "Admin", icon: UserGear, home: "/admin", inBar: true,
     groups: [
-      { label: "For your yes or no", items: [{ to: "/admin", label: "Requests", end: true, count: (db) => waitingOnDirector(db).length }] },
+      { label: "For your yes or no", items: [{ to: "/admin", label: "Requests", end: true, count: (db) => waitingOnDirector(db).length }, { to: "/admin/repairs", label: "Repairs", count: (db) => db.repairs.filter((r) => r.status !== "Fixed").length, countTone: "warn" }] },
       // Who can do what, and what the firm pays: the managing director's alone, even if Admin is given to another level.
       { label: "Access", items: [{ to: "/admin/access", label: "Roles and access", mdOnly: true }, { to: "/admin/sites", label: "Site access", mdOnly: true }] },
       { label: "Account", items: [{ to: "/admin/billing", label: "Billing", mdOnly: true }] },
       { label: "System", items: [
-        { to: "/admin/bank-holidays", label: "Bank holidays" },
+        { to: "/admin/bank-holidays", label: "Company holidays" },
         { to: "/admin/connections", label: "Connections" },
-        { to: "/admin/automations", label: "Automations" },
+        { to: "/admin/automations", label: "Automations", automations: true },
         { to: "/admin/activity", label: "Activity log" },
+        // Vardil's page for every client: announcements, and the apps they have and could add (19 Nov).
+        { to: "/admin/vardil", label: "Vardil Works" },
       ] },
     ],
   },

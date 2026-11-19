@@ -333,12 +333,13 @@ python3 tests/functions/fn_check.py
   turning the demo into a build for a real firm ("Before a real client build").
 
 
-## Vardil Works (Vardil staff only, 19 Nov 2026)
+## Vardil HQ (Vardil staff only, 19 Nov 2026)
 
-A level above the managing director, for Vardil's own people: sign in as any level, change what
-any level can do (the managing director included), switch departments off for the whole demo,
-reset and re-brand. A demo client never sees it: its code is in its own folder, `/staff/`, and
-Cloudflare Access only hands that folder to Vardil email addresses.
+Our own level, above the managing director (called Vardil Works until the evening of 19 Nov):
+packages, client apps, announcements, app requests, and signing in as any level. A demo
+client never sees it: its code is in its own folder, `/staff/`, and Cloudflare Access only
+hands that folder to Vardil email addresses. Vardil Works is now the page every client has in
+Admin: our announcements, and their apps with the ones they could add.
 
 ### On Cloudflare (once per Pages project)
 
@@ -346,20 +347,28 @@ Cloudflare Access only hands that folder to Vardil email addresses.
 2. The site's own Access application (the one covering the whole address) must let in Vardil staff:
    add an Include rule "Emails ending in" `vardil.com` to its policy, next to the prospects' emails.
 3. Add a second application: Zero Trust > Access controls > Applications > Add an application >
-   Self-hosted. Name "Vardil Works files". Add the same hostname with the path `staff/*`
+   Self-hosted. Name "Vardil HQ files". Add the same hostname with the path `staff/*`
    (and again for the pages.dev address if staff use it). Policy: a new reusable policy
    "Vardil staff", action Allow, Include "Emails ending in" `vardil.com`. Login method: One-time PIN.
    Under the application's settings, turn on the path cookie attribute ("Enable path cookie
    attribute"), so its sign-in cookie does not replace the main site's. HttpOnly on, SameSite Lax.
    Cloudflare uses the most specific application for an address, so `/staff/*` follows this one.
-4. Optional: other staff domains go in the plain variable `VITE_STAFF_DOMAINS` (comma separated)
-   on the Pages project, then redeploy.
+4. A D1 database bound as `DB` (Settings > Bindings > Add > D1 database), for Production and
+   Preview. Client apps, announcements and app requests are kept there; the tables are made the
+   first time they are used. Ask AI uses the same binding, so if it is set up already there is
+   nothing to do.
+5. Optional plain variables, then redeploy: `STAFF_DOMAINS` (the server's list of staff email
+   domains, comma separated, default vardil.com) and `VITE_STAFF_DOMAINS` (the page's own list,
+   used only to decide whether to fetch the staff files). Keep the two the same.
 
 ### Checking it
 
-- Signed in with a Vardil email: "Who are you signing in as?" starts with Vardil Works.
-- In a private window with a client's email: no Vardil Works line; opening
+- Signed in with a Vardil email: "Who are you signing in as?" starts with Vardil HQ.
+- In a private window with a client's email: no Vardil HQ line; opening
   `/staff/ready.html` directly stops at Cloudflare's "you do not have access" page.
+- Vardil HQ, Client apps: add the client's email (or `@` and their domain) with the Main
+  offering. Signed in as that client in a private window, the bar shows only those apps, and
+  Admin, Vardil Works shows the rest blurred.
 - The first time a staff browser opens the demo after this is set up, it may pass once through
   `/staff/ready.html` and land back on the role page. That is Cloudflare signing it in to the
   staff folder.

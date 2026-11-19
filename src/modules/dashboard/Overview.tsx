@@ -17,6 +17,8 @@ import { dueWords, outstanding, portalFeed } from "@/lib/portal";
 import { Badge, Button, cx, Dialog, Field, PageBody, PageHead, Panel, Section, type Tone } from "@/ui";
 import { toast } from "@/ui/toast";
 import { ApprovalsPanel } from "./ApprovalsPanel";
+import { RequestsBody } from "@/modules/admin/Requests";
+import { StateBadge, useCompliance } from "@/modules/compliance/shared";
 
 /**
  * The first screen after sign-in (Aodhan, 16 Nov). Top: the AI overview (option B, worked out
@@ -30,6 +32,12 @@ export function Overview() {
   const access = useAccess();
   const k = dashboardNumbers(db, day);
   const canSee = (dept: DepartmentKey) => access.can(dept);
+  const has = access.apps.on;
+  // What the panels show follows the apps the firm has (19 Nov). Drafts to approve come from
+  // email, sales, projects and invoicing; without any of them, the yes or no list takes their place.
+  const drafts = has("inbox") || has("sales") || has("projects") || has("invoicing");
+  const waiting = !drafts && access.can("admin");
+  const glance = [has("sales"), has("projects"), has("invoicing"), has("compliance")].filter(Boolean).length > 1;
 
   return (
     <>
@@ -38,12 +46,20 @@ export function Overview() {
         <AiOverview />
         <OnSiteToday />
         <TodoPanel />
-        <ApprovalsPanel />
-        <PortalPanel />
+        {waiting && (
+          <Section title="Waiting for your yes or no" aside={<Link to="/admin" className="font-medium text-accent-ink underline-offset-2 hover:underline">Open in Admin</Link>} className="xl:col-span-2">
+            <div className="grid gap-5">
+              <RequestsBody embedded />
+            </div>
+          </Section>
+        )}
+        {has("compliance") && canSee("compliance") && <ComplianceWatch />}
+        {drafts && <ApprovalsPanel />}
+        {has("portal") && <PortalPanel />}
 
-        <Section title="The firm at a glance" className="xl:col-span-2">
+        {glance && <Section title="The firm at a glance" className="xl:col-span-2">
           <div className="grid gap-x-8 gap-y-5 sm:grid-cols-2 xl:grid-cols-4">
-            <Glance
+            {has("sales") && <Glance
               heading="Sales"
               to={canSee("sales") ? "/sales" : undefined}
               rows={[
@@ -52,8 +68,8 @@ export function Overview() {
                 ["Opened, not answered", k.sales.openedNotAnswered],
                 ["Queried by client", k.sales.queried, k.sales.queried > 0 ? "warn" : undefined],
               ]}
-            />
-            <Glance
+            />}
+            {has("projects") && <Glance
               heading="Sites"
               to={canSee("projects") ? "/projects" : undefined}
               rows={[
@@ -62,8 +78,8 @@ export function Overview() {
                 ["Time stamps not sent today", k.sites.timeStampsNotSent, k.sites.timeStampsNotSent > 0 ? "warn" : undefined],
                 ["Open site requests", k.sites.openRequests, k.sites.openRequests > 0 ? "accent" : undefined],
               ]}
-            />
-            <Glance
+            />}
+            {has("invoicing") && <Glance
               heading="Money"
               to={canSee("invoicing") ? "/invoicing" : undefined}
               rows={[
@@ -74,8 +90,8 @@ export function Overview() {
                 ["Invoices waiting for approval", k.money.toApprove, k.money.toApprove > 0 ? "warn" : undefined],
                 ["Approved, to be paid", access.seeValues ? `${k.money.toPay} (${money0(k.money.toPayValue, region)})` : k.money.toPay, k.money.toPayLate > 0 ? "bad" : undefined],
               ]}
-            />
-            <Glance
+            />}
+            {has("compliance") && <Glance
               heading="Compliance"
               to={canSee("compliance") ? "/compliance" : undefined}
               rows={[
@@ -84,9 +100,9 @@ export function Overview() {
                 ["Plant and vehicles overdue", k.compliance.plantOverdue + k.compliance.fleetOverdue, k.compliance.plantOverdue + k.compliance.fleetOverdue > 0 ? "bad" : undefined],
                 ["Hired plant to return", k.compliance.hiredToReturn, k.compliance.hiredToReturn > 0 ? "warn" : undefined],
               ]}
-            />
+            />}
           </div>
-        </Section>
+        </Section>}
       </PageBody>
     </>
   );
@@ -112,6 +128,7 @@ function AiOverview() {
     answersRequests: access.can("admin") && access.may("answerRequests"),
     checksPayroll: access.can("people") && access.may("checkPayroll"),
     exportsPayroll: access.can("people") && access.may("exportPayroll"),
+    apps: access.apps.on,
   });
   return (
     <Section title="AI overview" aside={<span className="text-[0.93rem] text-muted">Worked out from today's records</span>} className="flex flex-col">
@@ -434,5 +451,52 @@ function AddTodo({ onClose }: { onClose: () => void }) {
         <p role="alert" className="min-h-6 text-bad">{error}</p>
       </div>
     </Dialog>
+  );
+}
+
+/**
+ * Compliance monitoring on the dashboard (19 Nov, the main offering): the four figures that
+ * matter, each opening Compliance on that list, and the things to see to first.
+ */
+function ComplianceWatch() {
+  const { rows, day, access } = useCompliance();
+  const mine = rows.filter((r) => (r.area !== "fleet" || access.apps.on("fleet")) && (r.area !== "machinery" || access.apps.on("plant")));
+  const figures: { key: string; label: string; n: number; tone: Tone }[] = [
+    { key: "expired", label: "Run out or missing", n: mine.filter((r) => r.state === "expired" || r.state === "missing").length, tone: "bad" },
+    { key: "blocks", label: "Stopping work", n: mine.filter((r) => r.blocks).length, tone: "bad" },
+    { key: "due", label: "Due in 30 days", n: mine.filter((r) => r.state === "due").length, tone: "warn" },
+    { key: "proof", label: "Proof needed", n: mine.filter((r) => r.proofNeeded).length, tone: "accent" },
+  ];
+  const first = mine.filter((r) => r.state !== "ok").sort((a, b) => Number(b.blocks) - Number(a.blocks) || (a.due ?? "").localeCompare(b.due ?? "")).slice(0, 6);
+  return (
+    <Section title="Compliance" aside={<Link to="/compliance" className="font-medium text-accent-ink underline-offset-2 hover:underline">Open Compliance</Link>} className="xl:col-span-2">
+      <div className="grid gap-3 sm:grid-cols-4">
+        {figures.map((f) => (
+          <Link key={f.key} to={`/compliance?show=${f.key}`} className="press rounded-lg border border-line bg-surface px-4 py-3 hover:border-accent">
+            <span className="block text-[0.93rem] text-muted">{f.label}</span>
+            <span className={cx("font-display text-[1.6rem] leading-tight font-semibold tabular-nums", f.n > 0 && (f.tone === "bad" ? "text-bad" : f.tone === "warn" ? "text-warn" : "text-accent-ink"))}>{f.n}</span>
+          </Link>
+        ))}
+      </div>
+      {first.length > 0 && (
+        <Panel className="mt-3">
+          <ul className="divide-y divide-line" aria-label="Compliance to see to first">
+            {first.map((r) => (
+              <li key={r.key} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2">
+                <span className="min-w-0 flex-1 basis-56">
+                  <span className="font-medium">{r.who}</span>
+                  <span className="text-muted">, {r.item}</span>
+                  {r.blocks && <span className="block text-[0.87rem] text-bad">Stops work until renewed</span>}
+                </span>
+                <StateBadge r={r} day={day} />
+                <Link to={r.to ?? "/compliance"} className="text-[0.93rem] font-medium text-accent-ink underline-offset-2 hover:underline">
+                  Open
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </Panel>
+      )}
+    </Section>
   );
 }

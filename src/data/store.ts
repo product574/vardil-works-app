@@ -16,6 +16,7 @@ import { createJSONStorage, persist } from "zustand/middleware";
 import { immer } from "zustand/middleware/immer";
 import { DEFAULT_BRAND, type Brand } from "@/config/brand";
 import { dublinToday } from "@/lib/dates";
+import type { Announcement, AppRequest } from "@/lib/apps";
 import { DEFAULT_EMAIL, defaultDesign, type EmailTemplate, type InvoiceDesign } from "@/lib/invoices";
 import { REGION } from "@/lib/money";
 import { toast } from "@/ui/toast";
@@ -23,7 +24,7 @@ import { buildSeed, demoDay } from "./seed";
 import type { Db, DepartmentKey, ID, MdOverride, RoleKey } from "./types";
 
 /** Bump when the shape of Db or the sample data changes. Old saved sample data is thrown away, preferences are kept. */
-const DATA_VERSION = 24;
+const DATA_VERSION = 25;
 
 let storageFull = false;
 
@@ -84,6 +85,18 @@ type PrefsState = {
   mdOverride: MdOverride;
   /** Vardil staff only: Ask AI switched off for the managing director. */
   askAiOff: boolean;
+  /** Vardil staff only: Automations left out of Admin for this demo (a package can switch it). */
+  automationsOff: boolean;
+  /** On a copy with no server: announcements written in Vardil HQ and "Ask about this app" requests, kept in this browser. */
+  localAnnouncements: Announcement[];
+  localAppRequests: AppRequest[];
+  setAutomationsOff: (off: boolean) => void;
+  /** Apply a package: everything it does not include is switched off for the whole demo. */
+  setPackage: (off: DepartmentKey[], automations: boolean) => void;
+  addLocalAnnouncement: (a: Announcement) => void;
+  removeLocalAnnouncement: (id: string) => void;
+  addLocalAppRequest: (r: AppRequest) => void;
+  handleLocalAppRequest: (id: string, by: string) => void;
   setStaffMode: (on: boolean) => void;
   setCompanyOff: (dept: DepartmentKey, off: boolean) => void;
   setMdOverride: (o: Partial<MdOverride>) => void;
@@ -115,13 +128,22 @@ export const usePrefs = create<PrefsState>()(
       invoiceEmail: null,
       staffMode: false,
       companyOff: [],
+      automationsOff: false,
+      localAnnouncements: [],
+      localAppRequests: [],
+      setAutomationsOff: (automationsOff) => set({ automationsOff }),
+      setPackage: (companyOff, automations) => set({ companyOff, automationsOff: !automations }),
+      addLocalAnnouncement: (a) => set((s) => ({ localAnnouncements: [a, ...s.localAnnouncements] })),
+      removeLocalAnnouncement: (id) => set((s) => ({ localAnnouncements: s.localAnnouncements.filter((a) => a.id !== id) })),
+      addLocalAppRequest: (r) => set((s) => (s.localAppRequests.some((x) => x.app === r.app && x.email === r.email && !x.handledAt) ? s : { localAppRequests: [r, ...s.localAppRequests] })),
+      handleLocalAppRequest: (id, by) => set((s) => ({ localAppRequests: s.localAppRequests.map((r) => (r.id === id ? { ...r, handledAt: new Date().toISOString(), handledBy: by } : r)) })),
       mdOverride: { departments: {}, perms: {} },
       askAiOff: false,
       setStaffMode: (staffMode) => set({ staffMode }),
       setCompanyOff: (dept, off) => set((s) => ({ companyOff: off ? [...new Set([...s.companyOff, dept])] : s.companyOff.filter((d) => d !== dept) })),
       setMdOverride: (o) => set((s) => ({ mdOverride: { ...s.mdOverride, ...o } })),
       setAskAiOff: (askAiOff) => set({ askAiOff }),
-      clearStaffChanges: () => set({ companyOff: [], mdOverride: { departments: {}, perms: {} }, askAiOff: false }),
+      clearStaffChanges: () => set({ companyOff: [], automationsOff: false, mdOverride: { departments: {}, perms: {} }, askAiOff: false }),
       setInvoiceDesign: (d) => set((s) => ({ invoiceDesignEdits: { ...s.invoiceDesignEdits, ...d } })),
       resetInvoiceDesign: () => set({ invoiceDesignEdits: {} }),
       setInvoiceEmail: (invoiceEmail) => set({ invoiceEmail }),
@@ -140,7 +162,7 @@ export const usePrefs = create<PrefsState>()(
       storage: safeStorage,
       // Only live edits are saved, so changing src/config/brand.ts reaches every browser,
       // including ones that have opened an earlier version of the demo.
-      partialize: (s) => ({ theme: s.theme, brandEdits: s.brandEdits, role: s.role, asPersonId: s.asPersonId, staffMode: s.staffMode, companyOff: s.companyOff, mdOverride: s.mdOverride, askAiOff: s.askAiOff, operativeId: s.operativeId, portalClientId: s.portalClientId, invoiceDesignEdits: s.invoiceDesignEdits, invoiceEmail: s.invoiceEmail }),
+      partialize: (s) => ({ theme: s.theme, brandEdits: s.brandEdits, role: s.role, asPersonId: s.asPersonId, staffMode: s.staffMode, companyOff: s.companyOff, automationsOff: s.automationsOff, localAnnouncements: s.localAnnouncements, localAppRequests: s.localAppRequests, mdOverride: s.mdOverride, askAiOff: s.askAiOff, operativeId: s.operativeId, portalClientId: s.portalClientId, invoiceDesignEdits: s.invoiceDesignEdits, invoiceEmail: s.invoiceEmail }),
       // Version 1 saved the whole brand, which froze the old defaults in place. Drop it, keep the rest.
       migrate: (saved, version) => {
         const s = (saved ?? {}) as Record<string, unknown>;

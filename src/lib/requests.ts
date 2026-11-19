@@ -2,18 +2,38 @@
  * What waits for the managing director's yes or no (Admin > Requests, Aodhan's pick on 16 Nov):
  * leave, people and plant asked for by the sites, and money people want to spend.
  */
-import type { Db, Expense, Holiday, Project, SiteAccess, SiteRequest, SpendRequest, SupplierInvoice } from "@/data/types";
+import type { CertSubmission, Db, Expense, Holiday, OvertimeClaim, Project, RepairReport, SiteAccess, SiteRequest, SpendRequest, SupplierInvoice } from "@/data/types";
+import { notPaid } from "./reimbursements";
 import { partyOf, purchaseStage } from "./purchases";
 import { opensSite, seesEveryProject } from "./site-access";
 
-export type DirectorQueue = { leave: Holiday[]; site: SiteRequest[]; spend: SpendRequest[]; invoices: SupplierInvoice[]; expenses: Expense[] };
+export type DirectorQueue = {
+  leave: Holiday[];
+  site: SiteRequest[];
+  spend: SpendRequest[];
+  invoices: SupplierInvoice[];
+  expenses: Expense[];
+  /** Since 19 Nov (the main offering): overtime claimed on the phone, new repairs, certificates sent from the phone, and approved reimbursements to mark paid. */
+  claims: OvertimeClaim[];
+  repairs: RepairReport[];
+  certs: CertSubmission[];
+  toPay: Expense[];
+};
 
-/** Each kind in the order it is needed: leave and site requests by their first day, spending oldest first. */
-export function directorQueue(db: Db): DirectorQueue {
+/**
+ * Each kind in the order it is needed: leave and site requests by their first day, spending oldest first.
+ * `crewToOffice`: with one phone for everyone (no Projects app) there is no site manager's phone to
+ * hold a crew request, so every request is with the office.
+ */
+export function directorQueue(db: Db, opts: { crewToOffice?: boolean } = {}): DirectorQueue {
   return {
     leave: db.holidays.filter((h) => h.status === "Requested").sort((a, b) => a.from.localeCompare(b.from)),
     // Requests still with a site manager have not been asked of the office yet.
-    site: db.requests.filter((r) => withOffice(r) && !r.decision).sort((a, b) => a.neededFrom.localeCompare(b.neededFrom)),
+    site: db.requests.filter((r) => (opts.crewToOffice ? r.status === "Open" : withOffice(r)) && !r.decision).sort((a, b) => a.neededFrom.localeCompare(b.neededFrom)),
+    claims: db.overtimeClaims.filter((c) => c.status === "Waiting").sort((a, b) => a.date.localeCompare(b.date)),
+    repairs: db.repairs.filter((r) => r.status === "Reported").sort((a, b) => a.at.localeCompare(b.at)),
+    certs: db.certSubmissions.filter((c) => c.status === "Waiting").sort((a, b) => a.sentAt.localeCompare(b.sentAt)),
+    toPay: notPaid(db.expenses),
     spend: db.spendRequests.filter((s) => s.status === "Waiting").sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
     // Reimbursements claimed from the site phone (17 Nov), oldest first.
     expenses: db.expenses.filter((x) => x.status === "Waiting").sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
@@ -31,9 +51,9 @@ export function waitingForDirector(db: Pick<Db, "supplierInvoices" | "approvalLi
 }
 
 /** Everything waiting, as one list of ids, for counts. */
-export function waitingOnDirector(db: Db): string[] {
-  const q = directorQueue(db);
-  return [...q.leave.map((x) => x.id), ...q.site.map((x) => x.id), ...q.spend.map((x) => x.id), ...q.invoices.map((x) => x.id), ...q.expenses.map((x) => x.id)];
+export function waitingOnDirector(db: Db, opts: { crewToOffice?: boolean } = {}): string[] {
+  const q = directorQueue(db, opts);
+  return [...q.leave, ...q.site, ...q.spend, ...q.invoices, ...q.expenses, ...q.claims, ...q.repairs, ...q.certs, ...q.toPay].map((x) => x.id);
 }
 
 /** Answered in the last fortnight, newest first, so a yes or no just given can be checked. */

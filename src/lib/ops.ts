@@ -7,7 +7,7 @@
  */
 import type { DamageReport, VehicleCheck } from "@/data/types";
 
-export type FeedKind = "check" | "defect" | "damage" | "licence" | "missed" | "request" | "photo" | "extra" | "claim" | "expense";
+export type FeedKind = "check" | "defect" | "damage" | "licence" | "missed" | "request" | "photo" | "extra" | "claim" | "expense" | "repair" | "cert";
 export type FeedItem = { at: string; kind: FeedKind; title: string; detail: string; to?: string };
 
 export type FeedInput = {
@@ -58,7 +58,8 @@ export const CHECK_BY = "09:00";
  * driving check yet, once it is past 09:00. `driving` is each vehicle with its driver on a site today.
  */
 export function needsLook(feed: FeedItem[], driving: { vehicleId: string; driverId: string; site: string }[], input: Pick<FeedInput, "checks" | "reg" | "driver">, now: string): FeedItem[] {
-  const urgent = feed.filter((f) => f.kind === "damage" || f.kind === "defect");
+  // A repair reported from the phone needs a look too (19 Nov).
+  const urgent = feed.filter((f) => f.kind === "damage" || f.kind === "defect" || f.kind === "repair");
   const day = now.slice(0, 10);
   const missed: FeedItem[] =
     now.slice(11, 16) < CHECK_BY

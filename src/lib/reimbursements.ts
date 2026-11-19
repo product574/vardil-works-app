@@ -6,12 +6,12 @@
  *
  * Pure functions: no React, no store.
  */
-type Claim = { id: string; personId: string; date: string; kind: string; what: string; amount: number; projectId: string | null; status: "Waiting" | "Approved" | "Declined"; decidedBy?: string; decidedAt?: string; exportedAt?: string; exportedBy?: string };
+type Claim = { id: string; personId: string; date: string; kind: string; what: string; amount: number; projectId: string | null; status: "Waiting" | "Approved" | "Declined"; decidedBy?: string; decidedAt?: string; exportedAt?: string; exportedBy?: string; paidAt?: string };
 type Who = { id: string; name: string; sageNo?: string };
 type Site = { id: string; code: string };
 
 /** Approved and not yet exported: what the office has to pay. Oldest claim first. */
-export const toPay = <C extends Claim>(claims: C[]): C[] => claims.filter((c) => c.status === "Approved" && !c.exportedAt).sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
+export const toPay = <C extends Claim>(claims: C[]): C[] => claims.filter((c) => c.status === "Approved" && !c.exportedAt && !c.paidAt).sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
 
 /** Approved and already exported for payment, newest export first. */
 export const sentForPayment = <C extends Claim>(claims: C[]): C[] => claims.filter((c) => c.status === "Approved" && !!c.exportedAt).sort((a, b) => b.exportedAt!.localeCompare(a.exportedAt!) || a.id.localeCompare(b.id));
@@ -53,3 +53,6 @@ export function reimbursementCsv(day: string, claims: Claim[], people: Who[], si
   ];
   return { fileName: `reimbursements-to-pay-${day}.csv`, text: rows.map((r) => r.map(cell).join(",")).join("\r\n") + "\r\n" };
 }
+
+/** Approved and not yet marked paid, exported or not: what Admin, Requests offers Mark paid on (19 Nov). Oldest first. */
+export const notPaid = <C extends Claim>(claims: C[]): C[] => claims.filter((c) => c.status === "Approved" && !c.paidAt).sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));

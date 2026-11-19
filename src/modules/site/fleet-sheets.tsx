@@ -20,11 +20,11 @@ import { Button, cx, Dialog, Field } from "@/ui";
 import { toast } from "@/ui/toast";
 import { sampleLicenceFile } from "../fleet/docs";
 
-type PhoneFile = { key: string; name: string; dataUrl?: string; sample?: string; show: string };
+export type PhoneFile = { key: string; name: string; dataUrl?: string; sample?: string; show: string };
 let phoneSeq = 0;
 
 /** A photo from the phone's camera or gallery, shrunk before it is kept; a PDF is kept as it is (licences only). */
-async function fromPhone(f: File, pdfOk: boolean): Promise<PhoneFile> {
+export async function fromPhone(f: File, pdfOk: boolean): Promise<PhoneFile> {
   if (f.type.startsWith("image/")) {
     const { dataUrl } = await shrinkImage(f, 1400, 0.75);
     return { key: `p${++phoneSeq}`, name: f.name || "Photo.jpg", dataUrl, show: dataUrl };
@@ -41,10 +41,10 @@ async function fromPhone(f: File, pdfOk: boolean): Promise<PhoneFile> {
   }
   throw new Error(pdfOk ? "Choose a photo or a PDF." : "Choose a photo.");
 }
-const toFileIn = (f: PhoneFile): FileIn => (f.sample ? { name: f.name, dataUrl: "", sample: f.sample } : { name: f.name, dataUrl: f.dataUrl ?? "" });
+export const toFileIn = (f: PhoneFile): FileIn => (f.sample ? { name: f.name, dataUrl: "", sample: f.sample } : { name: f.name, dataUrl: f.dataUrl ?? "" });
 
 /** Two ways to add a file on the phone: the camera, or something already on the phone. */
-function AddButtons({ onFiles, pdf }: { onFiles: (files: FileList | null) => void; pdf?: boolean }) {
+export function AddButtons({ onFiles, pdf }: { onFiles: (files: FileList | null) => void; pdf?: boolean }) {
   const camera = useRef<HTMLInputElement>(null);
   const files = useRef<HTMLInputElement>(null);
   return (
@@ -61,7 +61,7 @@ function AddButtons({ onFiles, pdf }: { onFiles: (files: FileList | null) => voi
   );
 }
 
-function Thumbs({ files, remove }: { files: PhoneFile[]; remove: (key: string) => void }) {
+export function Thumbs({ files, remove }: { files: PhoneFile[]; remove: (key: string) => void }) {
   if (!files.length) return null;
   return (
     <ul className="flex flex-wrap gap-2">

@@ -103,8 +103,9 @@ def steps(page, ctx):
     pre = main.locator("pre").inner_text()
     check("Reimbursements: the file for the office is shown before it goes", pre.startswith("Employee No,Surname,Forename,Paid on,For,Detail,Site,Amount,Approved by,Approved on") and ",C721,31.40,Aidan King," in pre, pre[:200])
     go(page, "/admin")
-    main.locator("section", has_text="Reimbursements").get_by_role("button", name=re.compile("^Approve: reimbursement for Cathal Minogue")).click(); page.wait_for_timeout(300)
-    check("Admin: approving a reimbursement puts it on the office's list, and says so", "It is on the office's list to pay" in toast(page) and main.locator("section", has_text="Reimbursements").get_by_role("link", name="Reimbursements to pay").count() == 1, toast(page))
+    main.locator("section", has=page.get_by_role("heading", name=re.compile(r"^Reimbursements \("))).get_by_role("button", name=re.compile("^Approve: reimbursement for Cathal Minogue")).click(); page.wait_for_timeout(300)
+    # Since 19 Nov an approved claim is marked paid in Admin itself, under Reimbursements to pay.
+    check("Admin: approving a reimbursement puts it on the list to pay, and says so", "Mark it paid below" in toast(page) and main.get_by_role("heading", name=re.compile(r"^Reimbursements to pay")).count() == 1, toast(page))
     go(page, "/people/reimbursements")
     check("Reimbursements: the approved claim has joined the list, oldest first", pay.count() == 2 and "Cathal Minogue" in pay.nth(1).inner_text() and "€123.55" in main.locator("tfoot").inner_text() and "2 approved claims to pay back, €123.55 to 2 people. 1 more is still with the director" in main.inner_text(), main.locator("header p").first.inner_text())
     page.screenshot(path=f"{OUT}/804-reimbursements.png", full_page=True)

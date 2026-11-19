@@ -203,7 +203,7 @@ def steps(page, ctx):
     dlg.get_by_label("Site").select_option("pr-C723"); dlg.get_by_role("tab", name="Full day", exact=True).click(); page.wait_for_timeout(150)
     check("Day planner: making one half a full day warns that it double books", "double books" in dlg.inner_text())
     dlg.get_by_role("button", name="Save change").click(); page.wait_for_timeout(300)
-    check("Week ahead: a full day plus a half day is flagged as a double booking", f"{free_name} is on" in main.inner_text() and page.get_by_role("button", name="Send week to operatives").is_disabled())
+    check("Week ahead: a full day plus a half day is flagged as a double booking", f"{free_name} is on" in main.inner_text() and page.get_by_role("button", name="Send the week").is_disabled())
     dlg = open_day(2)
     dlg.get_by_label("Site").select_option("pr-C723"); page.wait_for_timeout(100)
     dlg.get_by_role("button", name="Take off this day").click(); page.wait_for_timeout(300)
@@ -260,12 +260,12 @@ def steps(page, ctx):
     page.goto(BASE + "/schedule"); page.wait_for_selector("table")
     mine_all = data(page, "db.projects.filter(p => p.siteManagerId==='p-sm4' && (p.status==='Live'||p.status==='Not started')).map(p => p.code).sort()")
     rows = [t.split("\n")[0] for t in page.get_by_role("table", name="Week ahead by site and day").locator("tbody th").all_inner_texts()]
-    check("Access: site managers plan the week for their own sites only (17 Nov default)", page.get_by_role("button", name="Send week to operatives").count() == 1 and set(rows) <= set(mine_all) and len(rows) >= 1, (rows, mine_all))
+    check("Access: site managers plan the week for their own sites only (17 Nov default)", page.get_by_role("button", name="Send the week").count() == 1 and set(rows) <= set(mine_all) and len(rows) >= 1, (rows, mine_all))
     as_role(page, "Site manager")
     check("Access: the ordinary site manager is Eoin Brosnan", "Eoin Brosnan" in page.locator("header").first.inner_text())
     page.goto(BASE + "/schedule"); page.wait_for_selector("table")
     rows = [t.split("\n")[0] for t in page.get_by_role("table", name="Week ahead by site and day").locator("tbody th").all_inner_texts()]
-    check("Access: Eoin plans his own two sites, with the contact box", rows == ["C719", "C724"] and page.get_by_role("button", name="Send week to operatives").count() == 1 and page.locator("button[aria-label$='contact details and options']").count() > 0, rows)
+    check("Access: Eoin plans his own two sites, with the contact box", rows == ["C719", "C724"] and page.get_by_role("button", name="Send the week").count() == 1 and page.locator("button[aria-label$='contact details and options']").count() > 0, rows)
     page.locator("button[aria-label$='contact details and options']").first.click(); page.wait_for_timeout(200)
     check("Access: the box has contact details and a Take off button", page.locator("dialog[open] a[href^='tel:']").count() == 1 and page.locator("dialog[open]").get_by_role("button", name=re.compile("^Take off")).count() == 1)
     page.locator("dialog[open]").get_by_role("button", name="Close").click()

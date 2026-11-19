@@ -130,7 +130,10 @@ describe("requests waiting for the managing director's yes or no", () => {
   it("gathers leave, site requests, spending and supplier invoices over the sign-off limit", () => {
     const q = directorQueue(db);
     expect([q.leave.length, q.site.length, q.spend.length, q.invoices.length, q.expenses.length]).toEqual([3, 4, 3, 2, 2]);
-    expect(waitingOnDirector(db)).toHaveLength(14);
+    // Since 19 Nov the phone's own wait here too: two overtime claims, a repair reported, a
+    // certificate to check, and two approved reimbursements to mark paid.
+    expect([q.claims.length, q.repairs.length, q.certs.length, q.toPay.length]).toEqual([2, 1, 1, 2]);
+    expect(waitingOnDirector(db)).toHaveLength(20);
     // The two site requests already dealt with were agreed first.
     expect(db.requests.filter((r) => r.status === "Done").every((r) => r.decision === "Approved")).toBe(true);
   });

@@ -4,13 +4,18 @@ import { useDay, useDb } from "@/data/store";
 import { when } from "@/lib/format";
 import { Button, PageBody, PageHead, Panel, Switch } from "@/ui";
 import { toast } from "@/ui/toast";
+import { Navigate } from "react-router-dom";
+import { useAccess } from "@/data/access";
 
 export function Automations() {
-  const automations = useDb((db) => db.automations);
+  const apps = useAccess().apps;
+  const automations = useDb((db) => db.automations).filter((a) => apps.on(a.department));
   const day = useDay();
   const on = automations.filter((a) => a.enabled).length;
   const groups = DEPARTMENTS.map((d) => ({ d, items: automations.filter((a) => a.department === d.key) })).filter((g) => g.items.length > 0);
 
+  // Left out of a package without Automations (Vardil HQ, 19 Nov).
+  if (!apps.automations) return <Navigate to="/admin" replace />;
   return (
     <>
       <PageHead title="Automations" note={`${on} of ${automations.length} switched on. Each one prepares work for a person to approve. None of them sends, prices or files anything on its own.`} />

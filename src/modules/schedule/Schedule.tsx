@@ -3,9 +3,10 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useScreenState } from "@/app/screen-state";
 import { useAccess } from "@/data/access";
-import { planDays, type PlanMark, planRestDay, removeFromRoster, sendWeekAhead, setPlanDay } from "@/data/actions";
+import { planDays, type PlanMark, planRestDay, removeFromRoster, sendRoster, sendWeekAhead, setPlanDay } from "@/data/actions";
+import { rosterBlocker, rosterMessages } from "@/lib/roster-send";
 import { co } from "@/data/place";
-import { useData, useDay } from "@/data/store";
+import { useData, useDay, usePrefs } from "@/data/store";
 import { type Db, LANGUAGE_NAME, type Person, type Project } from "@/data/types";
 import { type DayState, daysLabel, openDays, partLoad, personWeek, planClashes, planShort } from "@/lib/availability";
 import { type Block, blocksText, bookingFor, planBlocks, ticketBlocks } from "@/lib/compliance";
@@ -33,6 +34,7 @@ export function WeekAhead() {
   const [week, setWeek] = useState(() => nextWorkWeek(day));
   const [openPerson, setOpenPerson] = useState<PersonContext | null>(null);
   const [openDay, setOpenDay] = useState<DayContext | null>(null);
+  const [sending, setSending] = useState(false);
   const running = (p: Project) => (p.status === "Live" || p.status === "Not started") && p.startDate <= week[4]! && p.endDate >= week[0]!;
   const sites = access.scope(db.projects).filter(running);
   const liveIds = useMemo(() => new Set(db.projects.filter((p) => p.status === "Live" || p.status === "Not started").map((p) => p.id)), [db.projects]);
@@ -124,15 +126,8 @@ export function WeekAhead() {
         note={`Week of ${dShort(week[0])}: ${plural(plannedPeople, "person", "people")} planned across ${plural(sites.length - empty.length, "site")}.${empty.length > 0 ? ` Nobody is planned yet on ${empty.map((s) => `${s.code} ${s.name}`).join(", ")}.` : ""}${canEdit ? "" : " You can see the plan; changing it needs the \"Plan the week ahead\" permission."}`}
         actions={
           canEdit && (
-            <Button
-              variant="primary"
-              disabled={clashes.size > 0 || blocks.size > 0 || week[4]! <= day}
-              onClick={() => {
-                const n = sendWeekAhead(week);
-                toast(`Week of ${dShort(week[0])} sent to ${plural(n, "person", "people")}, each in their own language`);
-              }}
-            >
-              Send week to operatives
+            <Button variant="primary" disabled={clashes.size > 0 || blocks.size > 0 || week[4]! <= day} onClick={() => setSending(true)}>
+              Send the week
             </Button>
           )
         }
@@ -240,7 +235,92 @@ export function WeekAhead() {
       {adding && <AddToDayDialog {...adding} db={db} liveIds={liveIds} onAdded={offerRest} onClose={() => setAdding(null)} />}
       {openPerson && live && <PersonBox key={live.id + (openPerson.siteId ?? "")} person={live} siteId={openPerson.siteId} db={db} week={week} day={day} liveIds={liveIds} canEdit={canEdit} onDay={(date) => setOpenDay({ person: live, date, siteId: openPerson.siteId, lockSite: false })} onClose={() => setOpenPerson(null)} />}
       {openDay && <PlanDayDialog key={`${openDay.person.id}|${openDay.date}|${openDay.siteId ?? ""}`} {...openDay} db={db} liveIds={liveIds} sites={db.projects.filter((p) => (p.status === "Live" || p.status === "Not started") && p.startDate <= openDay.date && p.endDate >= openDay.date)} onClose={() => setOpenDay(null)} />}
+      {sending && <SendWeekDialog db={db} week={week} onClose={() => setSending(false)} />}
     </>
+  );
+}
+
+/**
+ * Send the week (Oisin, 19 Nov: "connected to email/WhatsApp"): each person their own week, by
+ * email and by WhatsApp, through what is connected in Admin, Connections. Every message is shown
+ * before it goes. In the demo nothing leaves the browser; the messages are filed as sent.
+ */
+function SendWeekDialog({ db, week, onClose }: { db: Db; week: string[]; onClose: () => void }) {
+  const firm = usePrefs((s) => s.brand.brandName);
+  const blocker = rosterBlocker(db.connections);
+  const messages = rosterMessages({ week, plan: db.plan, people: db.people, projects: db.projects, holidays: db.holidays, connections: db.connections, firm });
+  const people = new Set(messages.map((m) => m.personId)).size;
+  const [open, setOpen] = useState<string | null>(messages[0] ? `${messages[0].personId}|${messages[0].via}` : null);
+  const shown = messages.find((m) => `${m.personId}|${m.via}` === open);
+  const last = db.rosterSends.find((r) => r.weekStart === week[0]);
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      size="wide"
+      title={`Send the week of ${dShort(week[0]!)}`}
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button
+            variant="primary"
+            disabled={!!blocker || messages.length === 0}
+            onClick={() => {
+              sendRoster(week[0]!, messages);
+              sendWeekAhead(week);
+              toast(`Week of ${dShort(week[0]!)} sent to ${plural(people, "person", "people")}: ${plural(messages.length, "message")}`);
+              onClose();
+            }}
+          >
+            Send {plural(messages.length, "message")}
+          </Button>
+        </>
+      }
+    >
+      {blocker ? (
+        <p className="rounded-md bg-warn-soft px-3 py-2.5 text-warn">
+          {blocker}{" "}
+          <Link to="/admin/connections" className="font-medium underline underline-offset-2">
+            Open Connections
+          </Link>
+        </p>
+      ) : messages.length === 0 ? (
+        <p className="text-muted">Nobody is planned this week yet. Plan the week, then send it.</p>
+      ) : (
+        <div className="grid gap-3 md:grid-cols-[16rem_minmax(0,1fr)]">
+          <div>
+            <p className="mb-1 text-[0.93rem] text-muted">
+              {plural(people, "person", "people")}, by {[db.connections.email && "email", db.connections.whatsapp && "WhatsApp"].filter(Boolean).join(" and ")}.
+              {last ? ` Last sent ${dShort(last.at.slice(0, 10))} by ${last.by}.` : ""}
+            </p>
+            <ul className="max-h-[50dvh] divide-y divide-line overflow-y-auto rounded-md border border-line" aria-label="Messages">
+              {messages.map((m) => {
+                const key = `${m.personId}|${m.via}`;
+                return (
+                  <li key={key}>
+                    <button type="button" aria-current={key === open} onClick={() => setOpen(key)} className={cx("press w-full px-3 py-2 text-left", key === open ? "bg-accent-soft" : "hover:bg-accent-soft/60")}>
+                      <span className="block font-medium">{m.name}</span>
+                      <span className="block text-[0.87rem] text-muted">
+                        {m.via === "email" ? "Email" : "WhatsApp"}, {m.to}
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+          {shown && (
+            <div className={cx("rounded-lg px-4 py-3", shown.via === "whatsapp" ? "bg-ok-soft" : "border border-line bg-surface")} aria-label={`Message to ${shown.name}`}>
+              <p className="mb-2 text-[0.87rem] text-muted">
+                {shown.via === "email" ? `From ${db.connections.email?.account}, to ${shown.to}. Subject: Your week from ${dShort(week[0]!)}` : `WhatsApp from ${db.connections.whatsapp?.number} to ${shown.to}`}
+              </p>
+              <p className="whitespace-pre-line">{shown.text}</p>
+            </div>
+          )}
+        </div>
+      )}
+      <p className="mt-3 text-[0.93rem] text-muted">In this demo nothing leaves the browser: the messages are filed as sent.</p>
+    </Dialog>
   );
 }
 

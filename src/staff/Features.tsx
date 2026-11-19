@@ -7,7 +7,8 @@ import { PERMISSIONS } from "@/data/permissions";
 import { ROLES } from "@/data/roles";
 import { useData, usePrefs } from "@/data/store";
 import type { DepartmentKey, PermKey } from "@/data/types";
-import { Badge, Button, PageBody, PageHead, Panel, Tick } from "@/ui";
+import { APP_KEYS, appsOff, PACKAGES, packageOf } from "@/lib/apps";
+import { Badge, Button, PageBody, PageHead, Panel, Section, Tick } from "@/ui";
 import { toast } from "@/ui/toast";
 
 const MD = ROLES.find((r) => r.key === "md")!;
@@ -39,6 +40,10 @@ export function Features() {
   const askAiOff = usePrefs((s) => s.askAiOff);
   const setAskAiOff = usePrefs((s) => s.setAskAiOff);
   const clear = usePrefs((s) => s.clearStaffChanges);
+  const automationsOff = usePrefs((s) => s.automationsOff);
+  const setAutomationsOff = usePrefs((s) => s.setAutomationsOff);
+  const setPackage = usePrefs((s) => s.setPackage);
+  const current = packageOf(APP_KEYS.filter((k) => !off.includes(k)), !automationsOff);
   if (!access.staffMode) return <Navigate to="/" replace />;
 
   const row = (k: string) => rows.find((a) => a.id === k);
@@ -47,7 +52,7 @@ export function Features() {
   const mdValues = o.seeValues ?? MD.money[0];
   const mdMargins = mdValues && (o.seeMargins ?? MD.money[1]);
   const said = (who: string, on: boolean, what: string) => toast(`${who}: ${on ? "now has" : "no longer has"} ${what}`);
-  const changes = Object.keys(o.departments).length + Object.keys(o.perms).length + (o.seeValues === undefined ? 0 : 1) + (o.seeMargins === undefined ? 0 : 1) + off.length + (askAiOff ? 1 : 0);
+  const changes = Object.keys(o.departments).length + Object.keys(o.perms).length + (o.seeValues === undefined ? 0 : 1) + (o.seeMargins === undefined ? 0 : 1) + off.length + (askAiOff ? 1 : 0) + (automationsOff ? 1 : 0);
 
   const head = (title: string, whole = false): ReactNode => (
     <tr key={title} className="bg-side">
@@ -67,11 +72,46 @@ export function Features() {
   return (
     <>
       <PageHead
-        title="Features and access"
-        note="Change what any level can open, see and do, the managing director's included, and switch whole departments off for the demo. Only Vardil can see this page."
+        title="Packages and access"
+        note="Pick the package to pitch, then change what any level can open, see and do, the managing director's included. Only Vardil can see this page."
         actions={changes > 0 && <Button onClick={() => { clear(); toast("Your changes to the managing director and the whole demo are cleared"); }}>Clear {changes} of our own changes</Button>}
       />
       <PageBody className="grid max-w-6xl grid-cols-[minmax(0,1fr)] gap-5">
+        <Section title="Package for this demo" aside={<span className="text-[0.93rem] text-muted">{current ? `Now: ${current.name}` : "Now: your own mix of apps"}</span>}>
+          <Panel>
+            <ul className="divide-y divide-line" aria-label="Packages">
+              {PACKAGES.map((p) => (
+                <li key={p.key} className="flex flex-wrap items-center gap-3 px-4 py-3">
+                  <span className="min-w-0 flex-1 basis-64">
+                    <span className="block font-medium">{p.name}</span>
+                    <span className="block text-[0.93rem] text-muted">{p.does}</span>
+                  </span>
+                  {current?.key === p.key ? (
+                    <Badge tone="ok">In use</Badge>
+                  ) : (
+                    <Button
+                      variant={p.key === "main" ? "primary" : "outline"}
+                      onClick={() => {
+                        setPackage(appsOff(p.apps), p.automations);
+                        toast(`${p.name}: ${p.apps.length} apps on for this demo`);
+                      }}
+                    >
+                      Use {p.name.toLowerCase()}
+                    </Button>
+                  )}
+                </li>
+              ))}
+              <li className="flex flex-wrap items-center gap-3 px-4 py-3">
+                <span className="min-w-0 flex-1 basis-64">
+                  <span className="block font-medium">Automations in Admin</span>
+                  <span className="block text-[0.93rem] text-muted">Show it when it helps the pitch, leave it out when it confuses.</span>
+                </span>
+                <Tick on={!automationsOff} label="Automations in Admin" onChange={() => { setAutomationsOff(!automationsOff); toast(`Automations ${automationsOff ? "shown" : "left out"} in Admin`); }} />
+              </li>
+            </ul>
+          </Panel>
+          <p className="mt-2 max-w-[85ch] text-[0.93rem] text-muted">A package sets the Whole demo column below in one go; you can still change single apps after. It applies in this browser. To set a client's own apps on any computer, use Client apps.</p>
+        </Section>
         <div>
           <p className="mb-2 max-w-[95ch] text-[0.93rem] text-muted">
             The first three columns are the same records as Admin, Roles and access, so a change here shows there. The managing director and Whole demo columns are Vardil's: the managing director cannot change them, and cannot tell they are set. They apply in this browser.
@@ -133,7 +173,7 @@ export function Features() {
           <ul className="mt-2 grid max-w-[85ch] gap-1 text-[0.93rem] text-muted">
             <li>A department switched off in Whole demo is closed to every level. Anyone whose usual starting department is off lands on the first one they still have.</li>
             <li>A tick with no box cannot be changed: a level's starting department stays on, and Settings and Profitability belong to the managing director.</li>
-            <li>You always see everything while you are in Vardil Works. Open the demo as a level from Sign in as to check what they see.</li>
+            <li>You always see everything while you are in Vardil HQ. Open the demo as a level from Sign in as to check what they see.</li>
           </ul>
         </div>
       </PageBody>

@@ -107,7 +107,7 @@ def steps(page, ctx):
     sec = main.locator("section", has_text="Supplier invoices over")
     waiting = data(page, "db.supplierInvoices.filter(s => (s.party || 'supplier') === 'supplier' && s.askedBy && s.readStatus !== 'confirmed' && !s.sentBack && s.subtotal > (db.approvalLimits.find(l => l.id === 'supplier')?.amount ?? 0)).map(s => s.invoiceNo)")
     check("Admin: supplier invoices over the limit wait for the director, with a link to To approve", sec.locator("tbody tr").count() == len(waiting) == 2 and sec.get_by_role("link", name="To approve in Invoicing").count() == 1, waiting)
-    check("Admin: two reimbursements wait too", main.locator("section", has_text="Reimbursements").locator("tbody tr").count() == 2)
+    check("Admin: two reimbursements wait too", main.locator("section", has=page.get_by_role("heading", name=re.compile(r"^Reimbursements \("))).locator("tbody tr").count() == 2)
     first = sec.locator("tbody tr").first
     first.get_by_role("button", name=re.compile("^Approve: ")).click(); page.wait_for_timeout(300)
     box = page.locator("dialog[open]").last
@@ -164,7 +164,7 @@ def steps(page, ctx):
     go(page, "/schedule/holiday-requests")
     check("Holiday requests: the one from the phone is waiting", "Wedding at home" in main.inner_text())
     go(page, "/admin")
-    r = main.locator("section", has_text="Reimbursements")
+    r = main.locator("section", has=page.get_by_role("heading", name=re.compile(r"^Reimbursements \(")))
     check("Admin: the phone claim is there", "Parking at the builders' providers" in r.inner_text())
     r.get_by_role("button", name=re.compile("^Approve: reimbursement")).first.click(); page.wait_for_timeout(300)
     check("Admin: approving a reimbursement records who said yes", data(page, "db.expenses.filter(x => x.status==='Approved' && x.decidedBy==='Aidan King').length") == 3)

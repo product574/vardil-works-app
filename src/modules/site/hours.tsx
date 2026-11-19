@@ -18,7 +18,9 @@ const hrs = (n: number) => `${n} ${n === 1 ? "hour" : "hours"}`;
 
 /** A claim's state as whoever made it reads it. */
 function ClaimState({ c }: { c: OvertimeClaim }) {
-  if (c.status === "Waiting") return <Badge tone="accent">Waiting for your site manager</Badge>;
+  // With one phone for everyone (the main offering, no Projects), claims go to the office in Admin.
+  const office = !useAccess().apps.on("projects");
+  if (c.status === "Waiting") return <Badge tone="accent">{office ? "Waiting for the office" : "Waiting for your site manager"}</Badge>;
   if (c.status === "Approved")
     return (
       <span className="text-[0.93rem] text-ok">
@@ -140,6 +142,7 @@ function ClaimSheet({ me, day, date: start, onClose }: { me: Person; day: string
   const mineFirst = [...live].sort((a, b) => Number(db.assignments.some((x) => x.personId === me.id && x.projectId === b.id)) - Number(db.assignments.some((x) => x.personId === me.id && x.projectId === a.id)) || a.code.localeCompare(b.code));
   const site = live.find((p) => p.id === siteId);
   const manager = db.people.find((p) => p.id === site?.siteManagerId);
+  const office = !useAccess().apps.on("projects");
   return (
     <Dialog
       open
@@ -203,7 +206,7 @@ function ClaimSheet({ me, day, date: start, onClose }: { me: Person; day: string
           {(id) => <NumInput id={id} label="Extra hours" className="h-11 w-24" value={hours} onChange={setHours} />}
         </Field>
         <Field label="What was it for (optional)">{(id) => <input id={id} className="field h-11" value={note} maxLength={160} placeholder="Stayed on to finish the pour" onChange={(e) => setNote(e.target.value)} />}</Field>
-        <p className="text-[0.93rem] text-muted">{manager ? `${manager.name} gets this on the phone and says yes or no.` : "Your site manager says yes or no."} Once it is approved the hours go on your timesheet for that day.</p>
+        <p className="text-[0.93rem] text-muted">{office ? "A manager says yes or no in Admin." : manager ? `${manager.name} gets this on the phone and says yes or no.` : "Your site manager says yes or no."} Once it is approved the hours go on your timesheet for that day.</p>
         {error && (
           <p role="alert" className="text-[0.93rem] text-bad">
             {error}

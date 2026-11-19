@@ -7,7 +7,7 @@
  * director sees whenever the model cannot be reached. Text is in the small markdown Ask AI
  * uses (bold and links), so both versions are shown by the same code.
  */
-import type { Db } from "@/data/types";
+import type { Db, DepartmentKey } from "@/data/types";
 import { planClashes } from "./availability";
 import { invoiceNo } from "./billing";
 import { BLOCKING_CHECKS, blockText, bookingFor, planBlocks } from "./compliance";
@@ -33,6 +33,8 @@ export type OverviewOptions = {
   /** They check the week's hours before payroll, or export them (People, Payroll export). Left out, payroll is not mentioned. */
   checksPayroll?: boolean;
   exportsPayroll?: boolean;
+  /** The apps the firm has (19 Nov): anything about an app they do not have is left out. Missing means every app. */
+  apps?: (app: DepartmentKey) => boolean;
 };
 
 const WORDS = ["No", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten"];
@@ -52,6 +54,7 @@ export function ticketWords(name: string) {
 }
 
 export function recordsOverview(db: Db, today: string, o: OverviewOptions): Overview {
+  const has = o.apps ?? (() => true);
   const decisions: OverviewDecision[] = [];
   const facts: string[] = [];
   const project = (id: string | undefined | null) => db.projects.find((p) => p.id === id);
@@ -59,7 +62,7 @@ export function recordsOverview(db: Db, today: string, o: OverviewOptions): Over
   const liveIds = new Set(live.map((p) => p.id));
 
   // 1. A final account held on an extra that is waiting for approval.
-  for (const f of db.salesInvoices.filter((i) => i.status === "Held" && i.description === "Final account")) {
+  for (const f of has("projects") ? db.salesInvoices.filter((i) => i.status === "Held" && i.description === "Final account") : []) {
     const p = project(f.projectId);
     const a = db.approvals.find((x) => x.kind === "variation" && x.status === "Pending" && x.projectId === f.projectId);
     const v = db.variations.find((x) => x.id === a?.variationId);
@@ -78,7 +81,7 @@ export function recordsOverview(db: Db, today: string, o: OverviewOptions): Over
     .filter((i) => i.status === "Invoiced" && i.dueOn && i.dueOn < today)
     .map((i) => ({ i, days: daysBetween(i.dueOn!, today), client: db.clients.find((c) => c.id === i.clientId)?.name ?? "" }))
     .sort((a, b) => b.days - a.days);
-  if (late.length) {
+  if (late.length && has("invoicing")) {
     const names = late.slice(0, 2).map((x, n) => `[${x.client}](/invoicing/invoiced), ${x.days} days${n === 0 ? " late" : ""}`);
     const more = late.length > 2 ? `, and ${late.length - 2} more` : "";
     const listed = names.length === 2 && !more ? `${names[0]}, and ${names[1]}` : names.join(", ");
@@ -115,7 +118,7 @@ export function recordsOverview(db: Db, today: string, o: OverviewOptions): Over
     .filter((x) => x.projectId && liveIds.has(x.projectId))
     .flatMap((x) => x.renewals.filter((r) => BLOCKING_CHECKS.has(r.kind) && r.expires < today).map((r) => ({ x, r, days: daysBetween(r.expires, today) })))
     .sort((a, b) => b.days - a.days)[0];
-  if (plant) decisions.push({ text: `The [${plant.x.name.charAt(0).toLowerCase()}${plant.x.name.slice(1)}](/plant?item=${plant.x.id}) at ${project(plant.x.projectId)!.code} may not be used: its ${plant.r.kind.toLowerCase()} ran out ${plant.days} days ago.`, button: { label: "Open in Compliance", to: "/compliance/machinery" } });
+  if (plant && has("plant")) decisions.push({ text: `The [${plant.x.name.charAt(0).toLowerCase()}${plant.x.name.slice(1)}](/plant?item=${plant.x.id}) at ${project(plant.x.projectId)!.code} may not be used: its ${plant.r.kind.toLowerCase()} ran out ${plant.days} days ago.`, button: { label: "Open in Compliance", to: "/compliance/machinery" } });
 
   // 5. Next week: a double booking, or a project starting with nobody on it.
   const next = nextWorkWeek(today);
@@ -130,10 +133,11 @@ export function recordsOverview(db: Db, today: string, o: OverviewOptions): Over
     if (sites.length > 1) decisions.push({ text: `${clashText}: ${sites.map((id) => project(id)?.code ?? id).join(" and ")}. Next week cannot go to the sites until it is sorted.`, button: { label: "Open next week", to: "/schedule" } });
   }
 
-  // 6. Staff requests for the managing director's yes or no.
-  const q = directorQueue(db);
-  const waiting = q.leave.length + q.site.length + q.spend.length;
-  const parts = [q.leave.length && `${q.leave.length} for leave`, q.site.length && `${q.site.length} from the sites`, q.spend.length && `${q.spend.length} to spend money`].filter(Boolean);
+  // 6. Staff requests for the managing director's yes or no. With the phone's own (19 Nov):
+  // overtime claims, repairs reported and certificates to check.
+  const q = directorQueue(db, { crewToOffice: !has("projects") });
+  const waiting = q.leave.length + q.site.length + q.spend.length + q.claims.length + q.repairs.length + q.certs.length;
+  const parts = [q.leave.length && `${q.leave.length} for leave`, q.site.length && `${q.site.length} from the sites`, q.spend.length && `${q.spend.length} to spend money`, q.claims.length && `${q.claims.length} overtime ${q.claims.length === 1 ? "claim" : "claims"}`, q.repairs.length && `${q.repairs.length} ${q.repairs.length === 1 ? "repair" : "repairs"} reported`, q.certs.length && `${q.certs.length} ${q.certs.length === 1 ? "certificate" : "certificates"} to check`].filter(Boolean);
   if (o.answersRequests && waiting) decisions.push({ text: `${counted(waiting, "request")} wait for your yes or no: ${parts.join(", ")}.`, button: { label: "Open requests", to: "/admin" } });
 
   // Facts, in order of interest.
@@ -167,7 +171,7 @@ export function recordsOverview(db: Db, today: string, o: OverviewOptions): Over
     else if (also) facts.push(also.trim());
   }
 
-  if (o.seeMargins) {
+  if (o.seeMargins && has("sales")) {
     const thin = db.quotes
       .filter((x) => x.status === "Sent" || x.status === "Opened" || x.status === "Queried")
       .map((x) => ({ x, m: marginPct(quoteTotal(x.lines), costBreakdown(x.costing).total) ?? 100 }))
@@ -184,12 +188,18 @@ export function recordsOverview(db: Db, today: string, o: OverviewOptions): Over
   }
 
   const ready = db.salesInvoices.filter((i) => i.status === "To invoice");
-  if (ready.length) facts.push(`${counted(ready.length, "invoice")} ${ready.length === 1 ? "is" : "are"} [ready to go out](/invoicing)${o.seeValues ? `, ${o.money(ready.reduce((s, i) => s + i.net, 0))}` : ""}.`);
+  if (ready.length && has("invoicing")) facts.push(`${counted(ready.length, "invoice")} ${ready.length === 1 ? "is" : "are"} [ready to go out](/invoicing)${o.seeValues ? `, ${o.money(ready.reduce((s, i) => s + i.net, 0))}` : ""}.`);
 
   const asked = db.quotes.find((x) => x.status === "Queried");
-  if (asked) {
+  if (asked && has("sales")) {
     const c = db.clients.find((x) => x.id === asked.clientId);
     facts.push(`${c?.contactName ?? "A client"} asked about [${asked.ref}](/sales/quotes/${asked.ref}), ${asked.title.split(":")[0]}.`);
+  }
+
+  // Compliance coming up, when there is room: what runs out in the next 30 days.
+  if (has("compliance") && facts.length < 4) {
+    const soon = db.people.filter((p) => p.active).flatMap((p) => p.certs).filter((c) => c.expires >= today && daysBetween(today, c.expires) <= 30).length;
+    if (soon) facts.push(`${counted(soon, "ticket")} ${soon === 1 ? "runs" : "run"} out in the next 30 days: [see Compliance](/compliance?show=due).`);
   }
 
   return { decisions: decisions.slice(0, 3), facts: facts.slice(0, 4) };

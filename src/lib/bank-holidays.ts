@@ -121,3 +121,41 @@ export function restDaysBetween(list: BankHoliday[], from: string, to: string): 
 
 /** Which overtime rule a date falls under as a rest day, or nothing on a normal working day. */
 export const restDayKindOf = (list: BankHoliday[], date: string): RestDayKind | null => restDayKind(dayOfWeek(date), isBankHoliday(list, date));
+
+// ── Company holidays (19 Nov) ─────────────────────────────────────────────────
+// Admin, Bank holidays is now Company holidays: this year and next only, and a company closure
+// (Christmas closedown, say) added as a range, each working day in it a day the firm is shut.
+
+/** The working days of a closure from one date to another, leaving out any already on the list. */
+export function closureDays(list: BankHoliday[], from: string, to: string): string[] {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || to < from) return [];
+  const out: string[] = [];
+  for (let d = from; d <= to; d = addDays(d, 1)) if (!isWeekend(d) && !isBankHoliday(list, d)) out.push(d);
+  return out;
+}
+
+/** The years Company holidays shows: this one and the next (Oisin, 19 Nov: "remove past year"). */
+export const companyYears = (day: string) => [day.slice(0, 4), String(Number(day.slice(0, 4)) + 1)];
+
+export type HolidayRow = { kind: "day"; date: string; name: string } | { kind: "closure"; closure: string; name: string; from: string; to: string; days: number };
+
+/** One year's list as shown: single days, and each closure as one row from its first day to its last. */
+export function holidayRows(list: (BankHoliday & { closure?: string })[], year: string): HolidayRow[] {
+  const rows: HolidayRow[] = [];
+  const seen = new Map<string, Extract<HolidayRow, { kind: "closure" }>>();
+  for (const h of [...list].filter((x) => x.date.startsWith(year)).sort((a, b) => a.date.localeCompare(b.date))) {
+    if (!h.closure) rows.push({ kind: "day", date: h.date, name: h.name });
+    else {
+      const c = seen.get(h.closure);
+      if (c) {
+        c.to = h.date;
+        c.days += 1;
+      } else {
+        const row = { kind: "closure" as const, closure: h.closure, name: h.name, from: h.date, to: h.date, days: 1 };
+        seen.set(h.closure, row);
+        rows.push(row);
+      }
+    }
+  }
+  return rows;
+}

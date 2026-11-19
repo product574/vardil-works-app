@@ -163,7 +163,7 @@ def steps(page, ctx):
     check("Admin: the note is kept on a site request turned down", rq["decision"] == "Declined" and rq["declineNote"] == "Use the tower already on site", rq)
     main.get_by_role("button", name=re.compile("^Decline: .*drum mixer")).click(); page.wait_for_timeout(250)
     d = dlg(); d.get_by_label("Note (optional)").fill("Borrow the one from Dunmoy first"); d.get_by_role("button", name="Decline", exact=True).click(); page.wait_for_timeout(300)
-    main.locator("section", has_text="Reimbursements").get_by_role("button", name=re.compile("^Decline: reimbursement")).first.click(); page.wait_for_timeout(250)
+    main.locator("section", has=page.get_by_role("heading", name=re.compile(r"^Reimbursements \("))).get_by_role("button", name=re.compile("^Decline: reimbursement")).first.click(); page.wait_for_timeout(250)
     d = dlg(); d.get_by_label("Note (optional)").fill("No receipt with the claim"); d.get_by_role("button", name="Decline", exact=True).click(); page.wait_for_timeout(300)
     sp = data(page, "db.spendRequests.find(s => s.what.includes('drum mixer'))")
     ex = data(page, "db.expenses.find(x => x.status === 'Declined')")

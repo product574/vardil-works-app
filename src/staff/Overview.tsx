@@ -6,7 +6,7 @@ import { useData, usePrefs } from "@/data/store";
 import type { ID, RoleKey } from "@/data/types";
 import { Avatar, Button, PageBody, PageHead, Panel } from "@/ui";
 
-/** Vardil Works home: pick who to look at the demo as. Each pick drops the Vardil level, so what you see is what that person sees. */
+/** Vardil HQ home: pick who to look at the demo as. Each pick drops the Vardil level, so what you see is what that person sees. */
 export function Overview() {
   const access = useAccess();
   const navigate = useNavigate();
@@ -17,7 +17,7 @@ export function Overview() {
   if (!access.staffMode) return <Navigate to="/" replace />;
   return (
     <>
-      <PageHead title="Sign in as" note="Open the demo as any level, the way a client will see it. The strip at the top then takes you back here. Nobody below you can see it, or that you are here." />
+      <PageHead title="Sign in as" note="Open the demo as any level, the way a client will see it. With the package picked under Packages and access. The strip at the top then takes you back here. Nobody below you can see it, or that you are here." />
       <PageBody className="max-w-4xl">
         <Panel>
           <ul className="divide-y divide-line" aria-label="Levels you can sign in as">

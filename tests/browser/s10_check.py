@@ -173,7 +173,7 @@ def steps(page, ctx):
     go(page, "/admin/bank-holidays", "table")
     nextmon = data(page, "(() => { const d = new Date(day + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7) + 7); return d.toISOString().slice(0, 10) })()")
     down = data(page, f"db.plan.filter(p => p.date === '{nextmon}').length")
-    main.get_by_label("Date").fill(nextmon); main.get_by_label("Name").fill("Firm closed for the funeral"); main.get_by_role("button", name="Add bank holiday").click(); page.wait_for_timeout(400)
+    main.get_by_label("Date", exact=True).fill(nextmon); main.get_by_label("Name", exact=True).last.fill("Firm closed for the funeral"); main.get_by_role("button", name="Add day").click(); page.wait_for_timeout(400)
     check("Bank holiday: adding one for a day to come takes whoever was down off the plan, and says so", down > 0 and data(page, f"db.plan.filter(p => p.date === '{nextmon}').length") == 0 and f"{down} people were down for a normal day" in toast(page), toast(page))
     go(page, "/schedule", "table")
     cell = main.locator(f"[data-cell='C720 {nextmon}']")

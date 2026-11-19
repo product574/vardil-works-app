@@ -4,7 +4,8 @@
  * On top, "Needs a look": damage and defects, then vehicles whose driver has no driving check yet
  * today, once it is past 09:00 (src/lib/ops.ts). Each line opens the screen it belongs to.
  */
-import { Broadcast, CarProfile, ClipboardText, Clock, HandPalm, IdentificationCard, Image, PlusCircle, Receipt, WarningCircle } from "@phosphor-icons/react";
+import { Broadcast, CarProfile, ClipboardText, Clock, HandPalm, IdentificationCard, Image, PlusCircle, Receipt, WarningCircle, Wrench } from "@phosphor-icons/react";
+import { useAccess } from "@/data/access";
 import { type ReactNode, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { nowStamp } from "@/data/actions";
@@ -27,6 +28,8 @@ const FEED_ICON: Record<FeedKind, { icon: ReactNode; tone: string }> = {
   extra: { icon: <PlusCircle size={16} />, tone: "bg-warn-soft text-warn" },
   claim: { icon: <Clock size={16} />, tone: "bg-accent-soft text-accent-ink" },
   expense: { icon: <Receipt size={16} />, tone: "bg-accent-soft text-accent-ink" },
+  repair: { icon: <Wrench size={16} />, tone: "bg-bad-soft text-bad" },
+  cert: { icon: <IdentificationCard size={16} />, tone: "bg-accent-soft text-accent-ink" },
 };
 
 function FeedRow({ it, day }: { it: FeedItem; day: string }) {
@@ -63,6 +66,10 @@ export function OfficeFeed({ day }: { day: string }) {
   const db = useData((s) => s.db);
   const region = usePrefs((s) => s.brand.region);
   const now = useNow();
+  const apps = useAccess().apps;
+  // Driving checks, damage and licences are Fleet's; extras and photos are Projects' (19 Nov).
+  const fleet = apps.on("fleet");
+  const projectsOn = apps.on("projects");
   const since = `${addDays(day, -1)}T17:00`;
   const person = (id: string | null | undefined) => db.people.find((p) => p.id === id)?.name ?? "Someone";
   const code = (id: string | null | undefined) => db.projects.find((p) => p.id === id)?.code ?? "";
@@ -74,16 +81,18 @@ export function OfficeFeed({ day }: { day: string }) {
   const licences = db.people.flatMap((p) => (["driving", "cpc"] as const).flatMap((k) => (p.licences?.[k]?.fromPhoneAt ? [{ driverId: p.id, which: k, at: p.licences[k]!.fromPhoneAt!, expiryDate: dFull(p.licences[k]!.expiryDate) }] : [])));
   // Everything else the phones send, worded for the feed.
   const other: FeedItem[] = [
-    ...db.requests.filter((r) => r.createdAt >= since).map((r): FeedItem => ({ at: r.createdAt, kind: "request", title: `Request from ${r.requestedBy}${r.projectId ? `, ${code(r.projectId)}` : ""}`, detail: `${r.description}.${r.heldBy === "site" ? " With the site manager first." : ""}`, to: "/projects/requests" })),
-    ...db.variations.filter((v) => v.raisedAt >= since).map((v): FeedItem => ({ at: v.raisedAt, kind: "extra", title: `Extra work reported, ${code(v.projectId)}`, detail: `${v.description} ${person(v.raisedById)}.`, to: "/projects/extras" })),
-    ...db.overtimeClaims.filter((c) => c.createdAt >= since).map((c): FeedItem => ({ at: c.createdAt, kind: "claim", title: `Overtime claimed, ${person(c.personId)}`, detail: `${c.hours} hours on ${code(c.projectId)}, ${dShort(c.date)}. With the site manager.`, to: "/people/timesheet" })),
+    ...db.requests.filter((r) => r.createdAt >= since).map((r): FeedItem => ({ at: r.createdAt, kind: "request", title: `Request from ${r.requestedBy}${r.projectId ? `, ${code(r.projectId)}` : ""}`, detail: `${r.description}.${r.heldBy === "site" && projectsOn ? " With the site manager first." : ""}`, to: projectsOn ? "/projects/requests" : "/admin" })),
+    ...db.repairs.filter((r) => r.at >= since && r.status !== "Fixed").map((r): FeedItem => ({ at: r.at, kind: "repair", title: `Repair reported, ${r.item.name}`, detail: `${r.where}: ${r.what} ${person(r.personId)}.`, to: "/admin/repairs" })),
+    ...db.certSubmissions.filter((c) => c.sentAt >= since && c.status === "Waiting").map((c): FeedItem => ({ at: c.sentAt, kind: "cert", title: `Certificate sent, ${person(c.personId)}`, detail: `${c.name}, runs to ${dFull(c.expires)}. Waiting for a check.`, to: "/admin" })),
+    ...db.variations.filter((v) => projectsOn && v.raisedAt >= since).map((v): FeedItem => ({ at: v.raisedAt, kind: "extra", title: `Extra work reported, ${code(v.projectId)}`, detail: `${v.description} ${person(v.raisedById)}.`, to: "/projects/extras" })),
+    ...db.overtimeClaims.filter((c) => c.createdAt >= since).map((c): FeedItem => ({ at: c.createdAt, kind: "claim", title: `Overtime claimed, ${person(c.personId)}`, detail: `${c.hours} hours on ${code(c.projectId)}, ${dShort(c.date)}. ${projectsOn ? "With the site manager." : "Waiting in Admin."}`, to: projectsOn ? "/people/timesheet" : "/admin" })),
     ...db.expenses.filter((x) => x.createdAt >= since).map((x): FeedItem => ({ at: x.createdAt, kind: "expense", title: `Reimbursement claimed, ${person(x.personId)}`, detail: `${x.kind}, ${money2(x.amount, region)}. Waiting for the director.`, to: "/admin" })),
-    ...db.activity.filter((a) => a.what === "Added a photo" && a.at >= since).map((a): FeedItem => ({ at: a.at, kind: "photo", title: `Photo, ${a.target}`, detail: `${a.who}.`, to: "/files/photos" })),
+    ...db.activity.filter((a) => projectsOn && a.what === "Added a photo" && a.at >= since).map((a): FeedItem => ({ at: a.at, kind: "photo", title: `Photo, ${a.target}`, detail: `${a.who}.`, to: "/files/photos" })),
   ];
-  const items = officeFeed({ checks: db.vehicleChecks, damage: db.damageReports.filter((d) => d.status === "New"), licences, other, ...names }, since);
+  const items = officeFeed({ checks: fleet ? db.vehicleChecks : [], damage: fleet ? db.damageReports.filter((d) => d.status === "New") : [], licences: fleet ? licences : [], other, ...names }, since);
   // Every vehicle with a driver who is not on leave today is expected to have its check.
   const away = (id: string) => db.holidays.some((h) => h.personId === id && h.status === "Approved" && day >= h.from && day <= h.to);
-  const driving = db.vehicles.filter((v) => v.active && v.driverId && !away(v.driverId)).map((v) => ({ vehicleId: v.id, driverId: v.driverId!, site: siteOf(v.id) }));
+  const driving = db.vehicles.filter((v) => fleet && v.active && v.driverId && !away(v.driverId)).map((v) => ({ vehicleId: v.id, driverId: v.driverId!, site: siteOf(v.id) }));
   const look = needsLook(items, driving, { checks: db.vehicleChecks, ...names }, now);
   return (
     <section aria-label="What the office receives" className="w-full rounded-[10px] border border-line bg-surface">
@@ -115,7 +124,7 @@ export function OfficeFeed({ day }: { day: string }) {
           ))}
         </ul>
       )}
-      <p className="border-t border-line px-4 py-2 text-[0.87rem] text-muted">* yesterday evening. Driving checks are expected by 09:00 on every vehicle with a driver.</p>
+      <p className="border-t border-line px-4 py-2 text-[0.87rem] text-muted">* yesterday evening.{fleet ? " Driving checks are expected by 09:00 on every vehicle with a driver." : ""}</p>
     </section>
   );
 }

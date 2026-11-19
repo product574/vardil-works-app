@@ -19,7 +19,19 @@ const homeDept = (roleKey: string): DepartmentKey | undefined => {
   return DEPARTMENTS.find((d) => d.home.split("/")[1] === home)?.key;
 };
 // Settings and Profitability are the managing director's alone, so neither is offered to another level.
-const depts = DEPARTMENTS.filter((d) => d.key !== "settings" && d.key !== "profit");
+const allDepts = DEPARTMENTS.filter((d) => d.key !== "settings" && d.key !== "profit" && d.key !== "vardil");
+/**
+ * Only the apps the firm has (19 Nov, Oisin's pick: "hide them"); the rest are on Admin, Vardil
+ * Works. Permissions for an app they do not have go too.
+ */
+const PERM_APPS: Partial<Record<string, DepartmentKey[]>> = { Sales: ["sales"], Plant: ["plant", "fleet"], Invoicing: ["invoicing"] };
+function useOwned() {
+  const { apps } = useAccess();
+  return {
+    depts: allDepts.filter((d) => apps.on(d.key)),
+    perms: PERMISSIONS.filter((p) => !PERM_APPS[p.group] || PERM_APPS[p.group]!.some((a) => apps.on(a))),
+  };
+}
 
 /**
  * Who may open, see and do what. Two layers: a level (by role), then exceptions for one
@@ -74,6 +86,7 @@ function Label({ label, hint }: { label: string; hint?: string }) {
  * can be changed: each one in a light box is a checkbox. The managing director's column is fixed.
  */
 function ByRole() {
+  const { depts, perms: PERMISSIONS } = useOwned();
   const access = useData((s) => s.db.access);
   const people = useData((s) => s.db.people);
   const row = (role: string) => access.find((a) => a.id === role);
@@ -225,6 +238,7 @@ function ByPerson({ selected, onSelect }: { selected: string; onSelect: (id: str
 }
 
 function PersonAccessPanel({ person, row, over }: { person: Person; row: AccessRow | undefined; over: PersonAccess | undefined }) {
+  const { depts, perms: PERMISSIONS } = useOwned();
   const navigate = useNavigate();
   const signInAs = usePrefs((s) => s.signInAs);
   const level = levelOf(person) as Exclude<LevelKey, "md">;
