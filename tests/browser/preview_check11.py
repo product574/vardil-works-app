@@ -42,7 +42,7 @@ with sync_playwright() as p:
     page.keyboard.press("Escape"); page.wait_for_timeout(200)
     # The phones: Report damage, Send a licence, and what the office receives
     bar.get_by_role("link", name="Site phone").click(); page.wait_for_selector("text=What the office receives")
-    phone = page.get_by_label("Phone screen")
+    phone = page.get_by_label("Operative's phone", exact=True)
     if phone.get_by_role("tab", name="English").count(): phone.get_by_role("tab", name="English").click(); page.wait_for_timeout(200)
     phone.get_by_role("button", name=re.compile("^Report damage")).click(); page.wait_for_selector("dialog[open]")
     d = dlg()
