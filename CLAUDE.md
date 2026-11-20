@@ -63,6 +63,8 @@ send him a fresh zip first, or bring his changes across with care, so the two do
 This copy's own decisions from 18 Nov were numbered 64 to 118 on `invoicing-section` and
 clashed with the other branch's; they are now 130 to 184, in the same order.
 
+**Each client's own demo, 20 Nov:** decision 209, on the branch `client-workspaces` (not published): Vardil HQ, Clients keeps each client's named emails, apps, name, logo, colour, region and invoice paper on the server, writes Cloudflare's sign-in list itself and signs out anyone taken off. Set-up steps in README, "Clients and Cloudflare". See "Each client's own demo, 20 Nov" further down.
+
 **The main offering, 19 Nov:** decisions 198 to 208: Vardil HQ (our own level, staff only), the main offering package, one phone for everyone, client apps saved on the server, and Vardil Works in every client's Admin. Built on the branch `main-offering`; published on 19 Nov at Oisin's word ("publish it"): `invoicing-section` and his `main` fast-forwarded to 76ee96f, Cloudflare's build passed, and the artifact "Construction demo (Oisin's copy)" republished.
 
 **Round eleven, 18 Nov:** decisions 118 to 129. Fleet is now the Secure-All build's Fleet
@@ -415,6 +417,7 @@ the recommended answer unless it says otherwise):
 | 206 | Send the week | Schedule, Week ahead, Send the week: each person their own week (his pick), by email and WhatsApp, through what is connected in Admin, Connections (Gmail or Outlook, WhatsApp Business; a pretend sign-in in the demo, `connectEmail`, `connectWhatsApp`). Every message is shown before it goes, and filed as sent (`rosterMessages` in `src/lib/roster-send.ts`, `sendRoster`, `db.rosterSends`). Nothing leaves the browser in the demo |
 | 207 | Dashboard and Admin follow the apps | The dashboard shows Waiting for your yes or no (the same sections as Admin, Requests: leave, requests, overtime claims, repairs, certificates, reimbursements) when there are no drafts to approve, Compliance monitoring (four figures and what to see to first), the AI overview limited to the firm's apps (`apps` in `recordsOverview`), Ask AI for the managing director (his pick: both), and the firm at a glance only with more than one of its apps. Roles and access lists only the apps the firm has, and leaves out permissions for apps it does not have (his pick: hide them). Automations is a switch in Vardil HQ, off in the main offering (`NavItem.automations`). A sidebar item can belong to another app (`NavItem.app`) |
 | 208 | Vardil Works and Vardil HQ | Our staff tile is renamed Vardil HQ (his pick). Vardil Works is now the page every client has in Admin, System: announcements from Vardil (written in Vardil HQ, Announcements), then their apps, on, and the others, blurred with the switch off and "Ask about this app", which lands in Vardil HQ, App requests with their firm and email (his pick). Read-only: only Vardil switches apps (his pick) |
+| 209 | Each client's own demo | Oisin, 20 Nov: "group, like, say, Old Stone emails, Vardil emails, and other clients' emails ... so that when they sign on, they go on to their specific demo tailored to them ... in our Vardil HQ ... what apps are turned on for what people, and then also like their company logo, the format, the coloring". One address and one Cloudflare policy for everyone; Cloudflare only decides who gets in, the app decides which demo. Two rounds of question buttons; his picks: Vardil HQ keeps Cloudflare's list itself (one Access group, written whole from the database after every change, `server/cloudflare.ts`; the policy includes that group and "Emails ending in vardil.com"); named emails only, never a whole domain (`cleanEmail`); per client: name, logo, colour and region, and their invoice paper (not light or dark); the sample data stays ABC's records under their name; only Vardil sets the look (Settings, Branding and Region, and Invoicing, Invoice design, are read-only for them); someone taken off is off Cloudflare and signed out at once (Cloudflare's revoke_user); staff get "Open their demo"; the logo is uploaded (shrunk to a JPEG in the page, kept in D1, served by `functions/api/logo/[id].ts` to the firm's own people and staff only). Built: `firms` and `firm_emails` tables (one email belongs to one client; a Vardil address is refused), `ClientLook` and the rules in `src/lib/apps.ts`, Vardil HQ, Clients (a list with Cloudflare's state and "Update Cloudflare now", and a page per client at `/vardil/clients/<id>` with Who signs in, Apps, How it looks, Their invoices and a preview), `applyLook` in `src/app/workspace.ts` (run in main.tsx once staff status is known; fresh sample data only when the region, trading name or invented email domain differ: `lookKey`, `matchDataToBrand`), the staff strip naming the client. The sample staff's email domain comes from the client's name (`sampleDomain`: oldstone.example), never a real one. The first version's `clients` table (keyed by email or domain) is no longer read: anything saved there must be added again. Set-up in README, "Clients and Cloudflare" |
 
 Standing preferences (these come from Aodhan and are not optional):
 
@@ -1783,6 +1786,69 @@ certificates), written by Claude.
 - The Admin sidebar count for Requests does not move a crew request still with a site manager into
   the office's count when Projects is off (the Requests page and the dashboard do).
 - With one phone, a request made on a day the person is on no site goes in as a general request.
+
+## Each client's own demo, 20 Nov (on the co-founder's copy)
+
+Branch `client-workspaces`, from `invoicing-section` at 68c0942. Decision 209.
+
+**How it fits together.** Everyone signs in at one address behind one Cloudflare Access
+application. Its policy lets in two things: the group "Demo clients, kept by Vardil HQ" and
+"Emails ending in vardil.com". After sign-in, `/api/workspace` reads the email from the signed
+Access token and finds the firm whose list holds it (`ownClient`); the page puts that firm's apps
+and look on the demo before anything is drawn. Vardil staff see every client in Vardil HQ,
+Clients, and can open any client's demo as that client sees it (`usePrefs.viewClient`; the staff
+strip says whose demo it is, and Back to Vardil HQ closes it).
+
+**Cloudflare.** `server/cloudflare.ts` writes the whole group from `firm_emails` after any change
+to who signs in (GET the group for its name, PUT the full include list; an empty list holds
+`nobody@clients.invalid`, since Cloudflare refuses an empty group), then signs out each email that
+left every client's list. Needs `CF_API_TOKEN` (secret; permission "Access: Organizations,
+Identity Providers, and Groups: Edit"), `CF_ACCOUNT_ID` and `CF_ACCESS_GROUP_ID`. Without them the
+save still stands and Vardil HQ says the list is kept by hand. A failed update is remembered
+(`vardil_settings`: `cf_error`, `cf_synced_at`) and "Update Cloudflare now" writes it again.
+
+**Tested.** 727 automated tests in 69 files (new: `server/cloudflare.test.ts`; `src/lib/apps.test.ts`
+rewritten for named emails, looks, logos and the new actions). Both type checks. New
+`tests/functions/clients_check.py`, 68 checks: the real functions in Cloudflare's local runtime
+(Wrangler 4.156.0, local D1) against `stub_cloudflare.py` for Cloudflare's API and Access keys,
+then the hosted build in Chrome. On the server: no firm for someone on no list; staff only; a
+domain or a Vardil address refused; one email on one client only; Cloudflare's group written with
+the token and its own name kept; the client gets their apps, look and invoice paper and nobody
+else's emails; the logo saved, refused as SVG or too big, served as a PNG with nosniff to the
+firm's people and staff and to nobody else; a failed Cloudflare update kept and put right by
+"Update Cloudflare now"; someone taken off signed out; a change that leaves the list alone not
+touching Cloudflare. In Chrome: the Clients list and Cloudflare's state; a new client through the
+screen (names following the client name, a bad email pointed out, emails in lower case, Main
+offering, Slate green, the UK, a logo upload shown in the preview, an IBAN), saved with only the
+changed invoice field kept; Open their demo (their name in the strip, their colour, logo, apps
+and pounds; Settings, Branding read-only; still there after a reload); Back to Vardil HQ in
+Vardil's colour; taking someone off signs them out; the client signing in (logo on the sign-in
+page, no Vardil HQ, their colour and apps, Settings read-only with their full name, Vardil HQ's
+address refused); someone on no list gets ABC in steel blue; the client page fits a phone;
+removing a client signs out their people; no errors in the page. Found while testing: on a full
+page load the look was put on before the staff files had loaded, so a staff member's open client
+demo fell back to ABC on reload (now `applyLook` runs in main.tsx after both checks). Not tested:
+the real Cloudflare API (the group's PUT and revoke_user were written from Cloudflare's API
+reference and checked against a stand-in), the dashboard wording in the README's steps, a real
+phone, Safari and Firefox.
+
+The browser suites, run in full on Friday 20 Nov: all 28 run, 1,668 checks. Five checks fail, and
+fail the same way on 68c0942 from before this work, so they come from the demo's day, not this
+change: `m5_check` and `s7_check` (on a Friday a remittance advice is the newest email in Sent, so
+the suites' "reply first" step clicks the wrong row), `review_check` (Month ahead: today counted
+from the plan), `s9_check` (My week shows the Saturday) and `pay_check`'s Back step (flaky before).
+`main_offering_check.py`: 45 of 45, three runs; its first check now waits for the role page, as
+looking straight away failed now and then on the old code too. `csp_check.py`: 78 screens, no
+violations.
+
+**Known gaps.**
+
+- Five browser checks fail on a Friday (above); the suites, not the app, need a fix.
+- With the UK region the sample data still names Irish tickets (Safe Pass) in places. This was so
+  before (Settings, Region) and shows more now that a client can be set to the UK.
+- The logo is kept as a JPEG, so a logo with a clear background gets a white one.
+- Packages and access (this browser's package for a pitch) is separate from the clients: it
+  changes only the browser it is set in.
 
 ## Build status
 

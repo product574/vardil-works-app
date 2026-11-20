@@ -1,5 +1,6 @@
 // Makes a throwaway signing key and Cloudflare Access style tokens for fn_check.py.
-// Prints JSON: { jwks, tokens: { admin, other, wrongAud, expired } }.
+// Prints JSON: { jwks, tokens: { admin, other, wrongAud, expired }, byEmail: { <email>: token } }.
+// Optional fourth argument: more emails, separated by commas, each given a token in byEmail.
 const team = process.argv[2] ?? "test.cloudflareaccess.com";
 const aud = process.argv[3] ?? "test-aud";
 const enc = (o) => Buffer.from(JSON.stringify(o)).toString("base64url");
@@ -12,6 +13,7 @@ const sign = async (payload) => {
   return `${head}.${body}.${Buffer.from(sig).toString("base64url")}`;
 };
 const now = Math.floor(Date.now() / 1000);
+const extra = (process.argv[4] ?? "").split(",").map((e) => e.trim()).filter(Boolean);
 const base = { iss: `https://${team}`, aud: [aud], iat: now, exp: now + 3600, sub: "user-1", type: "app" };
 console.log(JSON.stringify({
   jwks: { keys: [{ kid: "test-key-1", kty: "RSA", alg: "RS256", use: "sig", n: jwk.n, e: jwk.e }] },
@@ -22,4 +24,5 @@ console.log(JSON.stringify({
     wrongAud: await sign({ ...base, aud: ["another-app"], email: "admin@vardil.example" }),
     expired: await sign({ ...base, exp: now - 10, email: "admin@vardil.example" }),
   },
+  byEmail: Object.fromEntries(await Promise.all(extra.map(async (email, i) => [email, await sign({ ...base, email, sub: `user-x${i}` })]))),
 }));

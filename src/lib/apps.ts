@@ -1,3 +1,5 @@
+import type { Region } from "../config/brand";
+
 /**
  * The apps Vardil sells, the packages they come in, and how one client's set of apps is found
  * (19 Nov, Oisin: "for us we are pitching to clients and these are our main offering").
@@ -60,25 +62,106 @@ export const SOLD_APPS: AppKey[] = APP_KEYS.filter((k) => k !== "settings");
 
 export const isAppKey = (x: unknown): x is AppKey => typeof x === "string" && (APP_KEYS as readonly string[]).includes(x);
 
-/** A client's own setting, as Vardil HQ saves it. */
-export type ClientConfig = { key: string; name: string; apps: AppKey[]; automations: boolean; updatedAt?: string; updatedBy?: string };
-
 /**
- * Who a setting is for: one email ("susan@ardmullen.ie"), or every email at a firm
- * ("@ardmullen.ie"). Lower case, trimmed. Null when it is neither.
+ * How a client's demo looks (20 Nov, Oisin: "their company logo, the format, the colouring"):
+ * their names, colour and region, and their invoice paper. Set in Vardil HQ only; the client
+ * sees it and cannot change it. The logo is kept apart on the server (`logoUrl` on the config).
  */
-export function clientKey(raw: string): string | null {
+export type ClientLook = {
+  brandName: string;
+  legalName: string;
+  tagline: string;
+  accent: string;
+  region: Region;
+  /** What is printed on their invoices (the fields of InvoiceDesign in lib/invoices). Anything left out takes the region's starting value. */
+  design: LookDesign;
+};
+
+const DESIGN_TEXT = ["address", "phone", "email", "vatNumber", "companyNumber", "bankName", "iban", "bic", "terms", "footer"] as const;
+const DESIGN_SWITCH = ["showLogo", "showBank", "showSite", "rule"] as const;
+/** Written out here rather than imported, so the server's own build needs nothing from the page's. */
+export type LookDesign = Partial<Record<(typeof DESIGN_TEXT)[number], string> & Record<(typeof DESIGN_SWITCH)[number], boolean>>;
+
+/** A client as Vardil HQ saves it: who signs in (named emails only), their apps and their look. */
+export type ClientConfig = {
+  id: string;
+  name: string;
+  emails: string[];
+  apps: AppKey[];
+  automations: boolean;
+  look: ClientLook;
+  /** Where their logo is served from, or "" for none. */
+  logoUrl: string;
+  updatedAt?: string;
+  updatedBy?: string;
+};
+
+/** What a signed-in client is sent about their own firm. */
+export type OwnConfig = Pick<ClientConfig, "id" | "name" | "apps" | "automations" | "look" | "logoUrl">;
+
+/** One sign-in email, lower case and trimmed, or null. A firm's whole domain is not accepted (decision 209: named emails only). */
+export function cleanEmail(raw: string): string | null {
   const s = raw.trim().toLowerCase();
-  if (/^@[a-z0-9.-]+\.[a-z]{2,}$/.test(s)) return s;
-  if (/^[^\s@]+@[a-z0-9.-]+\.[a-z]{2,}$/.test(s)) return s;
-  return null;
+  return /^[^\s@,;<>"]+@[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}$/.test(s) && s.length <= 200 ? s : null;
 }
 
-/** The setting that applies to someone signing in: their own email first, then their firm's. */
-export function configFor<T extends { key: string }>(email: string, rows: T[]): T | null {
+/** Emails typed into a box, one a line or separated by commas or spaces: the good ones and the ones that are not emails. */
+export function splitEmails(raw: string): { good: string[]; bad: string[] } {
+  const good: string[] = [];
+  const bad: string[] = [];
+  for (const part of raw.split(/[\s,;]+/).map((x) => x.trim()).filter(Boolean)) {
+    const e = cleanEmail(part);
+    if (e) {
+      if (!good.includes(e)) good.push(e);
+    } else bad.push(part);
+  }
+  return { good, bad };
+}
+
+/** The client whose list holds this email. */
+export function clientOf<T extends { emails: string[] }>(email: string, rows: T[]): T | null {
   const e = email.trim().toLowerCase();
-  const domain = e.slice(e.lastIndexOf("@"));
-  return rows.find((r) => r.key === e) ?? rows.find((r) => r.key === domain) ?? null;
+  return rows.find((r) => r.emails.includes(e)) ?? null;
+}
+
+/** A starting look for a new client: their name, Vardil's colour, Ireland. */
+export function starterLook(name: string): ClientLook {
+  const n = name.trim();
+  return { brandName: n, legalName: n ? `${n} Ltd` : "", tagline: "", accent: "#4682B4", region: "IE", design: {} };
+}
+
+/** The invented email domain the sample staff use in a client's demo: from their name, never a real address. */
+export function sampleDomain(brandName: string): string {
+  const slug = brandName.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "").slice(0, 30);
+  return `${slug || "firm"}.example`;
+}
+
+/** The brand fields a client's look sets. */
+export function brandOfLook(look: ClientLook, logoUrl: string) {
+  return { brandName: look.brandName, legalName: look.legalName, tagline: look.tagline, accent: look.accent, region: look.region, logoUrl, emailDomain: sampleDomain(look.brandName) };
+}
+
+/** Reads a look sent to the server: every field checked, anything else dropped. */
+export function readLook(raw: unknown): ClientLook | null {
+  if (!isObj(raw)) return null;
+  const brandName = text(raw.brandName, 60);
+  if (!brandName) return null;
+  const accent = typeof raw.accent === "string" && /^#[0-9a-f]{6}$/i.test(raw.accent) ? raw.accent : null;
+  if (!accent) return null;
+  const region: Region | null = raw.region === "IE" || raw.region === "UK" ? raw.region : null;
+  if (!region) return null;
+  const design: LookDesign = {};
+  const d = isObj(raw.design) ? raw.design : {};
+  for (const k of DESIGN_TEXT) if (typeof d[k] === "string") design[k] = multiline(d[k], 300);
+  for (const k of DESIGN_SWITCH) if (typeof d[k] === "boolean") design[k] = d[k];
+  return { brandName, legalName: text(raw.legalName, 120) || brandName, tagline: text(raw.tagline, 120), accent: accent.toLowerCase(), region, design };
+}
+
+/** A logo as sent from Vardil HQ: a JPEG or PNG picture, already shrunk in the page. */
+export const LOGO_MAX = 220_000;
+export function readLogo(raw: unknown): string | null {
+  if (typeof raw !== "string" || raw.length > LOGO_MAX) return null;
+  return /^data:image\/(jpeg|png);base64,[a-z0-9+/]+=*$/i.test(raw) ? raw : null;
 }
 
 /** The apps switched off, given the ones a client has. The always-on apps never are. */
@@ -95,36 +178,58 @@ export function packageOf(on: readonly AppKey[], automations: boolean): Package 
 // ── What Vardil HQ may send to the server ─────────────────────────────────────
 
 export type WorkspaceAction =
-  | { action: "set_client"; key: string; name: string; apps: AppKey[]; automations: boolean }
-  | { action: "delete_client"; key: string }
+  | { action: "set_client"; id: string | null; name: string; emails: string[]; apps: AppKey[]; automations: boolean; look: ClientLook }
+  | { action: "delete_client"; id: string }
+  | { action: "set_logo"; id: string; logo: string | null }
+  | { action: "sync_cloudflare" }
   | { action: "announce"; title: string; body: string }
   | { action: "remove_announcement"; id: string }
   | { action: "handle_request"; id: string }
   | { action: "ask_app"; app: AppKey; firm: string };
 
 /** Actions only Vardil staff may take. Asking about an app is open to every signed-in client. */
-export const STAFF_ACTIONS = new Set(["set_client", "delete_client", "announce", "remove_announcement", "handle_request"]);
+export const STAFF_ACTIONS = new Set(["set_client", "delete_client", "set_logo", "sync_cloudflare", "announce", "remove_announcement", "handle_request"]);
+
+/** The most people one client can have signed in. */
+export const MAX_EMAILS = 200;
 
 const isObj = (x: unknown): x is Record<string, unknown> => typeof x === "object" && x !== null && !Array.isArray(x);
-const text = (x: unknown, max: number) => (typeof x === "string" ? x.replace(/[\u0000-\u0008\u000b-\u001f]/g, "").trim().slice(0, max) : "");
+const text = (x: unknown, max: number) => (typeof x === "string" ? x.replace(/[\u0000-\u001f]/g, "").trim().slice(0, max) : "");
+const multiline = (x: unknown, max: number) => (typeof x === "string" ? x.replace(/[\u0000-\u0009\u000b-\u001f]/g, "").trim().slice(0, max) : "");
+const isId = (x: unknown): x is string => typeof x === "string" && /^[a-z0-9-]{4,64}$/i.test(x);
 
 /** Reads what was sent into a known shape, or says why it was refused. Nothing else reaches the database. */
 export function readWorkspaceAction(raw: unknown): { ok: true; act: WorkspaceAction } | { ok: false; reason: string } {
   if (!isObj(raw)) return { ok: false, reason: "not an object" };
   switch (raw.action) {
     case "set_client": {
-      const key = clientKey(typeof raw.key === "string" ? raw.key : "");
-      if (!key) return { ok: false, reason: "key" };
+      const id = raw.id == null ? null : isId(raw.id) ? raw.id : undefined;
+      if (id === undefined) return { ok: false, reason: "id" };
       const name = text(raw.name, 120);
       if (!name) return { ok: false, reason: "name" };
+      if (!Array.isArray(raw.emails) || raw.emails.length > MAX_EMAILS) return { ok: false, reason: "emails" };
+      const emails: string[] = [];
+      for (const e of raw.emails) {
+        const c = typeof e === "string" ? cleanEmail(e) : null;
+        if (!c) return { ok: false, reason: "emails" };
+        if (!emails.includes(c)) emails.push(c);
+      }
       if (!Array.isArray(raw.apps) || !raw.apps.every(isAppKey)) return { ok: false, reason: "apps" };
       const apps = [...new Set([...(raw.apps as AppKey[]), ...ALWAYS_ON])];
-      return { ok: true, act: { action: "set_client", key, name, apps, automations: raw.automations === true } };
+      const look = readLook(raw.look);
+      if (!look) return { ok: false, reason: "look" };
+      return { ok: true, act: { action: "set_client", id, name, emails, apps, automations: raw.automations === true, look } };
     }
-    case "delete_client": {
-      const key = clientKey(typeof raw.key === "string" ? raw.key : "");
-      return key ? { ok: true, act: { action: "delete_client", key } } : { ok: false, reason: "key" };
+    case "delete_client":
+      return isId(raw.id) ? { ok: true, act: { action: "delete_client", id: raw.id } } : { ok: false, reason: "id" };
+    case "set_logo": {
+      if (!isId(raw.id)) return { ok: false, reason: "id" };
+      if (raw.logo === null || raw.logo === "") return { ok: true, act: { action: "set_logo", id: raw.id, logo: null } };
+      const logo = readLogo(raw.logo);
+      return logo ? { ok: true, act: { action: "set_logo", id: raw.id, logo } } : { ok: false, reason: "logo" };
     }
+    case "sync_cloudflare":
+      return { ok: true, act: { action: "sync_cloudflare" } };
     case "announce": {
       const title = text(raw.title, 120);
       const body = text(raw.body, 2000);
@@ -134,7 +239,7 @@ export function readWorkspaceAction(raw: unknown): { ok: true; act: WorkspaceAct
     case "remove_announcement":
     case "handle_request": {
       const id = text(raw.id, 64);
-      if (!/^[a-z0-9-]{4,64}$/i.test(id)) return { ok: false, reason: "id" };
+      if (!isId(id)) return { ok: false, reason: "id" };
       return { ok: true, act: { action: raw.action, id } };
     }
     case "ask_app": {
@@ -145,6 +250,11 @@ export function readWorkspaceAction(raw: unknown): { ok: true; act: WorkspaceAct
       return { ok: false, reason: "action" };
   }
 }
+
+/** What happened on Cloudflare after a change in Vardil HQ. */
+export type CloudflareResult = { linked: boolean; ok: boolean; message: string; signedOut?: string[] };
+/** Cloudflare's state as Vardil HQ shows it. */
+export type CloudflareState = { linked: boolean; syncedAt: string | null; error: string | null; count: number };
 
 export type Announcement = { id: string; title: string; body: string; at: string; by: string };
 export type AppRequest = { id: string; email: string; firm: string; app: AppKey; at: string; handledAt?: string; handledBy?: string };

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { authMode } from "@/app/auth";
+import { useClientLook } from "@/app/workspace";
 import { DEFAULT_BRAND, DEMO_BUILT_BY, DEMO_BUILT_BY_URL } from "@/config/brand";
 import { useData, usePrefs } from "@/data/store";
 import { PACKAGE } from "@/lib/accounts-export";
@@ -9,7 +10,7 @@ import { Button, cx, Dialog, Fact, Field, PageBody, PageHead, Panel, Section, Se
 import { PickFile } from "@/ui/files";
 import { toast } from "@/ui/toast";
 
-const COLOURS: [string, string][] = [
+export const COLOURS: [string, string][] = [
   ["#4682B4", "Steel blue"],
   ["#2F6F5E", "Slate green"],
   ["#8A4B2A", "Brick"],
@@ -20,6 +21,41 @@ const COLOURS: [string, string][] = [
 
 /** Re-brand the demo for a prospect: name, colour and logo. Applies straight away and survives a data reset. */
 export function Branding() {
+  const look = useClientLook();
+  return look.set ? <SetByVardil title="Branding" staff={look.staff} /> : <BrandingEditor />;
+}
+
+/**
+ * A client's name, logo, colour and region are set by Vardil in Vardil HQ (20 Nov, decision 209),
+ * so every person at the firm sees the same. Settings shows them, and says who changes them.
+ */
+function SetByVardil({ title, staff }: { title: string; staff: boolean }) {
+  const brand = usePrefs((s) => s.brand);
+  return (
+    <>
+      <PageHead title={title} note={staff ? "Set for this client in Vardil HQ, Clients. Change it there." : "Your name, logo, colour and region are set up for you by Vardil, so everyone at the firm sees the same. To change any of them, contact us."} />
+      <PageBody className="grid max-w-3xl gap-5">
+        <Panel className="overflow-hidden">
+          <div className="border-b border-line px-4 py-3">{brand.logoUrl ? <img src={brand.logoUrl} alt={brand.brandName} className="h-8 w-auto" /> : <p className="font-display text-[1.4rem] leading-none font-semibold text-accent-ink">{brand.brandName}</p>}</div>
+          <dl className="px-4 py-3">
+            <Fact label="Short name">{brand.brandName}</Fact>
+            <Fact label="Full trading name">{brand.legalName}</Fact>
+            {brand.tagline && <Fact label="Line under the name">{brand.tagline}</Fact>}
+            <Fact label="Colour">
+              <span className="inline-flex items-center gap-2">
+                <span className="size-4 rounded-full" style={{ background: brand.accent }} />
+                <span className="font-mono">{brand.accent}</span>
+              </span>
+            </Fact>
+            <Fact label="Region">{brand.region === "UK" ? "United Kingdom" : "Ireland"}</Fact>
+          </dl>
+        </Panel>
+      </PageBody>
+    </>
+  );
+}
+
+function BrandingEditor() {
   const brand = usePrefs((s) => s.brand);
   const edits = usePrefs((s) => s.brandEdits);
   const setBrand = usePrefs((s) => s.setBrand);
@@ -113,6 +149,11 @@ export function Branding() {
 
 /** Ireland or the UK. The accounts package is always Sage (18 Nov). */
 export function RegionAccounts() {
+  const look = useClientLook();
+  return look.set ? <SetByVardil title="Region" staff={look.staff} /> : <RegionEditor />;
+}
+
+function RegionEditor() {
   const brand = usePrefs((s) => s.brand);
   const setBrand = usePrefs((s) => s.setBrand);
   const reset = useData((s) => s.reset);

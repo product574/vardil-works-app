@@ -10,6 +10,6 @@ export const department: Department = {
   key: "vardil", label: "Vardil HQ", icon: Crown, home: "/vardil", inBar: true,
   groups: [
     { label: "This demo", items: [{ to: "/vardil", label: "Sign in as", end: true }, { to: "/vardil/features", label: "Packages and access" }, { to: "/vardil/demo", label: "Demo tools" }] },
-    { label: "Our clients", items: [{ to: "/vardil/clients", label: "Client apps" }, { to: "/vardil/announcements", label: "Announcements" }, { to: "/vardil/requests", label: "App requests" }] },
+    { label: "Our clients", items: [{ to: "/vardil/clients", label: "Clients" }, { to: "/vardil/announcements", label: "Announcements" }, { to: "/vardil/requests", label: "App requests" }] },
   ],
 };

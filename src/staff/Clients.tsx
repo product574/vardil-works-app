@@ -1,48 +1,86 @@
 import { useState } from "react";
-import { Navigate } from "react-router-dom";
-import { sendWorkspace, useAnnouncements, useWorkspace } from "@/app/workspace";
+import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
+import { openClientDemo, sendWorkspace, useAnnouncements, useWorkspace } from "@/app/workspace";
 import { useAccess } from "@/data/access";
 import { usePrefs } from "@/data/store";
-import { ALWAYS_ON, APP_INFO, type AppKey, appsOff, clientKey, type ClientConfig, PACKAGES, packageOf, SOLD_APPS } from "@/lib/apps";
+import { ALWAYS_ON, APP_INFO, packageOf } from "@/lib/apps";
 import { dFull, plural } from "@/lib/format";
-import { Badge, Button, Dialog, Empty, Field, PageBody, PageHead, Panel, Section, Tick } from "@/ui";
+import { Badge, Button, cx, Empty, Field, PageBody, PageHead, Panel, Section } from "@/ui";
 import { toast } from "@/ui/toast";
 
 /** Shown where something can only be saved on the hosted demo. */
 function NeedsServer() {
   return (
     <p className="rounded-md bg-warn-soft px-3 py-2.5 text-warn">
-      This copy has no server, so a client's apps cannot be saved here for them to see on their own computer. On the hosted demo they are saved on Cloudflare. For a pitch in this browser, use Packages and access.
+      This copy has no server, so clients cannot be saved here for them to see on their own computer. On the hosted demo they are saved on Cloudflare. For a pitch in this browser, use Packages and access, and Settings, Branding.
     </p>
   );
 }
 
+/** Where Cloudflare's sign-in list stands, and a button to write it again. */
+function CloudflarePanel() {
+  const cf = useWorkspace((s) => s.cloudflare);
+  const [busy, setBusy] = useState(false);
+  if (!cf) return null;
+  if (!cf.linked)
+    return (
+      <Panel className="px-4 py-3">
+        <p className="font-medium">Cloudflare is not linked yet</p>
+        <p className="text-muted">Clients are saved here, but Cloudflare's list of who may sign in has to be kept by hand until the three settings in the README ("Clients and Cloudflare") are added to the project. Until then, add each client's emails to the Demo access policy yourself.</p>
+      </Panel>
+    );
+  return (
+    <Panel className="flex flex-wrap items-center gap-3 px-4 py-3">
+      <p className="min-w-0 flex-1 basis-72">
+        <span className="block font-medium">{cf.error ? "Cloudflare's list is out of date" : "Cloudflare's list is up to date"}</span>
+        <span className={cx("block", cf.error ? "text-warn" : "text-muted")}>
+          {cf.error ? `The last update failed: ${cf.error}` : `${plural(cf.count, "client email")} can sign in.${cf.syncedAt ? ` Last updated ${dFull(cf.syncedAt.slice(0, 10))} at ${cf.syncedAt.slice(11, 16)}.` : ""}`}
+        </span>
+      </p>
+      <Button
+        disabled={busy}
+        onClick={async () => {
+          setBusy(true);
+          const r = await sendWorkspace({ action: "sync_cloudflare" });
+          setBusy(false);
+          toast(r.error ?? r.cloudflare?.message ?? "Done");
+        }}
+      >
+        Update Cloudflare now
+      </Button>
+    </Panel>
+  );
+}
+
 /**
- * Client apps (19 Nov): which apps each client has, saved on the server by their sign-in email or
- * their firm's domain. What is ticked here is what they see, on any computer; the rest shows on
- * their Vardil Works page as apps they could add.
+ * Clients (19 Nov, made fuller on 20 Nov): every client, who signs in to their demo, their apps
+ * and their look. Each is saved on the server and opens on a page of its own.
  */
 export function ClientApps() {
   const access = useAccess();
   const online = useWorkspace((s) => s.online);
   const clients = useWorkspace((s) => s.clients);
-  const setPackage = usePrefs((s) => s.setPackage);
-  const [edit, setEdit] = useState<ClientConfig | "new" | null>(null);
+  const setRole = usePrefs((s) => s.setRole);
+  const navigate = useNavigate();
+  const note = (useLocation().state as { note?: { tone: "ok" | "warn"; text: string } | null } | null)?.note ?? null;
   if (!access.staffMode) return <Navigate to="/" replace />;
   return (
     <>
-      <PageHead title="Client apps" note="Which apps each client has. They see these on any computer when they sign in; everything else shows on their Vardil Works page as apps they could add." actions={online && <Button variant="primary" onClick={() => setEdit("new")}>Add a client</Button>} />
+      <PageHead title="Clients" note="Each client's demo: who signs in, which apps they have, and their name, logo and colour. They see exactly this on any computer; everything else shows on their Vardil Works page as apps they could add." actions={online && <Button variant="primary" onClick={() => navigate("/vardil/clients/new")}>Add a client</Button>} />
       <PageBody className="grid max-w-5xl gap-4">
         {!online && <NeedsServer />}
+        {note && <p role="status" className={cx("rounded-md px-3 py-2.5", note.tone === "ok" ? "bg-ok-soft text-ok" : "bg-warn-soft text-warn")}>{note.text}</p>}
+        {online && <CloudflarePanel />}
         <Panel>
           {clients.length === 0 ? (
-            <Empty title="No clients set up yet">A client with nothing saved sees every app. Add one to give them a package.</Empty>
+            <Empty title="No clients set up yet">Someone who signs in and is on no client's list sees the standard demo, ABC Construction with every app. Add a client to give them their own.</Empty>
           ) : (
-            <table className="tbl" aria-label="Clients and their apps">
+            <table className="tbl" aria-label="Clients">
               <thead>
                 <tr>
                   <th>Client</th>
-                  <th>Package</th>
+                  <th>People</th>
+                  <th>Apps</th>
                   <th>Changed</th>
                   <th />
                 </tr>
@@ -51,18 +89,24 @@ export function ClientApps() {
                 {clients.map((c) => {
                   const pkg = packageOf(c.apps, c.automations);
                   return (
-                    <tr key={c.key}>
+                    <tr key={c.id}>
                       <td>
-                        <span className="font-medium">{c.name}</span>
-                        <span className="block text-[0.87rem] text-muted">{c.key.startsWith("@") ? `Everyone at ${c.key.slice(1)}` : c.key}</span>
+                        <span className="flex items-center gap-2.5">
+                          {c.logoUrl ? <img src={c.logoUrl} alt="" className="h-7 w-12 shrink-0 object-contain" /> : <span aria-hidden className="size-4 shrink-0 rounded-full" style={{ background: c.look.accent }} />}
+                          <span className="min-w-0">
+                            <Link to={`/vardil/clients/${c.id}`} className="font-medium text-accent-ink hover:underline">{c.name}</Link>
+                            <span className="block text-[0.87rem] text-muted">{c.look.region === "UK" ? "United Kingdom" : "Ireland"}</span>
+                          </span>
+                        </span>
                       </td>
+                      <td>{c.emails.length ? plural(c.emails.length, "person", "people") : <span className="text-warn">Nobody yet</span>}</td>
                       <td>{pkg ? pkg.name : `${plural(c.apps.filter((a) => !ALWAYS_ON.includes(a)).length, "app")} of their own`}</td>
                       <td className="text-[0.93rem] text-muted">{c.updatedAt ? `${dFull(c.updatedAt.slice(0, 10))}, ${c.updatedBy}` : ""}</td>
                       <td className="text-right whitespace-nowrap">
-                        <Button size="sm" variant="ghost" onClick={() => { setPackage(appsOff(c.apps), c.automations); toast(`${c.name}'s apps are on in this browser`); }}>
-                          Show in this browser
+                        <Button size="sm" variant="ghost" onClick={() => { openClientDemo(c.id); setRole("md"); navigate("/"); }}>
+                          Open their demo
                         </Button>{" "}
-                        <Button size="sm" onClick={() => setEdit(c)}>
+                        <Button size="sm" onClick={() => navigate(`/vardil/clients/${c.id}`)}>
                           Change
                         </Button>
                       </td>
@@ -74,87 +118,7 @@ export function ClientApps() {
           )}
         </Panel>
       </PageBody>
-      {edit && <ClientDialog client={edit === "new" ? null : edit} onClose={() => setEdit(null)} />}
     </>
-  );
-}
-
-function ClientDialog({ client, onClose }: { client: ClientConfig | null; onClose: () => void }) {
-  const [key, setKey] = useState(client?.key ?? "");
-  const [name, setName] = useState(client?.name ?? "");
-  const [apps, setApps] = useState<AppKey[]>(client?.apps ?? PACKAGES[0]!.apps);
-  const [automations, setAutomations] = useState(client?.automations ?? false);
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-  const k = clientKey(key);
-  const toggle = (a: AppKey) => setApps((s) => (s.includes(a) ? s.filter((x) => x !== a) : [...s, a]));
-  const save = async () => {
-    if (!k) return setError("Type their email, or @ and their firm's domain for everyone there.");
-    if (!name.trim()) return setError("Give the client a name.");
-    setBusy(true);
-    const problem = await sendWorkspace({ action: "set_client", key: k, name: name.trim(), apps, automations });
-    setBusy(false);
-    if (problem) return setError(problem);
-    toast(`${name.trim()} saved`);
-    onClose();
-  };
-  return (
-    <Dialog
-      open
-      onClose={onClose}
-      title={client ? `Apps for ${client.name}` : "Add a client"}
-      footer={
-        <>
-          {client && (
-            <Button
-              variant="ghost"
-              className="mr-auto"
-              onClick={async () => {
-                const problem = await sendWorkspace({ action: "delete_client", key: client.key });
-                if (problem) return setError(problem);
-                toast(`${client.name} removed. They see every app again`);
-                onClose();
-              }}
-            >
-              Remove
-            </Button>
-          )}
-          <Button onClick={onClose}>Cancel</Button>
-          <Button variant="primary" disabled={busy} onClick={() => void save()}>
-            Save
-          </Button>
-        </>
-      }
-    >
-      <div className="grid gap-3">
-        <Field label="Client name">{(id) => <input id={id} className="field" value={name} onChange={(e) => setName(e.target.value)} placeholder="Oldstone Conservation" />}</Field>
-        <Field label="Their sign-in email, or @ and the firm's domain">{(id) => <input id={id} className="field" value={key} disabled={!!client} onChange={(e) => setKey(e.target.value)} placeholder="@oldstone.ie" />}</Field>
-        <div className="flex flex-wrap gap-2">
-          {PACKAGES.map((p) => (
-            <Button key={p.key} size="sm" onClick={() => { setApps(p.apps); setAutomations(p.automations); }}>
-              {p.name}
-            </Button>
-          ))}
-        </div>
-        <ul className="grid gap-1 sm:grid-cols-2" aria-label="Apps">
-          {SOLD_APPS.map((a) => (
-            <li key={a} className="flex items-center gap-2">
-              <Tick on={ALWAYS_ON.includes(a) || apps.includes(a)} label={APP_INFO[a].name} locked={ALWAYS_ON.includes(a)} onChange={() => toggle(a)} />
-              <span>{APP_INFO[a].name}</span>
-            </li>
-          ))}
-          <li className="flex items-center gap-2">
-            <Tick on={automations} label="Automations in Admin" onChange={() => setAutomations((v) => !v)} />
-            <span>Automations in Admin</span>
-          </li>
-        </ul>
-        {error && (
-          <p role="alert" className="text-bad">
-            {error}
-          </p>
-        )}
-      </div>
-    </Dialog>
   );
 }
 
@@ -172,8 +136,8 @@ export function Announcements() {
   const publish = async () => {
     if (!title.trim() || !body.trim()) return setError("Give it a heading and a few words.");
     if (online) {
-      const problem = await sendWorkspace({ action: "announce", title: title.trim(), body: body.trim() });
-      if (problem) return setError(problem);
+      const { error } = await sendWorkspace({ action: "announce", title: title.trim(), body: body.trim() });
+      if (error) return setError(error);
     } else addLocal({ id: `local-${Date.now()}`, title: title.trim(), body: body.trim(), at: new Date().toISOString(), by: "Vardil" });
     toast(online ? "Published to every client" : "Published in this browser");
     setTitle("");
@@ -216,8 +180,8 @@ export function Announcements() {
                       variant="ghost"
                       onClick={async () => {
                         if (online) {
-                          const problem = await sendWorkspace({ action: "remove_announcement", id: a.id });
-                          if (problem) return toast(problem);
+                          const { error } = await sendWorkspace({ action: "remove_announcement", id: a.id });
+                          if (error) return toast(error);
                         } else removeLocal(a.id);
                         toast("Announcement taken down");
                       }}
@@ -279,8 +243,8 @@ export function AppRequests() {
                           size="sm"
                           onClick={async () => {
                             if (online) {
-                              const problem = await sendWorkspace({ action: "handle_request", id: r.id });
-                              if (problem) return toast(problem);
+                              const { error } = await sendWorkspace({ action: "handle_request", id: r.id });
+                              if (error) return toast(error);
                             } else handleLocal(r.id, "Vardil");
                             toast("Marked as followed up");
                           }}

@@ -345,7 +345,8 @@ Admin: our announcements, and their apps with the ones they could add.
 
 1. The Pages project's build command must be `npm run build:cloudflare` (it includes the staff files).
 2. The site's own Access application (the one covering the whole address) must let in Vardil staff:
-   add an Include rule "Emails ending in" `vardil.com` to its policy, next to the prospects' emails.
+   add an Include rule "Emails ending in" `vardil.com` to its policy, next to the clients' group
+   (see "Clients and Cloudflare" below).
 3. Add a second application: Zero Trust > Access controls > Applications > Add an application >
    Self-hosted. Name "Vardil HQ files". Add the same hostname with the path `staff/*`
    (and again for the pages.dev address if staff use it). Policy: a new reusable policy
@@ -366,12 +367,53 @@ Admin: our announcements, and their apps with the ones they could add.
 - Signed in with a Vardil email: "Who are you signing in as?" starts with Vardil HQ.
 - In a private window with a client's email: no Vardil HQ line; opening
   `/staff/ready.html` directly stops at Cloudflare's "you do not have access" page.
-- Vardil HQ, Client apps: add the client's email (or `@` and their domain) with the Main
-  offering. Signed in as that client in a private window, the bar shows only those apps, and
-  Admin, Vardil Works shows the rest blurred.
+- Vardil HQ, Clients: add a client with one named email and the Main offering. Signed in as that
+  person in a private window, the demo carries their name, logo and colour, the bar shows only
+  their apps, and Admin, Vardil Works shows the rest blurred.
 - The first time a staff browser opens the demo after this is set up, it may pass once through
   `/staff/ready.html` and land back on the role page. That is Cloudflare signing it in to the
   staff folder.
+
+### Clients and Cloudflare (20 Nov 2026)
+
+Every client signs in at the same address. Cloudflare only decides who may get in; which demo
+they see (their apps, name, logo, colour, region and invoice paper) is decided by the app, from
+the client's record in Vardil HQ, Clients. A client is a list of named emails: never a whole
+domain. Someone signed in who is on no client's list sees the standard demo, ABC Construction.
+
+Vardil HQ keeps Cloudflare's list itself. Every save in Clients writes the whole list again, and
+anyone taken off is signed out at once. Set it up once:
+
+1. **The group.** Zero Trust > Access controls > Reusable components > Groups (called "Access
+   groups" in some versions) > Add a group. Name it `Demo clients, kept by Vardil HQ`. Add one
+   Include rule, Emails, with any address (it is replaced on the first save). Save, then copy the
+   group's ID from its address bar or its details.
+2. **The policy.** Open the reusable policy the demo uses (Demo access). Its Include rules should
+   be: Access groups `Demo clients, kept by Vardil HQ`, and Emails ending in `vardil.com` (staff).
+   Take the old one-by-one client emails out of it once they are in Vardil HQ.
+3. **A key for Vardil HQ.** My Profile > API Tokens > Create Token > Create Custom Token. Name
+   `Vardil HQ clients`. Permissions: Account, `Access: Organizations, Identity Providers, and
+   Groups`, Edit. Account resources: Include, the Vardil account only. Create, and copy the token
+   (it is shown once).
+4. **The settings.** Workers & Pages > the project > Settings > Variables and Secrets, for
+   Production and Preview: `CF_API_TOKEN` as a Secret (the token), `CF_ACCOUNT_ID` (the account
+   ID, on the account's home page) and `CF_ACCESS_GROUP_ID` (from step 1) as plain text. Then
+   redeploy (Deployments > the latest > Retry deployment).
+5. **Check it.** Vardil HQ, Clients says "Cloudflare's list is up to date". Add a client with your
+   own spare email, save, and the group in Cloudflare lists it. Take it off, save, and that email
+   is signed out.
+
+Until the three settings are there, Vardil HQ still saves clients and their look, says
+"Cloudflare is not linked yet", and their emails are added to the policy by hand. If an update
+fails (Cloudflare down, a wrong key), the save still stands, the Clients page says so, and
+"Update Cloudflare now" writes the list again.
+
+What Vardil HQ sets for each client, and they cannot change: the people who sign in; their apps;
+their short and full names, the line under the name, their colour and logo (PNG, JPEG or SVG,
+kept on the server as a picture); Ireland or the UK; and what their invoices carry. Their sample
+projects and people stay ABC's invented ones. Each person's clicks stay in their own browser.
+"Open their demo" on a client shows staff exactly what that client sees, with the staff strip on
+top to come back.
 
 On your own computer, put `VITE_STAFF=1` in `.env.local` to see it with `npm run dev`. Never set it
 for `npm run build:preview`: that file can be opened by anyone it is shared with.

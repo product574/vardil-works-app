@@ -28,8 +28,8 @@ export function VardilWorks() {
   const already = (a: AppKey) => asked.includes(a) || localRequests.some((r) => r.app === a && !r.handledAt);
   const ask = async (a: AppKey) => {
     if (online) {
-      const problem = await sendWorkspace({ action: "ask_app", app: a, firm: brand.legalName });
-      if (problem) return toast(problem);
+      const { error } = await sendWorkspace({ action: "ask_app", app: a, firm: brand.legalName });
+      if (error) return toast(error);
     } else addLocal({ id: `ask-${Date.now()}`, email, firm: brand.legalName, app: a, at: new Date().toISOString() });
     setAsked((s) => [...s, a]);
     toast(`Thanks. Vardil will be in touch about ${APP_INFO[a].name}`);

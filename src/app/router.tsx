@@ -196,6 +196,7 @@ export const router = create([
           staffScreen("vardil/features", (m) => m.Features),
           staffScreen("vardil/demo", (m) => m.DemoTools),
           staffScreen("vardil/clients", (m) => m.ClientApps),
+          staffScreen("vardil/clients/:id", (m) => m.ClientPage),
           staffScreen("vardil/announcements", (m) => m.Announcements),
           staffScreen("vardil/requests", (m) => m.AppRequests),
           { path: "*", element: <NotFound /> },

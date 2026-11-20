@@ -1,5 +1,6 @@
 import { Crown } from "@phosphor-icons/react";
 import { useNavigate } from "react-router-dom";
+import { openClientDemo, useWorkspace } from "@/app/workspace";
 import { useAccess } from "@/data/access";
 import { roleDef } from "@/data/roles";
 import { usePrefs, useData } from "@/data/store";
@@ -16,6 +17,8 @@ export function StaffBar() {
   const setStaffMode = usePrefs((s) => s.setStaffMode);
   const people = useData((s) => s.db.people);
   const navigate = useNavigate();
+  const viewClient = usePrefs((s) => s.viewClient);
+  const client = useWorkspace((s) => s.clients.find((c) => c.id === viewClient));
   const def = roleDef(role);
   if (access.staffMode || !def) return null;
   const who = people.find((p) => p.id === access.personId)?.name;
@@ -23,16 +26,19 @@ export function StaffBar() {
     <div role="region" aria-label="Vardil HQ" className="flex min-h-10 items-center gap-3 border-b border-line bg-accent-soft px-4 py-1 text-[0.93rem]">
       <Crown size={18} className="shrink-0 text-accent-ink" />
       <p className="min-w-0 flex-1">
+        {client && <span className="font-medium">{client.name}'s demo. </span>}
         <span className="font-medium">Viewing as {def.title}</span>
         {who && <span>, {who}</span>}
-        <span className="hidden text-muted sm:inline">. This is what a client sees, with your changes applied. Only you can see this strip.</span>
+        <span className="hidden text-muted sm:inline">{client ? ". Exactly what their people see. Only you can see this strip." : ". This is what a client sees, with your changes applied. Only you can see this strip."}</span>
       </p>
       <Button
         size="sm"
         onClick={() => {
+          const back = viewClient;
+          openClientDemo(null);
           setRole("md");
           setStaffMode(true);
-          navigate("/vardil");
+          navigate(back ? `/vardil/clients/${back}` : "/vardil");
         }}
       >
         Back to Vardil HQ
@@ -49,6 +55,7 @@ export function StaffRoleEntry({ onPick }: { onPick: () => void }) {
     <button
       type="button"
       onClick={() => {
+        openClientDemo(null);
         setRole("md");
         setStaffMode(true);
         onPick();

@@ -90,6 +90,17 @@ type PrefsState = {
   /** On a copy with no server: announcements written in Vardil HQ and "Ask about this app" requests, kept in this browser. */
   localAnnouncements: Announcement[];
   localAppRequests: AppRequest[];
+  /**
+   * A client's look as Vardil HQ saved it (20 Nov), set from the server on each load and never
+   * kept in the browser. While it is set it wins over Settings, Branding and Invoice design,
+   * which the client cannot change.
+   */
+  clientBrand: Partial<Brand> | null;
+  clientDesign: Partial<InvoiceDesign> | null;
+  /** Vardil staff only: the client whose demo they opened from Vardil HQ, Clients. */
+  viewClient: string | null;
+  setClientLook: (brand: Partial<Brand> | null, design: Partial<InvoiceDesign> | null) => void;
+  setViewClient: (id: string | null) => void;
   setAutomationsOff: (off: boolean) => void;
   /** Apply a package: everything it does not include is switched off for the whole demo. */
   setPackage: (off: DepartmentKey[], automations: boolean) => void;
@@ -131,6 +142,11 @@ export const usePrefs = create<PrefsState>()(
       automationsOff: false,
       localAnnouncements: [],
       localAppRequests: [],
+      clientBrand: null,
+      clientDesign: null,
+      viewClient: null,
+      setClientLook: (clientBrand, clientDesign) => set((s) => ({ clientBrand, clientDesign, brand: { ...DEFAULT_BRAND, ...s.brandEdits, ...(clientBrand ?? {}) } })),
+      setViewClient: (viewClient) => set({ viewClient }),
       setAutomationsOff: (automationsOff) => set({ automationsOff }),
       setPackage: (companyOff, automations) => set({ companyOff, automationsOff: !automations }),
       addLocalAnnouncement: (a) => set((s) => ({ localAnnouncements: [a, ...s.localAnnouncements] })),
@@ -148,8 +164,8 @@ export const usePrefs = create<PrefsState>()(
       resetInvoiceDesign: () => set({ invoiceDesignEdits: {} }),
       setInvoiceEmail: (invoiceEmail) => set({ invoiceEmail }),
       setTheme: (theme) => set({ theme }),
-      setBrand: (b) => set((s) => ({ brandEdits: { ...s.brandEdits, ...b }, brand: { ...DEFAULT_BRAND, ...s.brandEdits, ...b } })),
-      resetBrand: () => set({ brandEdits: {}, brand: DEFAULT_BRAND }),
+      setBrand: (b) => set((s) => ({ brandEdits: { ...s.brandEdits, ...b }, brand: { ...DEFAULT_BRAND, ...s.brandEdits, ...b, ...(s.clientBrand ?? {}) } })),
+      resetBrand: () => set((s) => ({ brandEdits: {}, brand: { ...DEFAULT_BRAND, ...(s.clientBrand ?? {}) } })),
       // Signing in as any level, or out, ends Vardil Works mode: staff come back to it from the strip at the top.
       setRole: (role) => set({ role, asPersonId: null, staffMode: false }),
       signInAs: (role, asPersonId) => set({ role, asPersonId, staffMode: false }),
@@ -162,7 +178,7 @@ export const usePrefs = create<PrefsState>()(
       storage: safeStorage,
       // Only live edits are saved, so changing src/config/brand.ts reaches every browser,
       // including ones that have opened an earlier version of the demo.
-      partialize: (s) => ({ theme: s.theme, brandEdits: s.brandEdits, role: s.role, asPersonId: s.asPersonId, staffMode: s.staffMode, companyOff: s.companyOff, automationsOff: s.automationsOff, localAnnouncements: s.localAnnouncements, localAppRequests: s.localAppRequests, mdOverride: s.mdOverride, askAiOff: s.askAiOff, operativeId: s.operativeId, portalClientId: s.portalClientId, invoiceDesignEdits: s.invoiceDesignEdits, invoiceEmail: s.invoiceEmail }),
+      partialize: (s) => ({ theme: s.theme, brandEdits: s.brandEdits, role: s.role, asPersonId: s.asPersonId, staffMode: s.staffMode, companyOff: s.companyOff, automationsOff: s.automationsOff, localAnnouncements: s.localAnnouncements, localAppRequests: s.localAppRequests, mdOverride: s.mdOverride, askAiOff: s.askAiOff, viewClient: s.viewClient, operativeId: s.operativeId, portalClientId: s.portalClientId, invoiceDesignEdits: s.invoiceDesignEdits, invoiceEmail: s.invoiceEmail }),
       // Version 1 saved the whole brand, which froze the old defaults in place. Drop it, keep the rest.
       migrate: (saved, version) => {
         const s = (saved ?? {}) as Record<string, unknown>;
@@ -186,14 +202,19 @@ export const usePrefs = create<PrefsState>()(
 type DataState = {
   /** The demo's "today" (the latest working day). Every screen uses this, never the clock. */
   day: string;
+  /** The region, trading name and email domain the sample data was written for (`lookKey`). */
+  look: string;
   db: Db;
   mutate: (fn: (db: Db) => void) => void;
   reset: () => void;
 };
 
+/** What in the brand the sample data is written with: a change to any of these needs fresh sample data. */
+export const lookKey = (b: Pick<Brand, "region" | "legalName" | "emailDomain">) => `${b.region}|${b.legalName}|${b.emailDomain}`;
+
 function freshSeed() {
   const brand = usePrefs.getState().brand;
-  return buildSeed(dublinToday(), { emailDomain: brand.emailDomain, vatPct: REGION[brand.region].vatPct, region: brand.region, legalName: brand.legalName });
+  return { ...buildSeed(dublinToday(), { emailDomain: brand.emailDomain, vatPct: REGION[brand.region].vatPct, region: brand.region, legalName: brand.legalName }), look: lookKey(brand) };
 }
 
 export const useData = create<DataState>()(
@@ -210,17 +231,23 @@ export const useData = create<DataState>()(
       name: "cod.data",
       version: DATA_VERSION,
       storage: safeStorage,
-      partialize: (s) => ({ day: s.day, db: s.db }),
+      partialize: (s) => ({ day: s.day, look: s.look, db: s.db }),
       // Sample data is disposable: a version bump simply reseeds.
       migrate: () => freshSeed(),
       // Saved data from an earlier day is stale ("on site today" would be wrong), so reseed.
       merge: (saved, current) => {
         const s = saved as Partial<DataState> | undefined;
-        return s?.db && s.day === demoDay(dublinToday()) ? { ...current, day: s.day, db: s.db } : current;
+        // Data saved before 20 Nov carries no look: it was written for this browser's own brand.
+        return s?.db && s.day === demoDay(dublinToday()) ? { ...current, day: s.day, look: s.look ?? lookKey(usePrefs.getState().brand), db: s.db } : current;
       },
     },
   ),
 );
+
+/** After a client's look is applied: fresh sample data if it was written for another region or name. */
+export function matchDataToBrand() {
+  if (useData.getState().look !== lookKey(usePrefs.getState().brand)) useData.getState().reset();
+}
 
 /** Read from the sample database: `const projects = useDb((db) => db.projects)`. */
 export function useDb<T>(select: (db: Db) => T): T {
@@ -233,7 +260,8 @@ export function useInvoiceDesign(): InvoiceDesign {
   const region = usePrefs((s) => s.brand.region);
   const domain = usePrefs((s) => s.brand.emailDomain);
   const edits = usePrefs((s) => s.invoiceDesignEdits);
-  return { ...defaultDesign(region, domain), ...edits };
+  const client = usePrefs((s) => s.clientDesign);
+  return { ...defaultDesign(region, domain), ...(client ?? edits) };
 }
 /** The wording of the email that carries an invoice. */
 export const useInvoiceEmail = (): EmailTemplate => usePrefs((s) => s.invoiceEmail) ?? DEFAULT_EMAIL;

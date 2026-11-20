@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { useClientLook } from "@/app/workspace";
 import { actorName } from "@/data/actions";
 import { useInvoiceDesign, useInvoiceEmail, usePrefs } from "@/data/store";
 import { invoiceNo } from "@/lib/billing";
@@ -30,7 +31,10 @@ const SHOWS: [keyof Pick<InvoiceDesign, "showLogo" | "showBank" | "showSite" | "
  * drawn from the same design.
  */
 export function InvoiceDesignPage() {
-  const { canEdit } = useInv();
+  const { canEdit: may } = useInv();
+  // A client's invoice paper is set by Vardil in Vardil HQ (20 Nov), and shown here as it is.
+  const look = useClientLook();
+  const canEdit = may && !look.set;
   const design = useInvoiceDesign();
   const set = usePrefs((s) => s.setInvoiceDesign);
   const reset = usePrefs((s) => s.resetInvoiceDesign);
@@ -53,7 +57,7 @@ export function InvoiceDesignPage() {
     <>
       <PageHead
         title="Invoice design"
-        note="What is printed on every invoice you send. Changes show on the right as you type and apply to every invoice from now on, on screen, in the client's portal and in the PDF."
+        note={look.set ? (look.staff ? "Set for this client in Vardil HQ, Clients. Change it there." : "What is printed on every invoice you send. It is set up for you by Vardil: to change anything on it, contact us.") : "What is printed on every invoice you send. Changes show on the right as you type and apply to every invoice from now on, on screen, in the client's portal and in the PDF."}
         actions={
           <>
             {canEdit && changed && (

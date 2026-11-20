@@ -14,7 +14,10 @@ with sync_playwright() as p:
     errs=[]; pg.on("pageerror", lambda e: errs.append(str(e)))
     pg.on("console", lambda m: errs.append(m.text) if m.type=="error" else None)
     pg.goto(B+"/sign-in"); pg.fill("#username","demo"); pg.fill("#password","demo"); pg.click("button[type=submit]"); pg.wait_for_url("**/who")
-    ok("role page shows Vardil HQ", pg.get_by_text("Vardil HQ", exact=True).is_visible())
+    # Wait for the role page to be drawn: looking straight away failed now and then.
+    try: pg.get_by_text("Vardil HQ", exact=True).wait_for(timeout=5000); seen=True
+    except Exception: seen=False
+    ok("role page shows Vardil HQ", seen)
     pg.get_by_text("Vardil HQ", exact=True).click(); pg.wait_for_url("**/vardil")
     pg.goto(B+"/vardil/features"); pg.wait_for_timeout(400)
     pg.get_by_role("button", name="Use main offering").click(); pg.wait_for_timeout(300)

@@ -9,3 +9,4 @@ export { Overview } from "./Overview";
 export { Features } from "./Features";
 export { DemoTools } from "./DemoTools";
 export { Announcements, AppRequests, ClientApps } from "./Clients";
+export { ClientPage } from "./ClientPage";
