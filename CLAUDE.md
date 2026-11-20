@@ -30,8 +30,9 @@ further down. The preview is a private Claude artifact, "Vardil Works master dem
 4b5930f4-1ab3-4776-b06e-d39091e3dc72, https://claude.ai/artifact/AJeong6GJsrZs9kQaQrpJ5),
 rebuilt with `npm run build:preview` and republished with `publish_files` after each change
 (sign in with demo / demo; downloads do nothing inside the artifact's frame). Cloudflare comes
-later (decision 229). `main` here is the exact copy of the construction demo (97d8255); the
-restructure is on the branch `master-demo-structure`, to go into `main` at Oisin's word.
+later (decision 229). The restructure was built on the branch `master-demo-structure` and moved
+into `main` on 20 Nov at Oisin's word ("yes push to github"); work on a new branch from `main`
+for each round, as before.
 
 ## Start here (handed over 16 Nov 2026)
 
@@ -1967,7 +1968,8 @@ to All my sites, an operative's photo and extra work, Send a licence with Fleet.
 
 ## The master demo, 20 Nov (decisions 214 to 229)
 
-Branch `master-demo-structure`, from 97d8255. DATA_VERSION 27.
+Built on the branch `master-demo-structure`, from 97d8255; in `main` since 20 Nov at Oisin's word.
+DATA_VERSION 27.
 
 **Built.**
 
