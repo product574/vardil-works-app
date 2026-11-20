@@ -63,7 +63,7 @@ send him a fresh zip first, or bring his changes across with care, so the two do
 This copy's own decisions from 18 Nov were numbered 64 to 118 on `invoicing-section` and
 clashed with the other branch's; they are now 130 to 184, in the same order.
 
-**Each client's own demo, 20 Nov:** decisions 209 and 210, on the branch `client-workspaces` (not published): Vardil HQ, Clients keeps each client's named emails, apps, name, logo, colour, region and invoice paper on the server, writes Cloudflare's sign-in list itself and signs out anyone taken off. Set-up steps in README, "Clients and Cloudflare". See "Each client's own demo, 20 Nov" further down.
+**Each client's own demo, 20 Nov:** decisions 209 and 210, on the branch `client-workspaces`, published on 20 Nov at Oisin's word (`invoicing-section` and his `main` at 9f6d7d5, the artifact republished): Vardil HQ, Clients keeps each client's named emails, apps, name, logo, colour, region and invoice paper on the server, writes Cloudflare's sign-in list itself and signs out anyone taken off. Set-up steps in README, "Clients and Cloudflare". See "Each client's own demo, 20 Nov" further down.
 
 **The main offering, 19 Nov:** decisions 198 to 208: Vardil HQ (our own level, staff only), the main offering package, one phone for everyone, client apps saved on the server, and Vardil Works in every client's Admin. Built on the branch `main-offering`; published on 19 Nov at Oisin's word ("publish it"): `invoicing-section` and his `main` fast-forwarded to 76ee96f, Cloudflare's build passed, and the artifact "Construction demo (Oisin's copy)" republished.
 
@@ -1858,6 +1858,8 @@ Majella then seeing only "This demo has ended". New unit tests: `server/alerts.t
 Found while testing: the page's fire-and-forget POST left its answer unread, which keeps the
 request open in the browser (`note` now reads it). 737 automated tests. Not tested: the real
 Email Service and the real Cloudflare API.
+
+**Set up on Oisin's Pages project (vardil-works-construction), 20 Nov:** the D1 database `vardil-works-demo` bound as `DB` (Production and Preview); `ACCESS_AUD` set to the AUD tag of the site's own Access application (`7f1ec796...`; the first try held the Vardil HQ files tag, `2e622f19...`, and every sign-in was refused, which is why `/api/workspace` now answers a refused GET with `why`: `no_token`, `other_team`, `other_application` with the token's `aud`, `expired` or `signature`); a second Access application, Vardil HQ files, on `vardil-works-construction.pages.dev/staff/*` and `*.vardil-works-construction.pages.dev/staff/*` with the policy Vardil staff (Emails ending in @vardil.com), One-time PIN, path cookie, HttpOnly, SameSite Lax. The site's own application uses the policy Construction Demo. Not set up: the group and API token that let Vardil HQ keep Cloudflare's list (until then client emails go on Construction Demo by hand), and the sign-in email (Email Sending needs the Workers Paid plan, a decision for Aodhan). Checked on the preview in Oisin's Chrome: Vardil HQ, Clients reads the server; a test client, Test Firm (Main offering, amber, a logo), opens as itself, stays after a reload, and its Branding is read-only. Test Firm is in the shared database, so it shows on the live site too until removed.
 
 **Known gaps.**
 
