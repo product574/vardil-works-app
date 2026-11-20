@@ -29,10 +29,10 @@ describe("what a move on the sales board does to the records", () => {
   });
 
   it("pulling a sent quote back makes it a draft again, out of the client's sight, until it is sent", () => {
-    const q = db().quotes.find((x) => x.status === "Opened" && x.enquiryId)!;
+    const q = db().quotes.find((x) => x.status === "Sent" && x.enquiryId && x.chasedAt)!;
     quoteBackToDraft(q.id);
     const after = db().quotes.find((x) => x.id === q.id)!;
-    expect([after.status, after.sentAt, after.openedAt, after.chasedAt]).toEqual(["Draft", undefined, undefined, undefined]);
+    expect([after.status, after.sentAt, after.chasedAt]).toEqual(["Draft", undefined, undefined]);
     expect(db().enquiries.find((x) => x.id === q.enquiryId)?.status).toBe("Logged");
     sendQuote(q.id);
     expect(db().quotes.find((x) => x.id === q.id)?.status).toBe("Sent");

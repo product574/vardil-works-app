@@ -242,7 +242,7 @@ export function WeekAhead() {
 
 /**
  * Send the week (Oisin, 19 Nov: "connected to email/WhatsApp"): each person their own week, by
- * email and by WhatsApp, through what is connected in Admin, Connections. Every message is shown
+ * email and by WhatsApp, from the mailbox and number Vardil set up for the firm. Every message is shown
  * before it goes. In the demo nothing leaves the browser; the messages are filed as sent.
  */
 function SendWeekDialog({ db, week, onClose }: { db: Db; week: string[]; onClose: () => void }) {
@@ -279,10 +279,7 @@ function SendWeekDialog({ db, week, onClose }: { db: Db; week: string[]; onClose
     >
       {blocker ? (
         <p className="rounded-md bg-warn-soft px-3 py-2.5 text-warn">
-          {blocker}{" "}
-          <Link to="/admin/connections" className="font-medium underline underline-offset-2">
-            Open Connections
-          </Link>
+          {blocker}
         </p>
       ) : messages.length === 0 ? (
         <p className="text-muted">Nobody is planned this week yet. Plan the week, then send it.</p>
@@ -319,7 +316,10 @@ function SendWeekDialog({ db, week, onClose }: { db: Db; week: string[]; onClose
           )}
         </div>
       )}
-      <p className="mt-3 text-[0.93rem] text-muted">In this demo nothing leaves the browser: the messages are filed as sent.</p>
+      <p className="mt-3 text-[0.93rem] text-muted">
+        {!blocker && `Sent from ${[db.connections.email && `the mailbox ${db.connections.email.account}`, db.connections.whatsapp && `the WhatsApp number ${db.connections.whatsapp.number}`].filter(Boolean).join(" and ")}, set up for your firm by Vardil. `}
+        In this demo nothing leaves the browser: the messages are filed as sent.
+      </p>
     </Dialog>
   );
 }

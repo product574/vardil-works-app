@@ -33,7 +33,6 @@ export function portalFeed(db: Db, today: string, limit = 5): FeedItem[] {
     if (!c) continue;
     const who = `${c.contactName}, ${c.name}`;
     const to = `/sales/quotes/${q.ref}`;
-    if (q.status === "Opened" && q.openedAt) out.push({ at: q.openedAt, party: "client", who, text: `Opened quote ${q.ref}, ${q.title}. No answer yet.`, to });
     if (q.status === "Queried" && q.respondedAt) out.push({ at: q.respondedAt, party: "client", who, text: `Asked about quote ${q.ref}: "${firstSentence(q.query ?? "a question")}"`, to });
     if (q.status === "Accepted" && q.respondedAt) out.push({ at: q.respondedAt, party: "client", who, text: `Accepted quote ${q.ref}${q.poNumber ? ` with purchase order ${q.poNumber}` : ""}.`, to });
     if (q.status === "Declined" && q.respondedAt) out.push({ at: q.respondedAt, party: "client", who, text: `Turned down quote ${q.ref}, ${q.title}.`, to });

@@ -633,7 +633,7 @@ export function TenderCompleted({ q }: { q: Quote }) {
   );
 }
 
-/** Sent, opened, chased, answered: and chase, or record a decline, while it is out. */
+/** Sent, chased, answered: and chase, or record a decline, while it is out. */
 export function WhereItStands({ q }: { q: Quote }) {
   const db = useData((s) => s.db);
   const day = useDay();
@@ -648,7 +648,6 @@ export function WhereItStands({ q }: { q: Quote }) {
           {[
             ["Return date", q.tender ? dFull(q.tender.returnBy) : "Not set"],
             ["Submitted", q.sentAt ? when(q.sentAt, day) : "Not yet"],
-            ["Opened by client", q.openedAt ? when(q.openedAt, day) : "Not yet"],
             ["Last chased", q.chasedAt ? when(q.chasedAt, day) : "Not chased"],
             ["Client answered", q.respondedAt ? when(q.respondedAt, day) : "No answer yet"],
             ["Purchase order", q.poNumber ?? "None"],

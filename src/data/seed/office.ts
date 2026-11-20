@@ -10,6 +10,7 @@ import { fullWeek, workWeek } from "@/lib/week";
 import type { Activity, Approval, Attendance, Automation, Client, DayInstruction, Db, Expense, FileItem, OvertimeClaim, HiredPlant, Mail, PayrollCheck, PayrollExport, Person, Project, SalesInvoice, ScopeTask, SiteAccess, SupplierInvoice } from "../types";
 import { type Craft, isPastCode, type ProjectMeta } from "./projects";
 import { type Rng, at, lastWeekday, weekday, workdays } from "./util";
+import { PORTAL } from "@/lib/apps";
 
 // ── Files ─────────────────────────────────────────────────────────────────────
 
@@ -188,9 +189,10 @@ export function seedMoney(r: Rng, today: string, ctx: Ctx) {
   add({ supplier: "Burren Lime and Stone Supplies", no: "BLS-20417", date: day(-3), job: "C719", status: "needs_review", lines: [["NHL 3.5 natural hydraulic lime, 60 bags", 1290], ["Washed sharp sand, 12 tonnes", 744], ["Delivery, Rathdoon", 352.5]] });
   add({ supplier: "Corrib Scaffolding", no: "CS-INV-9914", date: day(-4), job: "C721", status: "needs_review", lines: [["Temporary roof hire, 2 weeks", 1760], ["Tower scaffold hire, 2 weeks", 1240], ["Scaffold inspections and tags, 2 weeks", 100]] });
   add({ supplier: "Moher Slate Merchants", no: "MSM-5521", date: day(-2), job: null, status: "needs_review", lines: [["Natural slate 500 x 250, 3,000 no.", 8850]] });
-  // These two came in this morning after the reader's 08:00 run, so they wait for the next one.
-  add({ supplier: "Shannonside Plant Hire", no: "SPH-INV-60233", date: day(-1), job: "C720", status: "not_read", lines: [], subtotal: 585, time: "08:41" });
-  add({ supplier: "Leinster Skip and Waste", no: "LSW-30087", date: day(-1), job: "C723", status: "not_read", lines: [], subtotal: 285, time: "08:47" });
+  // These two were added by the office this morning and saved to check later (20 Nov, decision 237:
+  // invoices get in when the office adds them; nothing arrives unread by itself any more).
+  add({ supplier: "Shannonside Plant Hire", no: "SPH-INV-60233", date: day(-1), job: "C720", status: "needs_review", lines: [["Plant hire, 1 week", 585]], time: "08:41" });
+  add({ supplier: "Leinster Skip and Waste", no: "LSW-30087", date: day(-1), job: "C723", status: "needs_review", lines: [["Skip hire and waste disposal, 8 yard skip", 285]], time: "08:47" });
   add({ supplier: "Burren Lime and Stone Supplies", no: "BLS-CN-0061", date: day(-26), job: "C719", status: "confirmed", credit: true, lines: [["Credit: 10 bags NHL 3.5 returned unopened", 215]], alloc: [["C719", "material", 215]] });
   add({ supplier: "Shannonside Plant Hire", no: "SPH-INV-59870", date: day(-5), job: "C724", status: "confirmed", lines: [["Traffic lights hire, 1 week", 165], ["Delivery and collection", 90]], alloc: [["C724", "plant", 165], ["C724", "transport", 90]] });
   const covered = new Set(["hp-5", "hp-6", "hp-7"]);
@@ -311,7 +313,7 @@ function seedSales(r: Rng, today: string, ctx: Ctx, proj: Map<string, Project>) 
   final("C714", "To invoice");
   final("C717", "To invoice");
   stage("C723", 1, 4, 0, "rear elevation and railings", "To invoice");
-  final("C715", "Held", { holdReason: "Extras to be agreed: lime concrete footing to the collapsed section" });
+  final("C715", "Held", { holdReason: "Variations to be agreed: lime concrete footing to the collapsed section" });
   final("C716", "Held", { holdReason: "Snagging open: two sashes sticking after painting" });
 
   rows.sort((a, b) => (a.issued ?? a.raised).localeCompare(b.issued ?? b.raised));
@@ -531,14 +533,15 @@ export function seedManagement(today: string) {
     { id: "au-4", department: "projects", name: "Accepted quote becomes a project", when: "On quote accepted", trigger: "A client accepts a quote.", effect: "Creates the project with the next site code, copies the scope from the quote and names the contracts manager.", enabled: true, lastRun: "", runs: 21 },
     { id: "au-5", department: "schedule", name: "Week ahead sent to operatives", when: "Fridays at 15:00", trigger: "The week ahead is confirmed by a contracts manager.", effect: "Sends every operative their sites for next week, in their own language.", enabled: true, lastRun: at(lastWeekday(day(-1), 5), "15:00"), runs: 44 },
     { id: "au-6", department: "site", name: "Site notes translated", when: "On new site note", trigger: "An operative writes a note or raises extras in a language other than English.", effect: "Translates it to English for the office and keeps the original beside it.", enabled: true, lastRun: "", runs: 129 },
-    { id: "au-7", department: "projects", name: "Extras raised: variation drafted, final account held", when: "On extras found", trigger: "Someone on site flags extra work.", effect: "Drafts a variation for approval and holds the project's final account until it is agreed.", enabled: true, lastRun: "", runs: 26 },
+    { id: "au-7", department: "projects", name: "Extra work reported: variation drafted, final account held", when: "On extras found", trigger: "Someone on site flags extra work.", effect: "Drafts a variation for approval and holds the project's final account until it is agreed.", enabled: true, lastRun: "", runs: 26 },
     { id: "au-8", department: "projects", name: "Project complete: handover pack drafted", when: "On scope complete", trigger: "The last scope item is ticked off with no extras or snagging open.", effect: "Builds the handover pack from the photo record and drafts the email to the client.", enabled: true, lastRun: "", runs: 14 },
-    { id: "au-9", department: "invoicing", name: "Supplier invoice read and costed", when: "Every hour", trigger: "Each hour of the working day, for every supplier invoice emailed or uploaded since the last run.", effect: "Reads supplier, number, dates and amounts, checks the sums, and suggests which project and cost heading it belongs to.", enabled: true, lastRun: at(today, "08:00"), runs: 203 },
+    { id: "au-9", department: "invoicing", name: "Supplier invoice read as it is added", when: "On invoice added", trigger: "Someone in the office adds an invoice in Finance, Money out.", effect: "Reads who it is from, its number and the job from the copy, fills the boxes for them to check, and suggests the cost heading.", enabled: true, lastRun: at(today, "08:00"), runs: 203 },
     { id: "au-10", department: "people", name: "Daily attendance archive", when: "Daily at 13:00", trigger: "13:00 on a working day.", effect: "Locks the day's time stamps for every site and flags any site that has not sent them.", enabled: true, lastRun: at(day(-1), "13:00"), runs: 261 },
     { id: "au-11", department: "people", name: "Training ticket reminders", when: "Mondays at 08:00", trigger: "A ticket has run out or runs out inside 30 days.", effect: "Drafts one email to the site managers listing each ticket, the person and their site. It waits in Approvals.", enabled: true, lastRun: at(lastWeekday(today, 1), "08:00"), runs: 31 },
     { id: "au-12", department: "plant", name: "Plant and vehicle renewals flagged", when: "Daily at 07:00", trigger: "A service, examination, test, tax or insurance date is inside 30 days or has passed.", effect: "Puts it on the plant overview and, if overdue, on the dashboard.", enabled: true, lastRun: at(today, "07:00"), runs: 298 },
     { id: "au-13", department: "dashboard", name: "Weekly summary for directors", when: "Fridays at 07:00", trigger: "End of the working week.", effect: "Drafts a one-page summary of progress, money and compliance for approval.", enabled: true, lastRun: at(lastWeekday(today, 5), "07:00"), runs: 43 },
-    { id: "au-14", department: "portal", name: "Client told when a quote is ready", when: "On quote sent", trigger: "A quote is sent.", effect: "Shows it in the client's portal and records when they open it.", enabled: false, runs: 0 },
+    // Only with the portal: paused since 20 Nov (decision 231).
+    ...(PORTAL ? [{ id: "au-14", department: "portal" as const, name: "Client told when a quote is ready", when: "On quote sent", trigger: "A quote is sent.", effect: "Shows it in the client's portal and records when they open it.", enabled: false, runs: 0 }] : []),
   ];
 
   return { approvals, automations };

@@ -1,6 +1,6 @@
-import { MagnifyingGlass } from "@phosphor-icons/react";
-import { useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { MagnifyingGlass, Plus } from "@phosphor-icons/react";
+import { useEffect, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { readSupplierInvoice, reopenSupplierInvoice, sendForApproval, setApprovalLimit, takeBackPurchase, unmarkPurchasePaid } from "@/data/actions";
 import { usePrefs } from "@/data/store";
 import type { CostCategoryKey, Db, PayChain, SupplierInvoice } from "@/data/types";
@@ -13,7 +13,9 @@ import { isPdf } from "@/lib/image";
 import { subInsuranceFlags } from "@/lib/compliance";
 import { Button, cx, Dialog, Empty, NumInput, PageBody, PageHead, Panel, Section, Segmented } from "@/ui";
 import { toast } from "@/ui/toast";
+import { AddInvoiceDialog } from "./AddInvoice";
 import { ApproveDialog, CopyLink, PaidDialog, PurchaseBadge, SendBackDialog, usePurchases } from "./purchase-shared";
+import { PORTAL } from "@/lib/apps";
 
 // Money out: invoices from suppliers and subcontractors. Each is checked, approved into job
 // costs, paid by accounts and marked paid. The rules are in src/lib/purchases.ts.
@@ -59,8 +61,17 @@ export function SubcontractorInvoices() {
  * listed by where each invoice stands; subcontractors by site, since several share a site.
  */
 function PurchaseQueue({ party }: { party: Party }) {
-  const { db, region, limit, project, chain } = usePurchases();
+  const { db, region, limit, project, chain, canEdit } = usePurchases();
   const [params, setParams] = useSearchParams();
+  const [adding, setAdding] = useState(false);
+  const [goTo, setGoTo] = useState<string | null>(null);
+  const navigate = useNavigate();
+  const added = goTo ? db.supplierInvoices.find((x) => x.id === goTo) : undefined;
+  useEffect(() => {
+    if (!added) return;
+    setGoTo(null);
+    navigate(purchaseAddress(added));
+  }, [added, navigate]);
   const mine = db.supplierInvoices.filter((s) => partyOf(s) === party);
   const siteOf = (s: SupplierInvoice) => project(s.allocations[0]?.projectId) ?? db.projects.find((p) => !!s.jobRef && jobRefMatches(s.jobRef, p.code));
   const live = (s: SupplierInvoice) => (siteOf(s)?.status === "Live" ? 0 : 1);
@@ -78,10 +89,26 @@ function PurchaseQueue({ party }: { party: Party }) {
         title={party === "supplier" ? "Supplier invoices" : "Subcontractor invoices"}
         note={
           party === "supplier"
-            ? `${todo} to deal with, ${waiting} waiting for approval. Each invoice is read within the hour of arriving; accounts check the reading against the paper and say which job each line belongs to. ${chainNote(chain, money0(limit, region))} Approved invoices go to To be paid.`
-            : `${waiting} waiting for approval, ${todo} with accounts. Subcontractors send their invoices in through the portal, one for each site. ${chain === "accounts-limit" ? "The site's manager or the managing director approves each one, then accounts pay it." : chainNote(chain, "")}`
+            ? `${todo} to deal with, ${waiting} waiting for approval. To put one in, press Add invoice: choose the PDF or photograph the paper, check the figures and pick the job. ${chainNote(chain, money0(limit, region))} Approved invoices go to To be paid.`
+            : `${waiting} waiting for approval, ${todo} with accounts. ${PORTAL ? "Subcontractors send their invoices in through the portal, one for each site. " : "The office adds each one with Add invoice, against its site. "}${chain === "accounts-limit" ? "The site's manager or the managing director approves each one, then accounts pay it." : chainNote(chain, "")}`
+        }
+        actions={
+          canEdit ? (
+            <Button variant="primary" onClick={() => setAdding(true)}>
+              <Plus size={16} /> Add invoice
+            </Button>
+          ) : undefined
         }
       />
+      {adding && (
+        <AddInvoiceDialog
+          onClose={(id) => {
+            setAdding(false);
+            // Open the one just added. A subcontractor's added from the suppliers' list (or the other way round) opens in its own list.
+            if (id) setGoTo(id);
+          }}
+        />
+      )}
       <PageBody className="grid max-w-[92rem] grid-cols-1 items-start gap-4 lg:grid-cols-[15rem_minmax(0,1fr)]">
         <Panel>
           <ul className="max-h-56 divide-y divide-line overflow-y-auto lg:max-h-[calc(100dvh-17rem)]" aria-label={party === "supplier" ? "Supplier invoices" : "Subcontractor invoices, by site"}>
@@ -105,7 +132,7 @@ function PurchaseQueue({ party }: { party: Party }) {
               </li>
             ))}
           </ul>
-          {all.length === 0 && <Empty title="No invoices here yet" />}
+          {all.length === 0 && <Empty title="No invoices here yet">Press Add invoice to put the first one in.</Empty>}
         </Panel>
         {open && <PurchaseDetail key={`${open.id}|${purchaseStage(open)}`} s={open} pin={() => setParams({ inv: open.id }, { replace: true })} />}
       </PageBody>
@@ -404,7 +431,7 @@ function PurchaseDetail({ s, pin }: { s: SupplierInvoice; pin: () => void }) {
                 <>
                   <p className="mr-auto max-w-[60ch] text-[0.93rem] text-muted">
                     Paid on {dFull(s.paidOn)} by {s.paidBy}
-                    {s.paidRef ? `, ${s.paidRef}` : ""}.{to ? ` ${to.name} sees it as paid in their portal.` : ""}
+                    {s.paidRef ? `, ${s.paidRef}` : ""}.{PORTAL && to ? ` ${to.name} sees it as paid in their portal.` : ""}
                   </p>
                   {canEdit && (
                     <Button
@@ -495,7 +522,7 @@ export function ToApprove() {
         </div>
         <Panel className="overflow-x-auto">
           {rows.length === 0 ? (
-            <Empty title="Nothing is waiting for approval">An invoice comes here once accounts have checked it, or a subcontractor has sent one in through the portal.</Empty>
+            <Empty title="Nothing is waiting for approval">{PORTAL ? "An invoice comes here once accounts have checked it, or a subcontractor has sent one in through the portal." : "An invoice comes here as soon as it has been added and its job confirmed."}</Empty>
           ) : (
             <table className="tbl">
               <thead>

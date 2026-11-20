@@ -30,7 +30,7 @@ export const ASK_TOOLS: { name: AskToolName; description: string; input_schema: 
   {
     name: "draft_chaser",
     description:
-      "Prepare a chaser email to a client, for a sales invoice that is unpaid (usually past its due date) or for a quote that was sent or opened and has had no answer. Nothing is sent: the email lands in Approvals for a person to check, edit and approve.",
+      "Prepare a chaser email to a client, for a sales invoice that is unpaid (usually past its due date) or for a quote that was sent and has had no answer. Nothing is sent: the email lands in Approvals for a person to check, edit and approve.",
     input_schema: {
       type: "object",
       properties: {

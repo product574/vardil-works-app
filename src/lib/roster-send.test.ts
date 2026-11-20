@@ -10,7 +10,7 @@ const args = (connections: typeof db.connections) => ({ week, plan: db.plan, peo
 
 describe("the week's roster by email and WhatsApp", () => {
   it("needs email or WhatsApp connected first", () => {
-    expect(rosterBlocker({})).toMatch(/Connections/);
+    expect(rosterBlocker({})).toMatch(/Vardil sets them up/);
     expect(rosterBlocker({ email: { provider: "Outlook", account: "office@abc.ie", at: "", by: "" } })).toBeNull();
     expect(rosterMessages(args({}))).toEqual([]);
   });

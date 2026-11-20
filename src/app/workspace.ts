@@ -13,7 +13,7 @@
 import { create } from "zustand";
 import { matchDataToBrand, usePrefs } from "@/data/store";
 import type { DepartmentKey } from "@/data/types";
-import { type Announcement, type AppKey, type AppRequest, appsOff, brandOfLook, type ClientConfig, type CloudflareResult, type CloudflareState, type DemoLevel, isAppKey, type OwnConfig, STARTER_ANNOUNCEMENTS, type WorkspaceAction } from "@/lib/apps";
+import { type Announcement, type AppKey, type AppRequest, appsOff, brandOfLook, type ClientConfig, type CloudflareResult, type CloudflareState, type DemoLevel, isAppKey, OFFERED_LEVELS, type OwnConfig, PAUSED_APPS, PORTAL, STARTER_ANNOUNCEMENTS, type WorkspaceAction } from "@/lib/apps";
 import { authMode } from "./auth";
 import { staff } from "./staff";
 
@@ -81,7 +81,9 @@ export function noteApp(app: string, level: DemoLevel | null) {
 /** The levels this person may sign in as (decision 210), or null for every level: staff, local copies, and anyone on no client's list. */
 export function useAllowedLevels(): DemoLevel[] | null {
   const config = useWorkspace((s) => s.config);
-  return !staff.is && config ? config.levels : null;
+  const given = !staff.is && config ? config.levels : null;
+  // While the portal is paused (decision 231) nobody signs in as a client.
+  return PORTAL ? given : (given ?? [...OFFERED_LEVELS]).filter((l) => l !== "client");
 }
 
 /** The client whose demo is showing: a staff member's opened one, or the signed-in client's own. */
@@ -139,7 +141,9 @@ export function useApps() {
   // A client sees what Vardil saved for them, if anything. Staff see the client whose demo they
   // opened, else the browser's own package.
   const saved = staff.is ? (viewClient ? (clients.find((c) => c.id === viewClient) ?? null) : null) : config;
-  const off: DepartmentKey[] = inHq ? [] : saved ? appsOff(saved.apps) : prefsOff;
+  const chosen: DepartmentKey[] = inHq ? [] : saved ? appsOff(saved.apps) : prefsOff;
+  // A paused app (the Portal, 20 Nov) is off for everyone, Vardil HQ included.
+  const off: DepartmentKey[] = [...new Set<DepartmentKey>([...chosen, ...PAUSED_APPS])];
   const automations = inHq ? true : saved ? saved.automations : !automationsOff;
   return { off, automations, on: (k: DepartmentKey) => !off.includes(k), firm: saved?.name ?? null };
 }

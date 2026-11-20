@@ -9,6 +9,7 @@ import type { AccessKey, AccessRow, DepartmentKey, LevelKey, Person, PersonAcces
 import { plural } from "@/lib/format";
 import { Badge, Button, cx, PageBody, PageHead, Panel, Section, Segmented, Tick } from "@/ui";
 import { toast } from "@/ui/toast";
+import { PORTAL } from "@/lib/apps";
 
 const MONEY: { key: "seeValues" | "seeMargins"; label: string; hint: string }[] = [
   { key: "seeValues", label: "Contract values", hint: "Quote totals, project values, the value of extras, invoice amounts" },
@@ -191,7 +192,7 @@ function ByRole() {
         <ul className="mt-2 grid max-w-[80ch] gap-1 text-[0.93rem] text-muted">
           <li>Margins cannot be shown without values, so unticking values unticks margins too.</li>
           <li>A permission only matters if the person can open the department it belongs to.</li>
-          <li>A tick with no box cannot be changed: a level's home department is always on, so nobody can be locked out. Operatives only ever get the site phone, and clients only their own portal.</li>
+          <li>A tick with no box cannot be changed: a level's home department is always on, so nobody can be locked out. Operatives only ever get the site phone{PORTAL ? ", and clients only their own portal" : ""}.</li>
           <li>
             Which sites a site manager opens is on{" "}
             <Link to="/admin/sites" className="font-medium text-accent-ink underline-offset-2 hover:underline">

@@ -1,6 +1,7 @@
 // The numbers on the dashboard, each worked out from the records so they can never disagree
 // with the screens they link to.
 import { withOffice } from "@/lib/requests";
+import { dueAChase } from "@/lib/pipeline";
 import { dueState } from "@/lib/status";
 import { nextServiceDate } from "@/lib/status";
 import { needsAccounts, owedOut, purchaseStage } from "@/lib/purchases";
@@ -26,8 +27,8 @@ export function dashboardNumbers(db: Db, today: string) {
     sales: {
       // The same as the board's To quote column: enquiries with no quote yet (one being drafted is in Drafting).
       enquiriesToQuote: db.enquiries.filter((e) => e.status === "Logged" && !e.quoteId).length,
-      quotesOut: db.quotes.filter((q) => q.status === "Sent" || q.status === "Opened").length,
-      openedNotAnswered: db.quotes.filter((q) => q.status === "Opened").length,
+      quotesOut: db.quotes.filter((q) => q.status === "Sent").length,
+      dueAChase: db.quotes.filter((q) => dueAChase(q, today)).length,
       queried: db.quotes.filter((q) => q.status === "Queried").length,
     },
     sites: {

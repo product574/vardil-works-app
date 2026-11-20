@@ -40,7 +40,7 @@ describe("the AI overview, worked out from the records (option B)", () => {
   it("follows with four facts worth knowing", () => {
     expect(o.facts).toEqual([
       "Only Ardmullen House has sent today's time stamps. Six other sites have not yet.",
-      "[Q-2615](/sales/quotes/Q-2615) St Brecan's Oratory went out at a 7.8% margin and has been opened.",
+      "[Q-2615](/sales/quotes/Q-2615) St Brecan's Oratory went out at a 7.8% margin.",
       "Nobody is planned yet on [C726](/schedule) next week, and Ionuț Marin is double booked on Wednesday.",
       "Three invoices are [ready to go out](/invoicing), €177,450.",
     ]);

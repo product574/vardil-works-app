@@ -45,7 +45,7 @@ export function QuotePage() {
   const m = marginPct(sell, cost.total);
   const flag = marginFlag(m);
   const editable = canPrice && (q.status === "Draft" || q.status === "Awaiting approval" || q.status === "Queried");
-  const out = q.status === "Sent" || q.status === "Opened" || q.status === "Queried";
+  const out = q.status === "Sent" || q.status === "Queried";
   const vat = REGION[region].vatPct;
   // The tender's own sections (20 Nov, the Oldstone template), each an address of its own.
   type Tab = "overview" | "documents" | "subcontractors" | "photos" | "workings" | "completed";

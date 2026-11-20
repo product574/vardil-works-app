@@ -1,15 +1,14 @@
-import { DownloadSimple, FilmStrip, Image as ImageIcon } from "@phosphor-icons/react";
+import { DownloadSimple, FilmStrip, Image as ImageIcon, Plus } from "@phosphor-icons/react";
 import { type FormEvent, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useAccess } from "@/data/access";
-import { addPhoto, addRequest, addScaffold, addScopeTask, clearHold, completeProject, notifyHireReturn, raiseExtra, setSnagging, strikeScaffold, toggleScopeTask } from "@/data/actions";
+import { addPhoto, addScaffold, addScopeTask, completeProject, notifyHireReturn, strikeScaffold, toggleScopeTask } from "@/data/actions";
 import { plantBlocks, scaffoldDue, scaffoldUnsafe, standing, stateOf } from "@/lib/compliance";
 import { InspectForm } from "@/modules/compliance/shared";
 import { co } from "@/data/place";
 import { useData, useDay, usePrefs } from "@/data/store";
 import { type Db, LANGUAGE_NAME, type PhotoStage, type Project, type RequestKind } from "@/data/types";
 import { holdWhy } from "@/lib/billing";
-import { addDays } from "@/lib/dates";
 import { capital, dFull, dShort, plural, when, whenInline } from "@/lib/format";
 import { shrinkImage } from "@/lib/image";
 import { hireEstimate } from "@/lib/job-costs";
@@ -18,10 +17,14 @@ import { money0, money2, pct1 } from "@/lib/money";
 import { overtimeText, overtimeTotal } from "@/lib/overtime";
 import { labourCost, scopePercent, supplierCostByCategory } from "@/lib/project-costs";
 import { mayHandleCrewRequest, withSite } from "@/lib/requests";
+import { holdLines, snagCount, takesRequests, takesSnags, takesVariations } from "@/lib/snags";
 import { dueLabel, dueState, nextServiceDate } from "@/lib/status";
-import { Badge, Button, cx, DeclineNote, Dialog, Empty, Fact, Field, PageBody, PageHead, Panel, Section, Segmented, Switch } from "@/ui";
+import { Badge, Button, cx, DeclineNote, Dialog, Empty, Fact, Field, PageBody, PageHead, Panel, Section, Segmented } from "@/ui";
 import { PickFile } from "@/ui/files";
+import { AddSnagDialog, NewRequestDialog, NewVariationDialog } from "./AddDialogs";
 import { CrewRequestButtons } from "./CrewRequestButtons";
+import { ClearHoldDialog } from "./Lists";
+import { SnagList } from "./Snags";
 import { HoldBadge, Progress, ProjectBadge, Tabs } from "@/ui/status";
 import { toast } from "@/ui/toast";
 import { FilesTab } from "./ProjectFiles";
@@ -717,57 +720,25 @@ function RequestsTab({ p, db }: TabProps) {
   const day = useDay();
   const access = useAccess();
   const canHandle = mayHandleCrewRequest(p, access.personId, access.siteAccess);
-  const [kind, setKind] = useState<RequestKind>("personnel");
-  const [description, setDescription] = useState("");
-  const [quantity, setQuantity] = useState("1");
-  const [from, setFrom] = useState(addDays(day, 1));
-  const [to, setTo] = useState(addDays(day, 5));
-  const [error, setError] = useState("");
+  const [adding, setAdding] = useState(false);
   const list = db.requests.filter((r) => r.projectId === p.id);
-  const submit = (e: FormEvent) => {
-    e.preventDefault();
-    if (!description.trim()) return setError("Say what is needed.");
-    if (to < from) return setError("The end date is before the start date.");
-    addRequest({ projectId: p.id, kind, description: description.trim(), quantity: Math.max(1, Number(quantity) || 1), neededFrom: from, neededTo: to, notes: "" });
-    setDescription("");
-    setError("");
-    toast("Request sent to the office");
-  };
   return (
-    <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
-      {p.status !== "Live" && p.status !== "Not started" ? (
-        <p className="text-muted">This project is finished, so no new requests can be made.</p>
-      ) : (
-        <Section title="Ask the office for something">
-          <form onSubmit={submit} className="grid gap-3 rounded-lg border border-line bg-surface p-3">
-            <Field label="What kind">
-              {(id) => (
-                <select id={id} className="field" value={kind} onChange={(e) => setKind(e.target.value as RequestKind)}>
-                  <option value="personnel">People</option>
-                  <option value="own_plant">Our own plant</option>
-                  <option value="hired_plant">Hired plant</option>
-                </select>
-              )}
-            </Field>
-            <Field label="What is needed">{(id) => <input id={id} className="field" value={description} placeholder="Two general operatives for scaffold adaptation" onChange={(e) => { setDescription(e.target.value); setError(""); }} />}</Field>
-            <div className="grid grid-cols-3 gap-3">
-              <Field label="How many">{(id) => <input id={id} className="field" inputMode="numeric" value={quantity} onChange={(e) => setQuantity(e.target.value)} />}</Field>
-              <Field label="From">{(id) => <input id={id} type="date" className="field" value={from} onChange={(e) => setFrom(e.target.value)} />}</Field>
-              <Field label="Until">{(id) => <input id={id} type="date" className="field" value={to} onChange={(e) => setTo(e.target.value)} />}</Field>
-            </div>
-            <p role="alert" className="min-h-5 text-bad">
-              {error}
-            </p>
-            <Button type="submit" variant="primary" className="justify-self-start">
-              Send request
+    <div className="grid gap-5">
+      <Section
+        title={`Requests from this site (${list.length})`}
+        aside={
+          takesRequests(p) ? (
+            <Button size="sm" variant="primary" onClick={() => setAdding(true)}>
+              <Plus size={16} /> New request
             </Button>
-          </form>
-        </Section>
-      )}
-      <Section title={`Requests from this site (${list.length})`}>
+          ) : (
+            "This project is finished, so no new requests can be made"
+          )
+        }
+      >
         <Panel>
           {list.length === 0 ? (
-            <Empty title="No requests yet" />
+            <Empty title="No requests yet">Ask the office for people, plant or anything else with New request. The crew can also ask from the site phone.</Empty>
           ) : (
             <ul className="divide-y divide-line">
               {list.map((r) => (
@@ -796,6 +767,7 @@ function RequestsTab({ p, db }: TabProps) {
           )}
         </Panel>
       </Section>
+      {adding && <NewRequestDialog project={p} onClose={() => setAdding(false)} />}
     </div>
   );
 }
@@ -805,45 +777,37 @@ function ExtrasTab({ p, db }: TabProps) {
   const region = usePrefs((s) => s.brand.region);
   const { seeValues, may } = useAccess();
   const manager = may("manageProjects");
-  const [adding, setAdding] = useState(false);
-  const [description, setDescription] = useState("");
-  const [measured, setMeasured] = useState("");
-  const [value, setValue] = useState("");
+  const [adding, setAdding] = useState<"variation" | "snag" | null>(null);
+  const [clearing, setClearing] = useState(false);
   const list = db.variations.filter((v) => v.projectId === p.id);
+  const snags = db.snags.filter((x) => x.projectId === p.id);
+  const count = snagCount(db.snags, p.id);
+  const lines = holdLines(p, db.variations, db.snags);
+  const live = p.status === "Live" || p.status === "Not started";
   return (
     <div className="grid gap-5">
       {p.invoiceHold && (
         <div className="flex flex-wrap items-center gap-3 rounded-md bg-warn-soft px-3 py-2.5 text-warn">
           <p className="flex-1">
-            {p.status === "Live"
-              ? `${capital(holdWhy(p))}, so the final account will be held when the work is complete. Stage payments are not held.`
-              : `The final account is held: ${holdWhy(p)}. It is not invoiced until the hold is cleared.`}
+            {live ? `${capital(holdWhy(p))}, so the final account will be on hold when the work is complete. Stage payments are not held.` : `The final account is on hold: ${holdWhy(p)}. It is not invoiced until the hold lets go.`}
+            {lines.length > 0 && ` It lets go by ${lines.map((l) => l.lets).join(", and ")}.`}
           </p>
-          {manager && (
-            <Button
-              onClick={() => {
-                clearHold(p.id);
-                toast("Hold cleared and written to the project history");
-              }}
-            >
-              Clear the hold
-            </Button>
-          )}
+          {manager && <Button onClick={() => setClearing(true)}>Clear the hold</Button>}
         </div>
       )}
       <Section
-        title={`Extras and variations (${list.length})`}
+        title={`Variations (${list.length})`}
         aside={
-          p.status === "Live" || p.status === "Complete" ? (
-            <Button size="sm" onClick={() => setAdding(true)}>
-              Raise an extra
+          takesVariations(p) ? (
+            <Button size="sm" variant="primary" onClick={() => setAdding("variation")}>
+              <Plus size={16} /> New variation
             </Button>
           ) : undefined
         }
       >
         <Panel>
           {list.length === 0 ? (
-            <Empty title="No extras raised">Work found on opening up is raised here or from the site phone. It is drafted as a variation and waits for approval.</Empty>
+            <Empty title="No variations yet">Extra work found on opening up is added here with New variation, or from the site phone. It is drafted as a variation and waits for approval.</Empty>
           ) : (
             <ul className="divide-y divide-line">
               {list.map((v) => {
@@ -871,45 +835,24 @@ function ExtrasTab({ p, db }: TabProps) {
           )}
         </Panel>
       </Section>
-      {manager && (p.status === "Live" || p.status === "Complete") && (
-        <label className="flex items-center gap-3">
-          <Switch on={p.snaggingFlag} label="Snagging open" onChange={() => { setSnagging(p.id, !p.snaggingFlag); toast(p.snaggingFlag ? "Snagging closed" : p.status === "Live" ? "Snagging opened" : "Snagging opened. Final account held"); }} />
-          <span>
-            Snagging open
-            <span className="block text-[0.93rem] text-muted">{p.status === "Live" ? "While this is on, the final account will be held when the work is complete." : "While this is on, the final account is held."}</span>
-          </span>
-        </label>
-      )}
-      <Dialog
-        open={adding}
-        onClose={() => setAdding(false)}
-        title="Raise an extra"
-        footer={
-          <>
-            <Button onClick={() => setAdding(false)}>Cancel</Button>
-            <Button
-              variant="primary"
-              disabled={!description.trim() || !measured.trim()}
-              onClick={() => {
-                raiseExtra(p.id, { description: description.trim(), measured: measured.trim(), estimatedValue: Number(value.replace(/[^\d.]/g, "")) || 0 });
-                setAdding(false);
-                setDescription("");
-                setMeasured("");
-                setValue("");
-                toast(p.status === "Live" ? "Variation drafted for approval" : "Variation drafted for approval. Final account held");
-              }}
-            >
-              Raise extra
+      <Section
+        title={`Snags (${count.open} open${count.fixed ? `, ${count.fixed} fixed` : ""})`}
+        aside={
+          takesSnags(p) ? (
+            <Button size="sm" onClick={() => setAdding("snag")}>
+              <Plus size={16} /> Add snag
             </Button>
-          </>
+          ) : undefined
         }
       >
-        <div className="grid gap-3">
-          <Field label="What was found">{(id) => <textarea id={id} rows={3} className="field" value={description} placeholder="Lintel over the rear door is rotten through and needs replacing" onChange={(e) => setDescription(e.target.value)} />}</Field>
-          <Field label="Measured extra">{(id) => <input id={id} className="field" value={measured} placeholder="1 no. oak lintel, 1.2 m long" onChange={(e) => setMeasured(e.target.value)} />}</Field>
-          {seeValues && <Field label="Estimated value, ex VAT" hint="Leave blank if the office is to price it.">{(id) => <input id={id} className="field" inputMode="decimal" value={value} onChange={(e) => setValue(e.target.value)} />}</Field>}
-        </div>
-      </Dialog>
+        <Panel>
+          <SnagList snags={[...snags.filter((x) => x.status === "Open"), ...snags.filter((x) => x.status === "Fixed")]} canFix={() => takesSnags(p)} empty="No snags on this job" />
+        </Panel>
+        <p className="mt-2 text-[0.93rem] text-muted">{live ? "While a snag is open, the final account will be on hold when the work is complete." : "While a snag is open, the final account is on hold. It lets go when the last one is marked fixed."}</p>
+      </Section>
+      {adding === "variation" && <NewVariationDialog project={p} onClose={() => setAdding(null)} />}
+      {adding === "snag" && <AddSnagDialog project={p} onClose={() => setAdding(null)} />}
+      {clearing && <ClearHoldDialog p={p} onClose={() => setClearing(false)} />}
     </div>
   );
 }

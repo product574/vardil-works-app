@@ -109,7 +109,7 @@ def steps(page, ctx):
     check("Sales: Enquiries, Tenders, Confirmed, Pipeline, Customers", secs == ["Enquiries", "Tenders", "Confirmed", "Pipeline", "Customers"], secs)
     go(page, "/sales/tenders")
     check("Tenders: the draft is listed with its return date", page.locator("tr", has_text="Q-2620").count() == 1 and "Due back" in page.locator("tr", has_text="Q-2620").inner_text())
-    page.get_by_role("link", name="Q-2620 Kilcashel Courthouse").click(); page.wait_for_selector("main h1")
+    page.get_by_role("link", name="Q-2620 Kilcashel Courthouse").click(); page.wait_for_url("**/sales/quotes/Q-2620"); page.get_by_role("tablist", name="Tender sections").wait_for()
     t = [re.sub(r"\d+$", "", x.split("\n")[0].strip()) for x in page.get_by_role("tablist", name="Tender sections").get_by_role("tab").all_inner_texts()]
     check("Tender: Overview, Tender documents, Subcontractors, Photos, Workings and Buildsoft, Tender completed", t == ["Overview", "Tender documents", "Subcontractors", "Photos", "Workings and Buildsoft", "Tender completed"], t)
     check("Tender overview: location, client and return date", page.get_by_text("Kilcashel, Co. Mayo").count() >= 1 and page.get_by_role("heading", name="Return date").count() == 1)

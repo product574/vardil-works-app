@@ -5,6 +5,7 @@ import type { Client, Db, InvoiceLine, InvoiceQuery, Project, SalesInvoice, Vari
 import { invoiceNo } from "./billing";
 import { gross, money2, r2, REGION } from "./money";
 import { daysBetween } from "./status";
+import { PORTAL } from "./apps";
 
 // ── Where an invoice stands ───────────────────────────────────────────────────
 
@@ -167,7 +168,7 @@ export const openQuery = (queries: InvoiceQuery[], invoiceId: string) => queries
 export type EmailTemplate = { subject: string; body: string };
 export const DEFAULT_EMAIL: EmailTemplate = {
   subject: "Invoice {invoice} from {company}, {project}",
-  body: "Dear {contact},\n\nPlease find attached invoice {invoice} for {what} at {project}. The total is {total} including VAT, due on {due}.\n\nIf anything on it needs explaining, reply to this email or ask in your client portal and we will come straight back to you.\n\nKind regards,\n{sender}\n{company}",
+  body: "Dear {contact},\n\nPlease find attached invoice {invoice} for {what} at {project}. The total is {total} including VAT, due on {due}.\n\nIf anything on it needs explaining, reply to this email" + (PORTAL ? " or ask in your client portal" : "") + " and we will come straight back to you.\n\nKind regards,\n{sender}\n{company}",
 };
 /** The words a template may use, with what each one stands for. */
 export const PLACEHOLDERS: [key: string, means: string][] = [

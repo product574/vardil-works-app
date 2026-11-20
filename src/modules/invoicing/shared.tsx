@@ -16,6 +16,7 @@ import { billingEmail, emailFor, grossOf, type InvoiceDoc, invoiceDoc, nextAccou
 import { invoicePdf, type PdfLogo } from "@/lib/pdf";
 import { Badge, Button, cx, Dialog, Field } from "@/ui";
 import { toast } from "@/ui/toast";
+import { PORTAL } from "@/lib/apps";
 
 export function useInv() {
   const db = useData((s) => s.db);
@@ -212,7 +213,7 @@ function SendForm({ i, onClose }: { i: SalesInvoice; onClose: (sentAs?: string) 
   const [subject, setSubject] = useState(start.subject);
   const [body, setBody] = useState(start.body);
   const [email, setEmail] = useState(true);
-  const [portal, setPortal] = useState(!!c?.portalEnabled);
+  const [portal, setPortal] = useState(PORTAL && !!c?.portalEnabled);
   const attachment = pdfName(number, brand.legalName);
   const okTo = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to.trim());
   const blocked = (!email && !portal) || (email && (!okTo || !subject.trim() || !body.trim()));
@@ -252,10 +253,12 @@ function SendForm({ i, onClose }: { i: SalesInvoice; onClose: (sentAs?: string) 
         <label className="flex items-center gap-2">
           <input type="checkbox" checked={email} onChange={(e) => setEmail(e.target.checked)} /> Email it with the PDF attached
         </label>
-        <label className={cx("flex items-center gap-2", !c?.portalEnabled && "text-muted")}>
-          <input type="checkbox" checked={portal} disabled={!c?.portalEnabled} onChange={(e) => setPortal(e.target.checked)} /> Put it in the client's portal
-          {!c?.portalEnabled && <span className="text-[0.87rem]">(the portal is switched off for {c?.name})</span>}
-        </label>
+        {PORTAL && (
+          <label className={cx("flex items-center gap-2", !c?.portalEnabled && "text-muted")}>
+            <input type="checkbox" checked={portal} disabled={!c?.portalEnabled} onChange={(e) => setPortal(e.target.checked)} /> Put it in the client's portal
+            {!c?.portalEnabled && <span className="text-[0.87rem]">(the portal is switched off for {c?.name})</span>}
+          </label>
+        )}
       </div>
       {email && (
         <>
@@ -318,7 +321,7 @@ function PaidForm({ i, onClose }: { i: SalesInvoice; onClose: () => void }) {
           e.preventDefault();
           if (bad) return;
           markInvoicePaid(i.id, { paidOn, email: email && !!to });
-          toast(`${no} marked paid${c?.portalEnabled ? `. ${c.contactName} is told in the portal${email && to ? " and by email" : ""}` : email && to ? `. Receipt emailed to ${to}` : ""}`, { label: "Undo", run: () => unmarkInvoicePaid(i.id) });
+          toast(`${no} marked paid${PORTAL && c?.portalEnabled ? `. ${c.contactName} is told in the portal${email && to ? " and by email" : ""}` : email && to ? `. Receipt emailed to ${to}` : ""}`, { label: "Undo", run: () => unmarkInvoicePaid(i.id) });
           onClose();
         }}
       >
@@ -340,7 +343,7 @@ function PaidForm({ i, onClose }: { i: SalesInvoice; onClose: () => void }) {
           {(id) => <input id={id} type="date" className="field" max={day} min={i.issuedOn} value={paidOn} onChange={(e) => setPaidOn(e.target.value)} />}
         </Field>
         <div className="grid gap-1">
-          <p className="text-muted">{c?.portalEnabled ? `${c.name} sees it as paid in their portal as soon as you confirm.` : `The portal is switched off for ${c?.name ?? "this client"}, so they are only told if you email them.`}</p>
+          <p className="text-muted">{!PORTAL ? `${c?.name ?? "The client"} is only told if you email them a receipt.` : c?.portalEnabled ? `${c.name} sees it as paid in their portal as soon as you confirm.` : `The portal is switched off for ${c?.name ?? "this client"}, so they are only told if you email them.`}</p>
           <label className={cx("flex items-center gap-2", !to && "text-muted")}>
             <input type="checkbox" checked={email && !!to} disabled={!to} onChange={(e) => setEmail(e.target.checked)} /> Also email a receipt to {to || "the client (no address on file)"}
           </label>

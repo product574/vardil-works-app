@@ -12,6 +12,15 @@ import type { Region } from "../config/brand";
 export const APP_KEYS = ["dashboard", "inbox", "chat", "sales", "customers", "projects", "schedule", "people", "plant", "fleet", "compliance", "files", "invoicing", "profit", "reports", "portal", "site", "admin", "settings"] as const;
 export type AppKey = (typeof APP_KEYS)[number];
 
+/**
+ * Apps not offered to anyone for now (20 Nov, decision 231: "remove the Portal from Projects for
+ * now"). A paused app is off for every firm, Vardil HQ included: its section, its sign-in level
+ * and every mention of it on other screens go. Take a key out of this list to bring it back.
+ */
+export const PAUSED_APPS: AppKey[] = ["portal"];
+/** Is the client and subcontractor portal on offer? Screens and wording ask this one constant. */
+export const PORTAL = !PAUSED_APPS.includes("portal");
+
 /** Apps every client has whatever they buy: without them the system cannot be run. */
 export const ALWAYS_ON: AppKey[] = ["dashboard", "admin", "settings"];
 
@@ -29,7 +38,7 @@ export const PACKAGES: Package[] = [
     key: "full",
     name: "Everything",
     does: "Every app, as the full demo.",
-    apps: [...APP_KEYS],
+    apps: APP_KEYS.filter((k) => !PAUSED_APPS.includes(k)),
     automations: true,
   },
 ];
@@ -53,12 +62,12 @@ export const APP_INFO: Record<AppKey, { name: string; blurb: string }> = {
   reports: { name: "Reports", blurb: "Win rate, margins, sales by customer and where the money goes." },
   portal: { name: "Client portal", blurb: "Clients and subcontractors see their quotes, progress and invoices." },
   site: { name: "Site phone", blurb: "One simple app for every employee: requests, repairs, claims, holidays and certificates." },
-  admin: { name: "Admin", blurb: "Requests, roles and access, company holidays and connections." },
+  admin: { name: "Admin", blurb: "Requests, repairs, roles and access, and company holidays." },
   settings: { name: "Settings", blurb: "Your name, colour and logo." },
 };
 
 /** Apps shown on the Vardil Works page and switched in Vardil HQ: everything except the two that are always on and not sold. */
-export const SOLD_APPS: AppKey[] = APP_KEYS.filter((k) => k !== "settings");
+export const SOLD_APPS: AppKey[] = APP_KEYS.filter((k) => k !== "settings" && !PAUSED_APPS.includes(k));
 
 export const isAppKey = (x: unknown): x is AppKey => typeof x === "string" && (APP_KEYS as readonly string[]).includes(x);
 
@@ -90,6 +99,8 @@ export type LookDesign = Partial<Record<(typeof DESIGN_TEXT)[number], string> & 
 export const DEMO_LEVELS = ["md", "contracts", "site", "accounts", "operative", "client"] as const;
 export type DemoLevel = (typeof DEMO_LEVELS)[number];
 export const LEVEL_NAMES: Record<DemoLevel, string> = { md: "Managing director", contracts: "Contracts manager", site: "Site manager", accounts: "Accounts", operative: "Operative (phone)", client: "Client (portal)" };
+/** The levels offered on screen: every one, less the client's while the portal is paused. */
+export const OFFERED_LEVELS: DemoLevel[] = DEMO_LEVELS.filter((l) => PORTAL || l !== "client");
 export const isLevel = (x: unknown): x is DemoLevel => typeof x === "string" && (DEMO_LEVELS as readonly string[]).includes(x);
 
 /** One person who may sign in to a client's demo, and the levels they may use. */
@@ -241,7 +252,8 @@ export function appsOff(on: readonly AppKey[]): AppKey[] {
 
 /** The package a set of apps matches exactly, if any. */
 export function packageOf(on: readonly AppKey[], automations: boolean): Package | null {
-  const set = new Set([...on, ...ALWAYS_ON]);
+  // A paused app (the Portal) is in no package, so it is left out of the count either way.
+  const set = new Set([...on, ...ALWAYS_ON].filter((a) => !PAUSED_APPS.includes(a)));
   return PACKAGES.find((p) => p.automations === automations && p.apps.length === set.size && p.apps.every((a) => set.has(a))) ?? null;
 }
 

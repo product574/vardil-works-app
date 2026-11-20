@@ -3,10 +3,11 @@ import { Link } from "react-router-dom";
 import type { Project, Subcontractor, SupplierInvoice } from "@/data/types";
 import { dShort, plural } from "@/lib/format";
 import { money2 } from "@/lib/money";
-import { partyOf, payBy, purchaseStage, recently, startsOnSite } from "@/lib/purchases";
+import { partyOf, payBy, purchaseStage, recently, startsOnSite, viaWords } from "@/lib/purchases";
 import { subInsuranceFlags } from "@/lib/compliance";
 import { Button, cx, Empty, PageBody, PageHead, Panel, Section, Segmented, Tel } from "@/ui";
 import { ApproveDialog, CopyLink, PurchaseBadge, SendBackDialog, usePurchases } from "@/modules/invoicing/purchase-shared";
+import { PORTAL } from "@/lib/apps";
 
 /**
  * With Jimmy's chain (20 Nov) the site manager also says yes to suppliers' invoices for his
@@ -65,7 +66,7 @@ export function SubcontractorInvoicesForSites() {
         </div>
         {withRows.length === 0 && (
           <Panel>
-            <Empty title={show === "waiting" ? "Nothing is waiting for approval" : withSuppliers ? "No invoices on these sites yet" : "No subcontractor invoices on these sites yet"}>{withSuppliers ? "A subcontractor sends an invoice in through their portal, and accounts send on a supplier's once they have checked it. It appears here for the site it is for." : "A subcontractor sends an invoice in through their portal, and it appears here for the site it is for."}</Empty>
+            <Empty title={show === "waiting" ? "Nothing is waiting for approval" : withSuppliers ? "No invoices on these sites yet" : "No subcontractor invoices on these sites yet"}>{!PORTAL ? "The office adds each invoice in Finance, Money out, and it appears here for the site it is for." : withSuppliers ? "A subcontractor sends an invoice in through their portal, and accounts send on a supplier's once they have checked it. It appears here for the site it is for." : "A subcontractor sends an invoice in through their portal, and it appears here for the site it is for."}</Empty>
           </Panel>
         )}
         {withRows.map((p) => {
@@ -116,7 +117,7 @@ export function SubcontractorInvoicesForSites() {
                               <td>
                                 <span className="font-medium">{s.invoiceNo}</span>
                                 <span className="block text-[0.87rem] text-muted">
-                                  {dShort(s.invoiceDate)}, {s.via === "portal" ? "through the portal" : s.via === "post" ? "by post" : "by email"}
+                                  {dShort(s.invoiceDate)}, {viaWords(s)}
                                 </span>
                                 <CopyLink s={s} className="text-[0.87rem]" />
                               </td>

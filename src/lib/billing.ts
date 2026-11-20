@@ -12,15 +12,15 @@ export function finalAccountNet(contractValue: number, otherInvoicesNet: number[
 
 export type HoldFlags = { extrasFlag: boolean; snaggingFlag: boolean };
 
-/** The reason written on a held invoice: "Extras to be agreed", "Snagging open", or both. */
+/** The reason written on a held invoice: "Variations to be agreed", "Snagging open", or both. */
 export function holdReason(f: HoldFlags) {
-  if (f.extrasFlag && f.snaggingFlag) return "Extras to be agreed and snagging open";
-  return f.extrasFlag ? "Extras to be agreed" : "Snagging open";
+  if (f.extrasFlag && f.snaggingFlag) return "Variations to be agreed and snagging open";
+  return f.extrasFlag ? "Variations to be agreed" : "Snagging open";
 }
 
-/** The same reason inside a sentence: "extras are waiting to be agreed and snagging is open". */
+/** The same reason inside a sentence: "variations are waiting to be agreed and snagging is open". */
 export function holdWhy(f: HoldFlags) {
-  return [f.extrasFlag && "extras are waiting to be agreed", f.snaggingFlag && "snagging is open"].filter(Boolean).join(" and ") || "a manager has held it";
+  return [f.extrasFlag && "variations are waiting to be agreed", f.snaggingFlag && "snagging is open"].filter(Boolean).join(" and ") || "a manager has held it";
 }
 
 /** The project history lines for invoicing, shared by the actions and the sample data so both read the same. */

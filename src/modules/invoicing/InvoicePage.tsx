@@ -14,6 +14,7 @@ import { ProjectBadge } from "@/ui/status";
 import { toast } from "@/ui/toast";
 import { DraftInvoiceDialog } from "./ClientInvoices";
 import { ClientPaidDialog, downloadInvoicePdf, InvoicePaper, saveFile, SendInvoiceDialog, StageBadge, useInv, useInvoiceDoc } from "./shared";
+import { PORTAL } from "@/lib/apps";
 
 const LINK = "text-accent-ink underline-offset-2 hover:underline";
 
@@ -238,7 +239,7 @@ export function InvoicePage() {
         )}
         {i.clientPaidOn && out && (
           <p className="rounded-md bg-accent-soft px-3 py-2 text-accent-ink">
-            {c?.contactName} said in the portal on {dShort(i.clientPaidOn)} that this has been paid. Check it against the bank, then mark it paid.
+            {c?.contactName} said {PORTAL ? "in the portal " : ""}on {dShort(i.clientPaidOn)} that this has been paid. Check it against the bank, then mark it paid.
           </p>
         )}
 
@@ -450,7 +451,7 @@ export function LogQueryDialog({ invoice, who, onClose }: { invoice: SalesInvoic
       <div className="grid gap-3">
         <div>
           <p className="mb-1 text-[0.93rem] font-medium">How it came in</p>
-          <Segmented label="How the query came in" value={via} onChange={setVia} options={[{ value: "Phone", label: "Phone" }, { value: "Email", label: "Email" }, { value: "Portal", label: "Portal" }]} />
+          <Segmented label="How the query came in" value={via} onChange={setVia} options={[{ value: "Phone", label: "Phone" }, { value: "Email", label: "Email" }, ...(PORTAL ? [{ value: "Portal" as const, label: "Portal" }] : [])]} />
         </div>
         <Field label="Who asked">{(id) => <input id={id} className="field" value={by} onChange={(e) => setBy(e.target.value)} />}</Field>
         <Field label="What they asked" hint="In their words, as near as you can.">

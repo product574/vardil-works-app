@@ -93,7 +93,7 @@ export const DEPARTMENTS: Department[] = [
         { to: "/projects/not-started", label: "Not started" },
         { to: "/projects/resources", label: "Resources today" },
         { to: "/projects/all", label: "All projects" },
-        { to: "/projects/extras", label: "Extras and snagging", count: (db) => db.projects.filter((p) => p.invoiceHold).length, countTone: "warn" },
+        { to: "/projects/extras", label: "Variations and snagging", count: (db) => db.projects.filter((p) => p.invoiceHold).length, countTone: "warn" },
         { to: "/projects/completed", label: "Completed" },
       ] },
       { label: "Site", items: [
@@ -275,7 +275,6 @@ export const DEPARTMENTS: Department[] = [
       { label: "Account", items: [{ to: "/admin/billing", label: "Billing", mdOnly: true }] },
       { label: "System", items: [
         { to: "/admin/bank-holidays", label: "Company holidays" },
-        { to: "/admin/connections", label: "Connections" },
         { to: "/admin/automations", label: "Automations", automations: true },
         { to: "/admin/activity", label: "Activity log" },
         // Vardil's page for every client: announcements, and the apps they have and could add (19 Nov).

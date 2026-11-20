@@ -1,3 +1,4 @@
+import { Plus } from "@phosphor-icons/react";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAccess } from "@/data/access";
@@ -9,11 +10,14 @@ import { dShort, plural, when, whenInline } from "@/lib/format";
 import { money0 } from "@/lib/money";
 import { scopePercent } from "@/lib/project-costs";
 import { crewRequests, mayHandleCrewRequest, requestsFor, withOffice } from "@/lib/requests";
+import { holdLines, takesRequests, takesSnags } from "@/lib/snags";
 import { dayRoster } from "@/lib/roster";
-import { Badge, Button, DeclineNote, Empty, PageBody, PageHead, Panel, Section, Segmented } from "@/ui";
+import { Badge, Button, DeclineNote, Dialog, Empty, PageBody, PageHead, Panel, Section, Segmented } from "@/ui";
 import { HoldBadge, Progress, ProjectBadge } from "@/ui/status";
 import { toast } from "@/ui/toast";
+import { AddSnagDialog, NewRequestDialog, NewVariationDialog } from "./AddDialogs";
 import { CrewRequestButtons } from "./CrewRequestButtons";
+import { SnagList } from "./Snags";
 import { REQUEST_LABEL } from "./ProjectPage";
 
 const pctOf = (db: Db, p: Project) => scopePercent(db.scopeTasks.filter((t) => t.projectId === p.id));
@@ -177,49 +181,84 @@ export function OnSiteToday() {
   );
 }
 
-export function ExtrasAndSnagging() {
+/**
+ * Projects, Requests and variations, Variations and snagging (reworded and given its plus buttons
+ * on 20 Nov, decisions 234 to 236). Three lists: final accounts on hold, each with why and what
+ * lets it go; variations waiting for approval; and every open snag. "On hold" means the firm has
+ * not billed the job's last invoice yet. It is not money the client is keeping back.
+ */
+export function VariationsAndSnagging() {
   const db = useData((s) => s.db);
   const day = useDay();
   const region = usePrefs((s) => s.brand.region);
   const access = useAccess();
   const manager = access.may("manageProjects");
-  const holds = access.scope(db.projects).filter((p) => p.invoiceHold);
-  // On a live project nothing is held yet: its final account will be, once the work is complete.
+  const [adding, setAdding] = useState<"variation" | "snag" | null>(null);
+  const [clearing, setClearing] = useState<Project | null>(null);
+  const [showFixed, setShowFixed] = useState(false);
+  const mine = access.scope(db.projects);
+  const ids = new Set(mine.map((p) => p.id));
+  const holds = mine.filter((p) => p.invoiceHold);
+  // On a live project nothing is on hold yet: its final account will be, once the work is complete.
   const held = holds.filter((p) => p.status !== "Live" && p.status !== "Not started");
   const toCome = holds.filter((p) => !held.includes(p));
-  const open = access.scope(db.projects).flatMap((p) => db.variations.filter((v) => v.projectId === p.id && v.status === "Draft").map((v) => ({ p, v })));
+  const open = mine.flatMap((p) => db.variations.filter((v) => v.projectId === p.id && v.status === "Draft").map((v) => ({ p, v })));
+  const snags = db.snags.filter((s) => ids.has(s.projectId));
+  const openSnagRows = snags.filter((s) => s.status === "Open");
+  const fixedRows = snags.filter((s) => s.status === "Fixed");
+  const canAdd = mine.some(takesSnags);
   return (
     <>
-      <PageHead title="Extras and snagging" note={`${plural(held.length, "final account")} held. Clearing a hold is a manager's decision and is written to the project's history.`} />
+      <PageHead
+        title="Variations and snagging"
+        note={`${plural(held.length, "final account")} on hold, ${plural(open.length, "variation")} waiting for approval, ${plural(openSnagRows.length, "snag")} open. A final account is the last invoice on a finished job: we hold it back while a variation is not agreed or a snag is open, so the client is billed once and for the right amount.`}
+        actions={
+          canAdd ? (
+            <>
+              <Button onClick={() => setAdding("snag")}>
+                <Plus size={16} /> Add snag
+              </Button>
+              <Button variant="primary" onClick={() => setAdding("variation")}>
+                <Plus size={16} /> New variation
+              </Button>
+            </>
+          ) : undefined
+        }
+      />
       <PageBody className="grid max-w-5xl gap-6">
-        <Section title={`Invoices held (${held.length})`}>
+        <Section title={`Final accounts on hold (${held.length})`} aside="Not yet invoiced. Each lets go by itself when its reason is dealt with">
           <Panel>
             {held.length === 0 ? (
-              <Empty title="No invoices are held">A finished project's final account is held while an extra is waiting to be agreed or snagging is open.</Empty>
+              <Empty title="No final account is on hold">A finished project's final account is held back while a variation is waiting to be agreed or a snag is open.</Empty>
             ) : (
               <ul className="divide-y divide-line">
                 {held.map((p) => {
-                  const waiting = db.variations.filter((v) => v.projectId === p.id && v.status === "Draft").length;
+                  const lines = holdLines(p, db.variations, db.snags);
                   return (
                     <li key={p.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-3 py-2.5">
-                      <div className="min-w-0 flex-1">
-                        <Link to={`/projects/${p.code}?tab=extras`} className="font-medium underline-offset-2 hover:underline">
+                      <div className="min-w-0 flex-1 basis-72">
+                        <Link to={`/projects/${p.code}?tab=variations`} className="font-medium underline-offset-2 hover:underline">
                           {p.code} {p.name}
                         </Link>
-                        <p className="text-[0.93rem] text-muted">
-                          {clientOf(db, p)}. {[p.extrasFlag && `${plural(waiting, "variation")} awaiting approval`, p.snaggingFlag && "Snagging open"].filter(Boolean).join(", ")}.
-                        </p>
+                        <p className="text-[0.93rem] text-muted">{clientOf(db, p)}. Work finished {dShort(p.endDate)}.</p>
+                        {lines.length === 0 ? (
+                          <p className="text-[0.93rem] text-warn">Put on hold by a manager.</p>
+                        ) : (
+                          lines.map((l) => (
+                            <p key={l.why} className="text-[0.93rem] text-warn">
+                              On hold because {l.why}. It lets go by {l.lets}.
+                            </p>
+                          ))
+                        )}
                       </div>
-                      {access.seeValues && p.value != null && <span className="font-medium">{money0(p.value, region)}</span>}
-                      <ProjectBadge status={p.status} />
+                      {access.seeValues && p.value != null && (
+                        <span className="text-right">
+                          <span className="block font-medium">{money0(p.value, region)}</span>
+                          <span className="block text-[0.87rem] text-muted">contract value</span>
+                        </span>
+                      )}
                       {manager && (
-                        <Button
-                          size="sm"
-                          onClick={() => {
-                            clearHold(p.id);
-                            toast(`Hold cleared on ${p.code}`);
-                          }}
-                        >
+                        <Button size="sm" onClick={() => setClearing(p)}>
                           Clear hold
                         </Button>
                       )}
@@ -231,30 +270,30 @@ export function ExtrasAndSnagging() {
           </Panel>
           {toCome.length > 0 && (
             <p className="mt-2 text-[0.93rem] text-muted">
-              Still on site, so nothing is held yet. These final accounts will be held when the work is complete:{" "}
+              Still on site, so nothing is on hold yet. These final accounts will be held when the work is complete, unless what is open is settled first:{" "}
               {toCome.map((p, i) => (
                 <span key={p.id}>
                   {i > 0 && ", "}
-                  <Link to={`/projects/${p.code}?tab=extras`} className="text-accent-ink underline-offset-2 hover:underline">
+                  <Link to={`/projects/${p.code}?tab=variations`} className="text-accent-ink underline-offset-2 hover:underline">
                     {p.code} {p.name}
                   </Link>{" "}
-                  ({[p.extrasFlag && "extras to agree", p.snaggingFlag && "snagging open"].filter(Boolean).join(", ")})
+                  ({[p.extrasFlag && "variations to agree", p.snaggingFlag && "snags open"].filter(Boolean).join(", ")})
                 </span>
               ))}
               .
             </p>
           )}
         </Section>
-        <Section title={`Variations awaiting approval (${open.length})`} aside={access.can("dashboard") ? <Link to="/dashboard" className="font-medium text-accent-ink underline-offset-2 hover:underline">Open approvals</Link> : undefined}>
+        <Section title={`Variations waiting for approval (${open.length})`} aside={access.can("dashboard") ? <Link to="/dashboard" className="font-medium text-accent-ink underline-offset-2 hover:underline">Approve on the Dashboard</Link> : "The managing director approves each one"}>
           <Panel>
             {open.length === 0 ? (
-              <Empty title="Nothing is waiting" />
+              <Empty title="Nothing is waiting">Extra work is added here with New variation, on a project's Variations tab, or from the site phone.</Empty>
             ) : (
               <ul className="divide-y divide-line">
                 {open.map(({ p, v }) => (
                   <li key={v.id} className="flex flex-wrap items-baseline gap-x-4 px-3 py-2.5">
                     <div className="min-w-0 flex-1">
-                      <Link to={`/projects/${p.code}?tab=extras`} className="font-medium underline-offset-2 hover:underline">
+                      <Link to={`/projects/${p.code}?tab=variations`} className="font-medium underline-offset-2 hover:underline">
                         {p.code} {p.name}
                       </Link>
                       <p>{v.measured}</p>
@@ -269,8 +308,71 @@ export function ExtrasAndSnagging() {
             )}
           </Panel>
         </Section>
+        <Section
+          title={`Open snags (${openSnagRows.length})`}
+          aside={
+            fixedRows.length > 0 ? (
+              <button type="button" className="press font-medium text-accent-ink underline-offset-2 hover:underline" onClick={() => setShowFixed((x) => !x)}>
+                {showFixed ? "Hide the fixed ones" : `Show ${plural(fixedRows.length, "fixed snag")}`}
+              </button>
+            ) : undefined
+          }
+        >
+          <Panel>
+            <SnagList snags={showFixed ? [...openSnagRows, ...fixedRows] : openSnagRows} projects={db.projects} canFix={() => true} empty="No snag is open" />
+          </Panel>
+        </Section>
       </PageBody>
+      {adding === "variation" && <NewVariationDialog onClose={() => setAdding(null)} />}
+      {adding === "snag" && <AddSnagDialog onClose={() => setAdding(null)} />}
+      {clearing && <ClearHoldDialog p={clearing} onClose={() => setClearing(null)} />}
     </>
+  );
+}
+/** The old name, kept for links and tests written before 20 Nov. */
+export const ExtrasAndSnagging = VariationsAndSnagging;
+
+/**
+ * Clearing a hold is a manager's decision to bill the final account anyway. It asks first and says
+ * what stays open, because it cannot be put back with one click: the next variation or snag does that.
+ */
+export function ClearHoldDialog({ p, onClose }: { p: Project; onClose: () => void }) {
+  const db = useData((s) => s.db);
+  const lines = holdLines(p, db.variations, db.snags);
+  const live = p.status === "Live" || p.status === "Not started";
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      title={`Clear the hold on ${p.code}?`}
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button
+            variant="primary"
+            onClick={() => {
+              clearHold(p.id);
+              toast(`Hold cleared on ${p.code}. ${live ? "Its final account will not be held" : "Its final account can be invoiced in Finance, Money in"}`);
+              onClose();
+            }}
+          >
+            Confirm, clear the hold
+          </Button>
+        </>
+      }
+    >
+      <div className="grid gap-2">
+        <p>
+          {p.code} {p.name}: {live ? "the final account will not be held when the work is complete." : "the final account moves to Finance, Money in, ready to invoice."}
+        </p>
+        {lines.map((l) => (
+          <p key={l.why} className="text-warn">
+            Still open: {l.why}. {l.why.includes("variation") ? "Anything approved later is invoiced on its own." : "The snags stay on the list until they are marked fixed."}
+          </p>
+        ))}
+        <p className="text-[0.93rem] text-muted">Your name and the time are written to the project's history.</p>
+      </div>
+    </Dialog>
   );
 }
 
@@ -318,7 +420,7 @@ export function Completed() {
                         {p.handoverSentAt ? (
                           <span className="text-ok">Sent {whenInline(p.handoverSentAt, day)}</span>
                         ) : p.invoiceHold ? (
-                          <Badge tone="warn">Held: {[p.extrasFlag && "extras", p.snaggingFlag && "snagging"].filter(Boolean).join(" and ")}</Badge>
+                          <Badge tone="warn">On hold: {[p.extrasFlag && "variations", p.snaggingFlag && "snagging"].filter(Boolean).join(" and ")}</Badge>
                         ) : drafted ? (
                           <Badge tone="accent">Draft in approvals</Badge>
                         ) : (
@@ -351,6 +453,8 @@ export function SiteRequests() {
   const access = useAccess();
   const office = access.may("manageProjects");
   const [show, setShow] = useState<"Open" | "Done">("Open");
+  const [adding, setAdding] = useState(false);
+  const canAdd = access.scope(db.projects).some(takesRequests);
   const ids = new Set(access.scope(db.projects).map((p) => p.id));
   // Requests on the sites this screen covers, and general ones (not for one site) for the office and for whoever asked.
   const all = requestsFor(db, access.personId);
@@ -360,7 +464,20 @@ export function SiteRequests() {
   const rows = all.filter((r) => (show === "Open" ? withOffice(r) : r.status === "Done"));
   return (
     <>
-      <PageHead title="Requests" note="What the sites have asked the office for: people, the firm's own plant, plant to hire and anything else, for one site or in general. Each waits for the managing director's yes or no in Admin. A request made on an operative's phone goes to the site manager first, who passes it on or deals with it on site." actions={<Segmented label="Request status" value={show} onChange={setShow} options={[{ value: "Open", label: "Open", count: all.filter(withOffice).length }, { value: "Done", label: "Dealt with", count: all.filter((r) => r.status === "Done").length }]} />} />
+      <PageHead
+        title="Site requests"
+        note="What the sites have asked the office for: people, the firm's own plant, plant to hire and anything else, for one site or in general. Add one here with New request, on a project's Site requests tab, or from the site phone. Each waits for the managing director's yes or no in Admin. A request made on an operative's phone goes to the site manager first, who passes it on or deals with it on site."
+        actions={
+          <>
+            <Segmented label="Request status" value={show} onChange={setShow} options={[{ value: "Open", label: "Open", count: all.filter(withOffice).length }, { value: "Done", label: "Dealt with", count: all.filter((r) => r.status === "Done").length }]} />
+            {canAdd && (
+              <Button variant="primary" onClick={() => setAdding(true)}>
+                <Plus size={16} /> New request
+              </Button>
+            )}
+          </>
+        }
+      />
       <PageBody className="grid max-w-5xl gap-6">
         {show === "Open" && crew.length > 0 && (
           <Section title={`${mine ? "From your crew" : "With the site managers"} (${crew.length})`} aside="Asked on the site phone. The site manager passes each one to management or deals with it on site">
@@ -472,6 +589,7 @@ export function SiteRequests() {
           )}
         </Panel>
       </PageBody>
+      {adding && <NewRequestDialog onClose={() => setAdding(false)} />}
     </>
   );
 }

@@ -124,7 +124,11 @@ export type Enquiry = {
   notes: string;
 };
 
-export type QuoteStatus = "Draft" | "Awaiting approval" | "Sent" | "Opened" | "Queried" | "Accepted" | "Declined";
+/**
+ * "Opened" went on 20 Nov (decision 233): nothing can tell the firm that a client has opened a
+ * tender sent by email, so a tender is Sent until the client asks something, accepts or declines.
+ */
+export type QuoteStatus = "Draft" | "Awaiting approval" | "Sent" | "Queried" | "Accepted" | "Declined";
 export type Quote = {
   id: ID;
   ref: string;
@@ -135,7 +139,6 @@ export type Quote = {
   lines: QuoteLine[];
   costing: Costing;
   sentAt?: Stamp;
-  openedAt?: Stamp;
   respondedAt?: Stamp;
   chasedAt?: Stamp;
   poNumber?: string;
@@ -235,6 +238,31 @@ export type Variation = {
 
 /** "other" is anything that is not people or plant (Oisin, 17 Nov). */
 export type RequestKind = "personnel" | "own_plant" | "hired_plant" | "other";
+/**
+ * One snag on a job (20 Nov, decision 234): something left to put right before the job is truly
+ * finished. Snagging used to be an on or off switch on the project; it is now this list, and the
+ * final account is on hold while any snag on the job is open.
+ */
+export type Snag = {
+  id: ID;
+  projectId: ID;
+  /** What is wrong, in a line. */
+  what: string;
+  /** Where on the job: "Drawing room, north window". */
+  where: string;
+  /** Whose list it came from: the client's at handover, or the firm's own walk-round. */
+  from: "client" | "own";
+  /** Who is to put it right: one of the firm's people or a subcontractor, by name. */
+  fixBy?: string;
+  /** A photo of it, if one was taken. */
+  photo?: Proof;
+  raisedBy: string;
+  raisedAt: Stamp;
+  status: "Open" | "Fixed";
+  fixedBy?: string;
+  fixedAt?: Stamp;
+};
+
 export type SiteRequest = {
   id: ID;
   /** The site it is for. Null for a general request from a site manager, not tied to one site (Oisin, 17 Nov). */
@@ -803,7 +831,7 @@ export type SupplierInvoice = {
   party?: "supplier" | "subcontractor";
   subcontractorId?: ID;
   /** How it reached the office. Missing means by email. */
-  via?: "email" | "portal" | "post";
+  via?: "email" | "portal" | "post" | "hand";
   /** The firm's own file number, counting up: written on the paper and sent to the accounts package as the extra reference. */
   fileNo?: string;
   dueOn?: Day;
@@ -1097,6 +1125,8 @@ export type Db = {
   scopeGroups: ScopeGroup[];
   scopeTasks: ScopeTask[];
   variations: Variation[];
+  /** Snags on every job, newest first. */
+  snags: Snag[];
   requests: SiteRequest[];
   spendRequests: SpendRequest[];
   supplies: SupplyOrder[];
@@ -1161,7 +1191,7 @@ export type Db = {
   certSubmissions: CertSubmission[];
   /** Each time a week's roster went out by email and WhatsApp (19 Nov). */
   rosterSends: RosterSend[];
-  /** The firm's own email and WhatsApp, connected in Admin, Connections (19 Nov). */
+  /** The firm's own email and WhatsApp, set up by Vardil when the firm joins (Admin, Connections went on 20 Nov). */
   connections: Connections;
 };
 

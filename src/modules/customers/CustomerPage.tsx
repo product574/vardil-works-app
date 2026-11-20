@@ -13,6 +13,7 @@ import { customerFigures, customerTimeline, jobRow } from "@/lib/reports";
 import { Badge, Button, cx, Empty, Fact, Mail, PageBody, PageHead, Panel, Section, Tel } from "@/ui";
 import { ProjectBadge, QuoteBadge, Tabs } from "@/ui/status";
 import { CustomerForm, useCanEditCustomers } from "./Customers";
+import { PORTAL } from "@/lib/apps";
 
 const LINK = "text-accent-ink underline-offset-2 hover:underline";
 type Tab = "overview" | "projects" | "tenders" | "invoices" | "emails" | "files";
@@ -130,22 +131,24 @@ function OverviewTab({ c, db }: { c: Client; db: Db }) {
               <Fact label="Invoices to">{c.billingEmail ? <Mail address={c.billingEmail} /> : "The contact's email"}</Fact>
               <Fact label="Terms">{c.termsDays} days</Fact>
               <Fact label="Sage account">{c.accountRef}</Fact>
-              <Fact label="Client portal">
-                {c.portalEnabled ? (
-                  <button
-                    type="button"
-                    className={cx("font-medium", LINK)}
-                    onClick={() => {
-                      setPortalClient(c.id);
-                      navigate("/portal");
-                    }}
-                  >
-                    On: see what they see
-                  </button>
-                ) : (
-                  "Off"
-                )}
-              </Fact>
+              {PORTAL && (
+                <Fact label="Client portal">
+                  {c.portalEnabled ? (
+                    <button
+                      type="button"
+                      className={cx("font-medium", LINK)}
+                      onClick={() => {
+                        setPortalClient(c.id);
+                        navigate("/portal");
+                      }}
+                    >
+                      On: see what they see
+                    </button>
+                  ) : (
+                    "Off"
+                  )}
+                </Fact>
+              )}
               <Fact label="Customer since">{since ? dFull(since.slice(0, 10)) : "New"}</Fact>
             </dl>
           </Panel>
@@ -432,7 +435,7 @@ function FilesTab({ c, db }: { c: Client; db: Db }) {
         </Panel>
       </Section>
       {sent.length > 0 && (
-        <Section title="Sent in by them through the portal">
+        <Section title={PORTAL ? "Sent in by them through the portal" : "Sent in by them"}>
           <Panel>
             <ul className="divide-y divide-line">
               {sent.map((f) => (

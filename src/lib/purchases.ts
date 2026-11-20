@@ -8,6 +8,7 @@ import { dFull } from "./format";
 import { firstName } from "./invoices";
 import { money0, money2, r2 } from "./money";
 import { daysBetween } from "./status";
+import { PORTAL } from "./apps";
 
 // ── Where an invoice stands ───────────────────────────────────────────────────
 
@@ -39,7 +40,7 @@ export function needsAccounts(s: Standing & Pick<SupplierInvoice, "party">) {
   return stage === "unread" || stage === "check" || (stage === "back" && partyOf(s) === "supplier");
 }
 
-export const viaWords = (s: Pick<SupplierInvoice, "via">) => (s.via === "portal" ? "through the portal" : s.via === "post" ? "by post" : "by email");
+export const viaWords = (s: Pick<SupplierInvoice, "via">) => (s.via === "portal" ? "through the portal" : s.via === "post" ? "by post" : s.via === "hand" ? "by hand" : "by email");
 
 /** The projects an invoice's lines are charged to. */
 export const sitesOf = (s: Pick<SupplierInvoice, "allocations">) => [...new Set(s.allocations.map((a) => a.projectId))];
@@ -67,8 +68,8 @@ export const runsSite = (p: Pick<Site, "siteManagerId" | "contractsManagerId">, 
 export const chainOf = (limits: Pick<ApprovalLimit, "id" | "chain">[]): PayChain => limits.find((x) => x.id === "supplier")?.chain ?? "site-md";
 
 export const CHAIN_WORDS: Record<PayChain, { title: string; steps: string[] }> = {
-  "site-md": { title: "Site manager, then managing director", steps: ["Accounts check what was read from the invoice and send it on", "The site manager of the job approves it: only the site knows the work was done or the goods arrived", "The managing director approves it", "The office pays it and marks it paid"] },
-  site: { title: "Site manager only", steps: ["Accounts check what was read from the invoice and send it on", "The site manager of the job approves it", "The office pays it and marks it paid"] },
+  "site-md": { title: "Site manager, then managing director", steps: ["The office adds the invoice, checks it against the paper and picks the job", "The site manager of the job approves it: only the site knows the work was done or the goods arrived", "The managing director approves it", "The office pays it and marks it paid"] },
+  site: { title: "Site manager only", steps: ["The office adds the invoice, checks it against the paper and picks the job", "The site manager of the job approves it", "The office pays it and marks it paid"] },
   "accounts-limit": { title: "Accounts up to a limit, managing director above", steps: ["Accounts check a supplier's invoice and approve it themselves up to the limit before VAT; above it the managing director approves", "A subcontractor's invoice is approved by whoever runs the site, or the managing director", "The office pays it and marks it paid"] },
 };
 
@@ -208,7 +209,7 @@ export function purchaseRows(s: SupplierInvoice, projects: Pick<Project, "id" | 
 export function receiptEmail(a: { number: string; gross: number; paidOn: string; contactName: string; project: string; sender: string; company: string; region: Region }) {
   return {
     subject: `Payment received: invoice ${a.number}, ${a.project}`,
-    body: `Dear ${firstName(a.contactName)},\n\nThank you. We have received your payment of ${money2(a.gross, a.region)} for invoice ${a.number} (${a.project}) on ${dFull(a.paidOn)}. Nothing more is owed on this invoice.\n\nThe invoice is marked as paid in your portal, where you can open it at any time.\n\nKind regards,\n${a.sender}\n${a.company}`,
+    body: `Dear ${firstName(a.contactName)},\n\nThank you. We have received your payment of ${money2(a.gross, a.region)} for invoice ${a.number} (${a.project}) on ${dFull(a.paidOn)}. Nothing more is owed on this invoice.${PORTAL ? "\n\nThe invoice is marked as paid in your portal, where you can open it at any time." : ""}\n\nKind regards,\n${a.sender}\n${a.company}`,
   };
 }
 
@@ -216,7 +217,7 @@ export function receiptEmail(a: { number: string; gross: number; paidOn: string;
 export function remittanceEmail(a: { invoiceNo: string; total: number; paidOn: string; paidRef?: string; contactName: string; project: string; sender: string; company: string; region: Region }) {
   return {
     subject: `Remittance advice: your invoice ${a.invoiceNo}, ${a.project}`,
-    body: `Dear ${firstName(a.contactName)},\n\nWe have paid your invoice ${a.invoiceNo} for ${a.project}: ${money2(a.total, a.region)} on ${dFull(a.paidOn)}, by bank transfer${a.paidRef ? `, reference ${a.paidRef}` : ""}.\n\nIt is marked as paid in your portal.\n\nKind regards,\n${a.sender}\n${a.company}`,
+    body: `Dear ${firstName(a.contactName)},\n\nWe have paid your invoice ${a.invoiceNo} for ${a.project}: ${money2(a.total, a.region)} on ${dFull(a.paidOn)}, by bank transfer${a.paidRef ? `, reference ${a.paidRef}` : ""}.${PORTAL ? "\n\nIt is marked as paid in your portal." : ""}\n\nKind regards,\n${a.sender}\n${a.company}`,
   };
 }
 
@@ -227,4 +228,52 @@ export function portalStanding(s: Pick<SupplierInvoice, "readStatus" | "docType"
   if (stage === "pay") return { label: "Approved", tone: "accent", detail: `To be paid by ${dFull(payBy(s))}` };
   if (stage === "back") return { label: "Sent back", tone: "bad", detail: s.sentBack?.reason ?? "" };
   return { label: "Received", tone: "neutral", detail: "Waiting for approval" };
+}
+
+// ── Adding an invoice by hand (20 Nov, decision 237) ──────────────────────────
+
+/** How an invoice reached the office, for the box that adds one. */
+export const ARRIVED: { value: NonNullable<SupplierInvoice["via"]>; label: string }[] = [
+  { value: "email", label: "By email" },
+  { value: "post", label: "By post" },
+  { value: "hand", label: "Handed in" },
+];
+
+/** Every firm the office has had an invoice from, and every subcontractor on file: the names offered in the From box. */
+export function knownPayees(invoices: Pick<SupplierInvoice, "supplier">[], subcontractors: Pick<Subcontractor, "name">[]) {
+  return [...new Set([...subcontractors.map((s) => s.name), ...invoices.map((s) => s.supplier)])].sort((a, b) => a.localeCompare(b));
+}
+
+/**
+ * What a file's name says about the invoice in it: who it is from (a name already on file), its
+ * number and the job. Rules, not a model: a real build reads the invoice itself (REAL BUILD), and
+ * whoever adds it checks every box either way.
+ */
+export function readInvoiceName(fileName: string, payees: string[], codes: string[]): { from?: string; invoiceNo?: string; code?: string } {
+  const flat = (t: string) => t.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const name = flat(fileName.replace(/\.[a-z0-9]{2,4}$/i, ""));
+  // The longest name on file found in the file's name; failing that, a firm whose first word is there.
+  const whole = [...payees].sort((a, b) => b.length - a.length).find((p) => name.includes(flat(p)));
+  const first = whole ?? payees.find((p) => flat(p).split(" ")[0]!.length >= 5 && name.split(" ").includes(flat(p).split(" ")[0]!));
+  const code = codes.find((c) => name.split(" ").includes(c.toLowerCase()));
+  // Underscores count as spaces, as people name files.
+  const raw = fileName.replace(/\.[a-z0-9]{2,4}$/i, "").replace(/_/g, " ");
+  // An invoice number: letters and digits joined by hyphens (SBS-7755, CS-INV-9921), or a run of four or more digits.
+  const no = raw.match(/\b[A-Za-z]{2,}(?:-[A-Za-z]+)*-\d{2,}\b/)?.[0] ?? raw.match(/\b\d{4,}\b/)?.[0];
+  return { ...(first ? { from: first } : {}), ...(no && no.toUpperCase() !== code ? { invoiceNo: no } : {}), ...(code ? { code } : {}) };
+}
+
+export type NewPurchase = { from: string; invoiceNo: string; invoiceDate: string; net: number; projectId: string };
+
+/** Why an invoice cannot be added yet, in plain words, or "" when it can. */
+export function addPurchaseProblem(f: NewPurchase, today: string, invoices: Pick<SupplierInvoice, "supplier" | "invoiceNo" | "fileNo">[]): string {
+  if (!f.from.trim()) return "Say who the invoice is from.";
+  if (!f.invoiceNo.trim()) return "Type the invoice number as it is printed on the invoice.";
+  const same = invoices.find((s) => s.supplier.trim().toLowerCase() === f.from.trim().toLowerCase() && s.invoiceNo.trim().toLowerCase() === f.invoiceNo.trim().toLowerCase());
+  if (same) return `${same.supplier} ${same.invoiceNo} is already on file${same.fileNo ? ` as ${same.fileNo}` : ""}. An invoice is only added once.`;
+  if (!f.invoiceDate) return "Give the date on the invoice.";
+  if (f.invoiceDate > today) return "The invoice date is after today.";
+  if (!(f.net > 0)) return "Type the amount before VAT.";
+  if (!f.projectId) return "Choose the job it is for, so it goes to the right site manager.";
+  return "";
 }

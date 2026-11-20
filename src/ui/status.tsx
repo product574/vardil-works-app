@@ -1,7 +1,7 @@
 import type { EnquiryStatus, Project, ProjectStatus, QuoteStatus } from "@/data/types";
 import { Badge, cx, type Tone } from "./index";
 
-const QUOTE: Record<QuoteStatus, Tone> = { Draft: "neutral", "Awaiting approval": "accent", Sent: "neutral", Opened: "accent", Queried: "warn", Accepted: "ok", Declined: "bad" };
+const QUOTE: Record<QuoteStatus, Tone> = { Draft: "neutral", "Awaiting approval": "accent", Sent: "neutral", Queried: "warn", Accepted: "ok", Declined: "bad" };
 const PROJECT: Record<ProjectStatus, Tone> = { "Not started": "neutral", Live: "ok", Complete: "accent", Invoiced: "neutral", Closed: "neutral" };
 const ENQUIRY: Record<EnquiryStatus, Tone> = { Logged: "accent", Quoted: "neutral", Won: "ok", Lost: "bad", "No bid": "neutral" };
 
@@ -11,12 +11,12 @@ export const EnquiryBadge = ({ status }: { status: EnquiryStatus }) => <Badge to
 
 /**
  * A hold on a live project holds nothing yet: its final account will be held when the work is
- * complete. So the badge says what is waiting there, and "Invoice held" only once it is true.
+ * complete. So the badge says what is waiting there, and "Final account on hold" only once it is true.
  */
 export function HoldBadge({ p }: { p: Pick<Project, "status" | "invoiceHold" | "extrasFlag" | "snaggingFlag"> }) {
   if (!p.invoiceHold) return null;
-  if (p.status === "Live" || p.status === "Not started") return <Badge tone="warn">{p.extrasFlag ? "Extras to agree" : "Snagging open"}</Badge>;
-  return <Badge tone="warn">Invoice held</Badge>;
+  if (p.status === "Live" || p.status === "Not started") return <Badge tone="warn">{p.extrasFlag ? "Variations to agree" : "Snagging open"}</Badge>;
+  return <Badge tone="warn">Final account on hold</Badge>;
 }
 
 /** A thin bar for "how far along". The percentage is always written beside it as well. */

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { PORTAL } from "@/lib/apps";
 import { invoiceNo } from "@/lib/billing";
 import { mayApprove, needsAccounts, partyOf, payBy, purchaseStage } from "@/lib/purchases";
 import { approvePurchase, markInvoicePaid, markPurchasePaid, markPurchasesExported, reopenSupplierInvoice, sendBackPurchase, sendForApproval, setApprovalLimit, subcontractorSendsInvoice, takeBackPurchase, unmarkInvoicePaid, unmarkPurchasePaid } from "./actions";
@@ -59,7 +60,7 @@ describe("the paying side of the sample data", () => {
     expect(waiting.filter((s) => partyOf(s) === "supplier").map((s) => s.invoiceNo).sort()).toEqual(["ALC-6631", "SBS-7755"]);
     expect(waiting.filter((s) => partyOf(s) === "subcontractor").map((s) => s.invoiceNo).sort()).toEqual(["CES-2231", "CS-INV-9921", "LRL-0412", "PDP-118"]);
     for (const s of waiting.filter((x) => partyOf(x) === "supplier")) expect(s.subtotal).toBeGreaterThan(limit());
-    for (const s of waiting.filter((x) => partyOf(x) === "subcontractor")) expect([s.via, s.allocations.length > 0, s.jobRef === db().projects.find((p) => p.id === s.allocations[0]!.projectId)!.code]).toEqual(["portal", true, true]);
+    for (const s of waiting.filter((x) => partyOf(x) === "subcontractor")) expect([s.via, s.allocations.length > 0, s.jobRef === db().projects.find((p) => p.id === s.allocations[0]!.projectId)!.code]).toEqual([PORTAL ? "portal" : "email", true, true]);
     const back = db().supplierInvoices.filter((s) => purchaseStage(s) === "back");
     expect(back.map((s) => s.invoiceNo)).toEqual(["KSC-325"]);
     expect(needsAccounts(back[0]!)).toBe(false);

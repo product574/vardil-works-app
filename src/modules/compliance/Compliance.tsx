@@ -19,6 +19,7 @@ import { Badge, Button, cx, Dialog, Empty, Field, NumInput, PageBody, PageHead, 
 import { ProofField, useProofPick } from "@/ui/files";
 import { toast } from "@/ui/toast";
 import { actionLabel, Figures, InspectForm, LINK, permFor, ProofCell, RenewDialog, RowTable, StateBadge, stateLabel, useCompliance } from "./shared";
+import { PORTAL } from "@/lib/apps";
 
 const needsAttention = (r: ComplianceRow) => r.state !== "ok" || r.proofNeeded || !!r.sent;
 
@@ -997,7 +998,7 @@ export function Subcontractors() {
   const code = (id: string) => db.projects.find((p) => p.id === id)?.code ?? "";
   return (
     <>
-      <PageHead title="Subcontractors" note={`Each subcontractor's insurances, safety statement, a method statement for every site they are on, and their people's ${words.safetyCard}. They send these through their portal; anything that came by email is recorded here. An invoice from a subcontractor whose insurance has run out is flagged to whoever approves it.`} />
+      <PageHead title="Subcontractors" note={`Each subcontractor's insurances, safety statement, a method statement for every site they are on, and their people's ${words.safetyCard}. ${PORTAL ? "They send these through their portal; anything that came by email is recorded here." : "They send these by email and the office records each one here."} An invoice from a subcontractor whose insurance has run out is flagged to whoever approves it.`} />
       <PageBody className="grid max-w-6xl gap-5">
         {subs.map((s) => {
           const flags = subFlags(s, live, day);
@@ -1011,9 +1012,11 @@ export function Subcontractors() {
                 <span className="text-muted">
                   {s.trade}, on {s.projectIds.filter((id) => live.some((p) => p.id === id)).map(code).join(", ")}. {s.contactName}, {s.phone}.
                 </span>
-                <Link to={`/portal/subcontractors?sub=${s.id}`} className={cx("text-[0.93rem]", LINK)}>
-                  What they see in the portal
-                </Link>
+                {PORTAL && (
+                  <Link to={`/portal/subcontractors?sub=${s.id}`} className={cx("text-[0.93rem]", LINK)}>
+                    What they see in the portal
+                  </Link>
+                )}
               </div>
               {flags.length > 0 && <p className="rounded-md bg-bad-soft px-2.5 py-1.5 text-[0.93rem] text-bad">Out of date or missing: {flags.join("; ")}.</p>}
               <Panel className="overflow-x-auto">

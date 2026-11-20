@@ -57,7 +57,7 @@ export function runTool(name: AskToolName | string, input: Record<string, unknow
     }
     const q = db.quotes.find((x) => x.ref.toUpperCase() === ref);
     if (q) {
-      if (q.status !== "Sent" && q.status !== "Opened") return no(`${q.ref} is ${q.status.toLowerCase()}, and only a sent or opened quote with no answer can be chased.`);
+      if (q.status !== "Sent") return no(`${q.ref} is ${q.status.toLowerCase()}, and only a sent quote with no answer can be chased.`);
       const c = db.clients.find((x) => x.id === q.clientId);
       if (!c) return no(`the client for ${q.ref} is missing.`);
       const id = draftEmailApproval({

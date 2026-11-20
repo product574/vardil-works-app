@@ -22,6 +22,7 @@ import { LicenceDialog, RenewDialog as FleetRenewDialog } from "@/modules/fleet/
 import { Badge, Button, cx, Dialog, Empty, Field, Panel, type Tone } from "@/ui";
 import { ProofField, ProofLink, useProofPick } from "@/ui/files";
 import { toast } from "@/ui/toast";
+import { PORTAL } from "@/lib/apps";
 
 export const LINK = "text-accent-ink underline-offset-2 hover:underline";
 
@@ -628,7 +629,7 @@ function SubPaperForm({ row, subId, paper, projectId, onClose }: { row: Complian
         toast(`${row.item} recorded for ${s.name}${said(proof)}`);
       }}
     >
-      <p className="text-[0.93rem] text-muted">For a paper that came by email. {s.contactName} can also send it through their portal.</p>
+      <p className="text-[0.93rem] text-muted">For a paper that came by email{PORTAL ? `. ${s.contactName} can also send it through their portal` : ` from ${s.contactName}`}.</p>
       <div className="grid gap-3 sm:grid-cols-2">
         {!rams && <DateField label={paper === "Safety statement" ? "Next review due" : "Runs to"} value={expires} min={addDays(day, 1)} onChange={setExpires} />}
         <Field label="Reference">{(id) => <input id={id} className="field" placeholder={rams ? `RAMS for ${code}` : "Policy number"} value={reference} onChange={(e) => setReference(e.target.value)} />}</Field>

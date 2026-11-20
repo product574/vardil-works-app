@@ -13,6 +13,7 @@ import { renewedTo } from "@/lib/compliance";
 import { nextWorkWeek } from "@/lib/week";
 import type { CompanyPaper, Course, Person, PlantItem, Project, Scaffold, ScaffoldInspection, Subcontractor, SubPaper, SubWorker } from "../types";
 import { workdays } from "./util";
+import { PORTAL } from "@/lib/apps";
 
 const pid = (code: string) => `pr-${code}`;
 
@@ -101,7 +102,7 @@ export function fillSubPapers(today: string, subs: Subcontractor[]) {
     id: `spp-${++n}`,
     kind,
     receivedOn: addDays(today, days === null ? -40 : Math.min(-20, days - 365)),
-    via: "Portal",
+    via: PORTAL ? "Portal" : "Email",
     ...(days === null ? {} : { expires: addDays(today, days) }),
     ...extra,
   });

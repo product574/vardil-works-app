@@ -34,6 +34,10 @@ later (decision 229). The restructure was built on the branch `master-demo-struc
 into `main` on 20 Nov at Oisin's word ("yes push to github"); work on a new branch from `main`
 for each round, as before.
 
+**Easier to put things in, 20 Nov (later):** decisions 230 to 238, built on the branch
+`easier-inputs` from `main` at b2a98ca. See "Easier to put things in, 20 Nov" further down. Not
+merged into `main` until Oisin says.
+
 ## Start here (handed over 16 Nov 2026)
 
 Aodhan built this with Claude up to the end of step 1. From 16 Nov his co-founder develops
@@ -468,6 +472,22 @@ recommended answer each time):
 | 227 | The People screens | Inside the five sections of Resources: Timesheet has Attendance history, Payroll export and Reimbursements as tabs; Scheduling has Holidays and Holiday requests; the Employee register is a tab of Training |
 | 228 | Reports | One section of Finance, Profitability reports, opening on Profit by job, with Gross margin, Sales by customer, Tender conversion, the 12 months overview and Job costs as tabs. The managing director's by default, as before |
 | 229 | Where it is looked at | A private Claude artifact for now; a Cloudflare Pages project of its own when it goes to prospects (Jimmy is aiming for CSL and Michael Murray on Friday 27 Nov or the Monday after) |
+
+Decisions made by Oisin on the master demo, later on 20 Nov 2026 ("make the sites more easy to use
+and think about every step ... who is going to input the info and how"). Eight question buttons in
+two rounds, the layout one with sketches; he picked the recommended answer each time:
+
+| # | Question | Decision |
+|---|---|---|
+| 230 | How things get in | Every list a person can add to has a button with a plus, named for what it adds, on the screen where the list is. Each box says under its form what happens next and who it waits for. One box per thing, wherever it is opened (the section's screen or a project's own tab) |
+| 231 | The Portal | "Remove the Portal from Projects for now": hidden everywhere, not only in Projects. `PAUSED_APPS` in `src/lib/apps.ts` holds "portal"; `PORTAL` is the one constant screens and wording ask. Gone while paused: the Projects section, the Client (portal) sign-in level, the portal tick when sending an invoice, the lines about it in the paid boxes, Customers, Compliance, Billing and Settings, and it is in no package and not offered on Vardil Works or in Vardil HQ. The code and the section on the map stay: take "portal" out of `PAUSED_APPS` to bring it back |
+| 232 | Admin, Connections | Removed. Email and WhatsApp count as set up by Vardil when a firm joins (a question for the onboarding form), so Send the week works from the first day and says which mailbox and number it goes from. Team chat is shown as Teams; the Teams or Slack switch went with the screen (the preference `Brand.chatApp` stays) |
+| 233 | "Opened" on tenders | Removed everywhere, not only the board's column: with no portal nothing can tell the firm a client has opened a tender. A tender is Sent until the client asks something, accepts or declines. Awaiting response is Queried, Due a chase (sent 7 days or more ago, not chased in the last 7: `dueAChase`, `CHASE_AFTER_DAYS` in `lib/pipeline.ts`), Sent and waiting, Declined |
+| 234 | Snagging | A real list in place of the on or off switch: each snag has what, where, whose list it is from (the client's or our own walk-round), who is to fix it, an optional photo, and Open or Fixed. A job's final account is on hold while any of its snags is open and lets go when the last is marked fixed. Mark fixed has an Undo; a fixed one can be opened again |
+| 235 | The plus buttons | One per tab (his pick of two sketches): New request on Site requests; New variation and Add snag on Variations and snagging. For anyone who can open the section, for the sites their level covers (a site manager only his own). The same boxes are on a project's Site requests and Variations tabs with the site already known |
+| 236 | Wording | "Final accounts on hold" in place of "Invoices held", each with its reason and what lets it go ("On hold because 3 snags are open. It lets go by marking each one fixed."). "Variations" in place of "extras" on office screens (the tab, headings, buttons, hold reasons, history lines); the phone keeps "Report extra work", and invoice lines keep "Agreed extra". Clear hold asks first and says what stays open |
+| 237 | Invoices from suppliers and subcontractors | The office adds each one (his only pick of four ways in): Add invoice in Finance, Money out. Choose the PDF or photograph the paper, check the boxes, pick the job. Whoever adds it is the one who checks it, so it goes straight to the job's site manager, then the managing director (the firm's chain, decision 223), then To be paid. Nothing arrives unread by itself any more: the sample data's two unread invoices are now saved to check |
+| 238 | Who enters what | Written down record by record (project doc `inputs/who-enters-what.md`), with the gaps still open listed there and under "Easier to put things in" below |
 
 Standing preferences (these come from Aodhan and are not optional):
 
@@ -2044,6 +2064,107 @@ dashboard at phone width.
 - The programme is worked out from the scope and the job's dates, not from a real programme; the
   attached file is not read.
 - Nothing is sent to subcontractors asked to price; the request is recorded.
+- A real phone, Safari and Firefox, the hosted build behind Cloudflare.
+
+## Easier to put things in, 20 Nov (decisions 230 to 238)
+
+Branch `easier-inputs`, from `main` at b2a98ca. DATA_VERSION 28. Oisin's ask: make the demo easier
+to use and think about every step of where everything comes into it, who puts it in and how; and
+five changes by name (Connections out of Admin, the Portal out of Projects for now, adding to
+"Extras and snagging", the Opened column off the tenders board, a plus for requests and
+variations), plus a question: how does an invoice get in that waits for the site manager and the
+managing director.
+
+**Built.**
+
+- **The Portal paused** (`PAUSED_APPS`, `PORTAL`, `OFFERED_LEVELS` in `src/lib/apps.ts`): `useApps`
+  counts a paused app as off for every firm, Vardil HQ included, so `can("portal")` is false and
+  its section, routes and links go; `useAllowedLevels` never offers the client level; packages,
+  `SOLD_APPS` and `packageOf` leave it out. Wording that named the portal asks `PORTAL` (the send
+  and paid boxes for client and purchase invoices, Queries, the invoice page, Customers, a
+  customer's page, Compliance, Billing, Settings, Roles and access, the board's move messages, the
+  receipt and remittance emails, the invoice email template, Ask AI's summary). The sample data
+  follows it: subcontractors' waiting invoices came by email and were added by accounts, client
+  invoices went by email only, the open query and the "says it is paid" came by email, and the
+  portal automation is left out.
+- **Connections removed** (`admin/Connections.tsx` deleted; `/admin/connections` goes to Admin):
+  the seed sets `db.connections.email` (office@ the firm's sample domain, Outlook) and `.whatsapp`,
+  both "by Vardil". `connectEmail`, `connectWhatsApp` and `disconnect` are gone. `rosterBlocker`
+  still refuses when neither is set, with words that say to ask Vardil.
+- **Opened removed** (`QuoteStatus`, `Quote.openedAt`, the `opened` stage in `lib/pipeline.ts`, the
+  board column, the tender page's line, the dashboard fact, Ask AI's summary and chaser rule).
+  `kpis.sales.openedNotAnswered` is now `dueAChase`.
+- **Snags** (`Snag`, `db.snags`; rules in `src/lib/snags.ts`: `openSnags`, `snagCount`,
+  `holdLines`, and `takesSnags`, `takesVariations`, `takesRequests` for which jobs take what;
+  actions `addSnag`, `fixSnag`, `reopenSnag`, which keep `Project.snaggingFlag` and the hold in
+  step; `setSnagging` is gone). `clearHold` still releases a final account at a manager's word and
+  now leaves open snags on the list and says how many in the history. Sample data
+  `seed/snags.ts`, no random numbers: Glebe House (C716) has the client's list, three open and
+  one fixed; St Colman's wall (C715) two of the firm's own, both fixed.
+- **The add boxes** (`projects/AddDialogs.tsx`: `NewRequestDialog`, `NewVariationDialog`,
+  `AddSnagDialog`; `projects/Snags.tsx`: `SnagList`). Used on Site requests, on Variations and
+  snagging (`VariationsAndSnagging` in `projects/Lists.tsx`; `ExtrasAndSnagging` is kept as an
+  alias, and the address is still `/projects/extras`), and on a project's Site requests and
+  Variations tabs, where the old inline request form and the snagging switch went. A request
+  made in the office can be general ("General, not for one site"). `ClearHoldDialog` asks first.
+- **Add invoice** (`invoicing/AddInvoice.tsx`; rules `knownPayees`, `readInvoiceName`,
+  `addPurchaseProblem`, `ARRIVED` in `lib/purchases.ts`; action `addPurchaseInvoice`): on the
+  Suppliers and Subcontractors tabs of Money out, for anyone with "Handle invoices". The copy is
+  kept with the invoice. A name that is a subcontractor on file makes it theirs (labour heading,
+  their terms). "Add and send for approval" sets the site manager's step under Jimmy's chain;
+  "Save to check later" leaves it with accounts, for an invoice that covers more than one job,
+  whose lines are split on the invoice as before. The same supplier and number twice is refused.
+  `SupplierInvoice.via` gains "hand". In this demo the file's name is read for who it is from,
+  the number and the job (marked REAL BUILD: the invoice itself is read). The first step of each
+  chain in `CHAIN_WORDS` now reads "The office adds the invoice, checks it against the paper and
+  picks the job". Automation au-9 is "Supplier invoice read as it is added".
+- **Wording**: `holdReason` and `holdWhy` in `lib/billing.ts` say "variations"; the badge on a
+  finished job reads "Final account on hold"; history lines read "Variation raised", "No
+  variations left to agree", "Snag added", "Snag fixed".
+
+**Who enters what** is in the project doc `inputs/who-enters-what.md` (decision 238). Records
+that still have no way in on screen, found while writing it and not built: hired plant going on
+hire (a request is approved and nothing puts the machine on the Hired plant list); a new
+subcontractor firm (Add invoice treats an unknown name as a supplier); a project that did not
+come from a won tender; spending requests and supplies to site (sample data only); a new company
+paper (they can only be renewed). Oisin to say which come next.
+
+**Tested.** 811 automated tests in 80 files (new: `lib/snags.test.ts`, `data/snag-actions.test.ts`,
+`data/add-invoice.test.ts`, `data/easier-inputs.test.ts`; `pipeline`, `pipeline-actions`,
+`billing`, `overview`, `apps`, `purchase-actions`, `roster-send` and `seed` tests changed), both
+type checks. New browser suite `tests/browser/easier_check.py`, 70 checks, all passing, no console
+errors: no client level on the role page; Admin without Connections and the old address;
+Projects without the Portal, its address refused, and no portal words on Customers, a customer's
+page, the send box, subcontractor invoices or Compliance; the board without Opened and Awaiting
+response's four groups adding up; Variations and snagging's three lists and reasons; New
+variation refused without a site, then drafted and in Approvals; Add snag with a photo; three of
+four fixed still on hold, the fourth releasing the final account, Undo holding it again; Clear
+hold asking first, Cancel and Confirm; New request for a site, in Admin for the yes or no; a
+project's tabs using the same boxes; Add invoice refusing an empty box, reading a file's name,
+working out VAT, naming who it waits for, saving with its copy, refusing the same one twice, a
+subcontractor's handed in and saved to check; the site manager's yes as his step, the managing
+director's into job costs, then To be paid; the site manager offered only his own sites;
+accounts adding invoices; dark mode; phone width on seven screens and the Add invoice box.
+`master_check.py` 47 of 47 (its tender step now waits for the tender page, which it raced before).
+The single-file preview was built and clicked through from disk (no outside requests, no errors).
+Screenshots read by eye: the board, Variations and snagging in light and dark, a project's
+Variations tab, Add a snag, New variation, New request, Add an invoice at desktop and phone
+width, and the invoice once added.
+
+**Not tested, and known gaps.**
+
+- The 28 older browser suites and `csp_check.py` still stop at their first step, as before this
+  round (they were written for the department bar and the old dashboard). Several of them name
+  things that changed here (Connections, the Portal, Opened, the snagging switch, unread
+  invoices) and will need those steps rewritten when their navigation is.
+- Send the week could not be pressed in the browser run: the sample week has people planned who
+  cannot work, which keeps the button off, as before. Its rule and the seeded connections are
+  unit tested.
+- Snags and Add invoice are on the office screens only; the site manager's phone has neither yet.
+- A person given only the client level in Vardil HQ before the pause has no level to sign in as.
+- Finance still calls a held final account "Held" (the invoice's own status); only Projects was
+  reworded.
+- Ask AI was not tried with the model: its summary lists snags and no longer says "opened".
 - A real phone, Safari and Firefox, the hosted build behind Cloudflare.
 
 ## Build status

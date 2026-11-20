@@ -6,11 +6,15 @@ import { useData, useDay, usePrefs } from "@/data/store";
 import type { Quote } from "@/data/types";
 import { plural, whenInline } from "@/lib/format";
 import { money0 } from "@/lib/money";
+import { CHASE_AFTER_DAYS, dueAChase } from "@/lib/pipeline";
 import { quoteTotal } from "@/lib/quotes";
 import { Button, Empty, PageBody, PageHead, Panel, Section } from "@/ui";
 import { toast } from "@/ui/toast";
 
-/** Quotes that are with clients, grouped by what needs doing about them. */
+/**
+ * Quotes that are with clients, grouped by what needs doing about them. Nothing says whether a
+ * client has opened one (decision 233), so chasing goes by how long it has been out.
+ */
 export function Awaiting() {
   const db = useData((s) => s.db);
   const day = useDay();
@@ -20,8 +24,8 @@ export function Awaiting() {
   const oldest = (a: Quote, b: Quote) => (a.sentAt ?? "").localeCompare(b.sentAt ?? "");
   const groups: { title: string; note: string; rows: Quote[]; action: "chase" | "reprice" }[] = [
     { title: "Queried", note: "The client has asked something. Answer or reprice.", rows: db.quotes.filter((q) => q.status === "Queried").sort(oldest), action: "reprice" },
-    { title: "Opened, not answered", note: "They have read it. A call usually settles these.", rows: db.quotes.filter((q) => q.status === "Opened").sort(oldest), action: "chase" },
-    { title: "Sent, not opened", note: "Not looked at yet.", rows: db.quotes.filter((q) => q.status === "Sent").sort(oldest), action: "chase" },
+    { title: "Due a chase", note: `Sent ${CHASE_AFTER_DAYS} days or more ago with no answer, and not chased this week. A call usually settles these.`, rows: db.quotes.filter((q) => dueAChase(q, day)).sort(oldest), action: "chase" },
+    { title: "Sent, waiting", note: "Sent or chased in the last week. Give them time.", rows: db.quotes.filter((q) => q.status === "Sent" && !dueAChase(q, day)).sort(oldest), action: "chase" },
     { title: "Declined", note: "Worth asking why, or repricing a smaller scope.", rows: db.quotes.filter((q) => q.status === "Declined").sort(oldest), action: "reprice" },
   ];
   const waiting = groups.slice(0, 3).reduce((s, g) => s + g.rows.length, 0);

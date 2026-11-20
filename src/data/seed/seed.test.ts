@@ -153,7 +153,7 @@ describe("sample data", () => {
         ...d.projects.flatMap((p) => [p.completedAt, p.handoverSentAt, ...p.audit.map((a) => a.at)]),
         ...d.scopeTasks.map((t) => t.completedAt),
         ...d.scopeGroups.map((g) => g.date),
-        ...d.quotes.flatMap((q) => [q.sentAt, q.openedAt, q.respondedAt, q.chasedAt]),
+        ...d.quotes.flatMap((q) => [q.sentAt, q.respondedAt, q.chasedAt]),
         ...d.salesInvoices.flatMap((i) => [i.issuedOn, i.paidOn, i.exportedAt]),
         ...d.supplierInvoices.flatMap((s) => [s.invoiceDate, s.receivedAt, s.confirmedAt, s.paidOn, s.exportedAt, s.askedAt, s.sentBack?.at]),
         ...d.files.map((f) => f.modified),

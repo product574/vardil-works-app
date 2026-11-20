@@ -11,6 +11,7 @@ import { money0 } from "@/lib/money";
 import { customerFigures } from "@/lib/reports";
 import { Badge, Button, Dialog, Empty, Field, NumInput, PageBody, PageHead, Panel, Switch } from "@/ui";
 import { toast } from "@/ui/toast";
+import { PORTAL } from "@/lib/apps";
 
 // Customers (18 Nov): every customer in one list, and each on a page of their own
 // (CustomerPage.tsx) with everything the firm has to do with them.
@@ -35,7 +36,7 @@ export function Customers() {
   const q = text.trim().toLowerCase();
   const rows = db.clients
     .filter((c) => !q || [c.name, c.contactName, c.type, c.accountRef, c.county, c.contactEmail].some((v) => v?.toLowerCase().includes(q)))
-    .map((c) => ({ c, f: customerFigures(db, c.id, day), out: db.quotes.filter((x) => x.clientId === c.id && ["Sent", "Opened", "Queried"].includes(x.status)).length }))
+    .map((c) => ({ c, f: customerFigures(db, c.id, day), out: db.quotes.filter((x) => x.clientId === c.id && ["Sent", "Queried"].includes(x.status)).length }))
     .sort((a, b) => b.f.sales - a.f.sales || a.c.name.localeCompare(b.c.name));
   const live = db.clients.filter((c) => db.projects.some((p) => p.clientId === c.id && p.status === "Live")).length;
   return (
@@ -70,7 +71,7 @@ export function Customers() {
                   <th className="num">Tenders out</th>
                   {access.seeValues && <th className="num">Sales, 12 months</th>}
                   {access.seeValues && <th className="num">Owed now</th>}
-                  <th>Portal</th>
+                  {PORTAL && <th>Portal</th>}
                 </tr>
               </thead>
               <tbody>
@@ -93,7 +94,7 @@ export function Customers() {
                     <td className="num">{out || "-"}</td>
                     {access.seeValues && <td className="num">{f.sales > 0 ? money0(f.sales, region) : "-"}</td>}
                     {access.seeValues && <td className="num">{f.owed > 0 ? money0(f.owed, region) : "-"}</td>}
-                    <td>{c.portalEnabled ? <Badge tone="ok">On</Badge> : <Badge>Off</Badge>}</td>
+                    {PORTAL && <td>{c.portalEnabled ? <Badge tone="ok">On</Badge> : <Badge>Off</Badge>}</td>}
                   </tr>
                 ))}
               </tbody>
@@ -197,10 +198,12 @@ export function CustomerForm({ client, onClose }: { client?: Client; onClose: (i
           <p className="mb-1 text-[0.93rem] font-medium">Payment terms, days</p>
           <NumInput label="Payment terms, days" className="w-24" value={f.termsDays} onChange={(n) => set({ termsDays: n })} />
         </div>
-        <div className="flex items-center gap-3 self-end pb-1.5">
-          <Switch on={f.portalEnabled} label="Client portal" onChange={() => set({ portalEnabled: !f.portalEnabled })} />
-          <span>Client portal {f.portalEnabled ? "on" : "off"}</span>
-        </div>
+        {PORTAL && (
+          <div className="flex items-center gap-3 self-end pb-1.5">
+            <Switch on={f.portalEnabled} label="Client portal" onChange={() => set({ portalEnabled: !f.portalEnabled })} />
+            <span>Client portal {f.portalEnabled ? "on" : "off"}</span>
+          </div>
+        )}
         {client && <p className="text-[0.93rem] text-muted sm:col-span-2">Sage account {client.accountRef} stays as it is, so Sage keeps matching their invoices.</p>}
         {problem && touched && <p className="text-[0.93rem] text-warn sm:col-span-2">{problem}</p>}
       </form>

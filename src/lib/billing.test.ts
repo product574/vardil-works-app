@@ -21,14 +21,14 @@ describe("the final account", () => {
 });
 
 describe("why a final account is held", () => {
-  it("names extras, snagging, or both", () => {
-    expect(holdReason({ extrasFlag: true, snaggingFlag: false })).toBe("Extras to be agreed");
+  it("names variations, snagging, or both", () => {
+    expect(holdReason({ extrasFlag: true, snaggingFlag: false })).toBe("Variations to be agreed");
     expect(holdReason({ extrasFlag: false, snaggingFlag: true })).toBe("Snagging open");
-    expect(holdReason({ extrasFlag: true, snaggingFlag: true })).toBe("Extras to be agreed and snagging open");
+    expect(holdReason({ extrasFlag: true, snaggingFlag: true })).toBe("Variations to be agreed and snagging open");
   });
 
   it("reads inside a sentence", () => {
-    expect(holdWhy({ extrasFlag: true, snaggingFlag: true })).toBe("extras are waiting to be agreed and snagging is open");
+    expect(holdWhy({ extrasFlag: true, snaggingFlag: true })).toBe("variations are waiting to be agreed and snagging is open");
     expect(holdWhy({ extrasFlag: false, snaggingFlag: true })).toBe("snagging is open");
   });
 });

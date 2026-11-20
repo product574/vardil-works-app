@@ -6,7 +6,7 @@
  * drop their logo into /public and set `logoUrl`. Nothing else needs touching.
  */
 export type Region = "IE" | "UK";
-/** The firm's team chat, shown in Team chat and Admin, Connections (step 2). */
+/** The firm's team chat, shown in Team chat. Its switch was in Admin, Connections until 20 Nov; a firm's own is set by Vardil. */
 export type ChatApp = "teams" | "slack";
 
 export type Brand = {

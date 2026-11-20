@@ -173,11 +173,11 @@ export function recordsOverview(db: Db, today: string, o: OverviewOptions): Over
 
   if (o.seeMargins && has("sales")) {
     const thin = db.quotes
-      .filter((x) => x.status === "Sent" || x.status === "Opened" || x.status === "Queried")
+      .filter((x) => x.status === "Sent" || x.status === "Queried")
       .map((x) => ({ x, m: marginPct(quoteTotal(x.lines), costBreakdown(x.costing).total) ?? 100 }))
       .filter((y) => y.m < 15)
       .sort((a, b) => a.m - b.m)[0];
-    if (thin) facts.push(`[${thin.x.ref}](/sales/quotes/${thin.x.ref}) ${thin.x.title.split(":")[0]} went out at a ${(Math.round(thin.m * 10) / 10).toFixed(1)}% margin${thin.x.status === "Opened" ? " and has been opened" : ""}.`);
+    if (thin) facts.push(`[${thin.x.ref}](/sales/quotes/${thin.x.ref}) ${thin.x.title.split(":")[0]} went out at a ${(Math.round(thin.m * 10) / 10).toFixed(1)}% margin.`);
   }
 
   const starting = db.projects.filter((p) => p.status === "Not started" && next.includes(p.startDate) && !nextPlan.some((x) => x.projectId === p.id));

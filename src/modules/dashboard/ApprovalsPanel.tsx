@@ -11,6 +11,7 @@ import { money2, pct1 } from "@/lib/money";
 import { costBreakdown, lineValue, marginFlag, marginPct, quoteTotal } from "@/lib/quotes";
 import { Badge, Button, cx, type DeclineAsk, DeclineDialog, DeclineNote, Empty, Field, Panel, Section, Segmented } from "@/ui";
 import { toast } from "@/ui/toast";
+import { PORTAL } from "@/lib/apps";
 
 export const APPROVAL_LABEL: Record<ApprovalKind, string> = {
   variation: "Variation",
@@ -270,14 +271,14 @@ function VariationEffect({ db, variationId, projectId }: { db: Db; variationId: 
     !final || p.status === "Live"
       ? "Approving adds it to the contract value, so it is billed with the final account when the work is complete."
       : held && others > 0
-        ? `The final account is held until every extra on this project is agreed, and ${others} more ${others === 1 ? "is" : "are"} waiting. Approving adds this one to it.`
+        ? `The final account is on hold until every variation on this project is agreed, and ${others} more ${others === 1 ? "is" : "are"} waiting. Approving adds this one to it.`
         : held && p.snaggingFlag
-          ? "Approving adds it to the final account, which stays held until snagging is closed."
+          ? "Approving adds it to the final account, which stays on hold until every snag is marked fixed."
           : held
-            ? "The final account is held until this is agreed. Approving adds it to the final account and releases it to invoicing."
+            ? "The final account is on hold until this is agreed. Approving adds it to the final account and releases it to invoicing."
             : final.status === "To invoice"
               ? "Approving adds it to the final account, which is ready to invoice."
-              : "The final account has gone out already, so approving puts this extra on an invoice of its own.";
+              : "The final account has gone out already, so approving puts this variation on an invoice of its own.";
   return <p className={cx("text-[0.93rem]", held ? "text-warn" : "text-muted")}>{text}</p>;
 }
 
@@ -294,7 +295,7 @@ function QuoteDetail({ a, db }: { a: Approval; db: Db }) {
   return (
     <div className="grid gap-3">
       <p className="text-[0.93rem] text-muted">
-        {q.ref} for {client?.name}, attention {client?.contactName}. Valid for {q.validDays} days. Approving sends it and puts it in the client's portal.
+        {q.ref} for {client?.name}, attention {client?.contactName}. Valid for {q.validDays} days. Approving sends it{PORTAL ? " and puts it in the client's portal" : " to the client by email"}.
       </p>
       <div className="overflow-x-auto rounded-md border border-line">
         <table className="tbl">

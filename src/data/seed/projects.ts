@@ -553,12 +553,12 @@ export function seedProjects(r: Rng, today: string, quotes: Quote[], holidays: H
     ];
     if (p.status !== "Not started") audit.push({ at: at(p.startDate, "07:45"), who: smName, what: "Crew on site, site set up" });
     for (const v of variations.filter((x) => x.projectId === id)) {
-      audit.push({ at: v.raisedAt, who: names.get(v.raisedById) ?? smName, what: `Extras raised: ${v.measured}` });
+      audit.push({ at: v.raisedAt, who: names.get(v.raisedById) ?? smName, what: `Variation raised: ${v.measured}` });
       if (v.status === "Approved" && v.approvedAt) audit.push({ at: v.approvedAt, who: v.approvedBy ?? cmName, what: `Variation approved: ${v.measured} (${v.estimatedValue.toFixed(2)})` });
     }
     if (finished) audit.push({ at: at(p.endDate, "16:30"), who: smName, what: "Works complete, scope ticked off" });
     if (p.handoverSent) audit.push({ at: at(workdays(p.endDate, 2), "10:15"), who: cmName, what: "Handover pack sent to the client" });
-    if (finished && p.flags?.invoiceHold) audit.push({ at: at(workdays(p.endDate, 1), "09:20"), who: cmName, what: p.flags.extrasFlag ? "Final account held: extras to be agreed" : "Final account held: snagging open" });
+    if (finished && p.flags?.invoiceHold) audit.push({ at: at(workdays(p.endDate, 1), "09:20"), who: cmName, what: p.flags.extrasFlag ? "Final account on hold: variations to be agreed" : "Final account on hold: snagging open" });
     audit.sort((a, b) => a.at.localeCompare(b.at));
 
     const approvedExtras = variations.filter((v) => v.projectId === id && v.status === "Approved").reduce((s, v) => s + v.estimatedValue, 0);

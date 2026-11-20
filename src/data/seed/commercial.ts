@@ -313,8 +313,8 @@ const PIPELINE: QSeed[] = [
   { n: 11, clientId: "c-04", kind: "wall", title: "Dunmoy Town Walls: section 3 consolidation", location: "Abbey Lane, Dunmoy", county: "Roscommon", target: 84200, margin: 22, status: "Sent", sentDaysAgo: 19, chasedDaysAgo: 9, source: "Tender", loggedBy: "Colm Henebry", enquiryStatus: "Quoted" },
   { n: 12, clientId: "c-05", kind: "sash", title: "8 Fitzgarret Square: twelve sash windows", location: "8 Fitzgarret Square", county: "Dublin", target: 15200, margin: 31, status: "Sent", sentDaysAgo: 12, source: "Existing client", loggedBy: "Niamh Lavelle", enquiryStatus: "Quoted" },
   { n: 13, clientId: "c-03", kind: "repoint", title: "Ballyfinn Mill race walls: repointing", location: "The Old Corn Mill, Ballyfinn", county: "Clare", target: 38600, margin: 24, status: "Sent", sentDaysAgo: 8, source: "Existing client", loggedBy: "Tadhg Morrissey", enquiryStatus: "Quoted" },
-  { n: 14, clientId: "c-05", kind: "facade", title: "22 Fitzgarret Square: stone steps and plinth", location: "22 Fitzgarret Square", county: "Dublin", target: 16800, margin: 28, status: "Opened", sentDaysAgo: 15, source: "Existing client", loggedBy: "Aisling Rafter", enquiryStatus: "Quoted" },
-  { n: 15, clientId: "c-08", kind: "slate", title: "St Brecan's Oratory: roof repairs", location: "St Brecan's Oratory, Killanure", county: "Cavan", target: 54700, margin: 9, status: "Opened", sentDaysAgo: 10, source: "Email", loggedBy: "Niamh Lavelle", enquiryStatus: "Quoted" },
+  { n: 14, clientId: "c-05", kind: "facade", title: "22 Fitzgarret Square: stone steps and plinth", location: "22 Fitzgarret Square", county: "Dublin", target: 16800, margin: 28, status: "Sent", sentDaysAgo: 15, source: "Existing client", loggedBy: "Aisling Rafter", enquiryStatus: "Quoted" },
+  { n: 15, clientId: "c-08", kind: "slate", title: "St Brecan's Oratory: roof repairs", location: "St Brecan's Oratory, Killanure", county: "Cavan", target: 54700, margin: 9, status: "Sent", sentDaysAgo: 10, source: "Email", loggedBy: "Niamh Lavelle", enquiryStatus: "Quoted" },
   { n: 16, clientId: "c-02", kind: "wall", title: "Ardmullen walled garden: north wall rebuild", location: "Ardmullen House, Kilcolgan", county: "Galway", target: 71300, margin: 25, status: "Queried", sentDaysAgo: 9, source: "Existing client", loggedBy: "Tadhg Morrissey", enquiryStatus: "Quoted", responded: [-1, "15:14"], query: "Could you price the north wall in two phases, with the gateway arch first? The owner wants the arch safe before winter." },
   { n: 17, clientId: "c-07", kind: "render", title: "Granary Quay block C: internal lime plaster", location: "Granary Quay, Passage East", county: "Waterford", target: 92600, margin: 14, status: "Declined", sentDaysAgo: 26, source: "Existing client", loggedBy: "Aisling Rafter", enquiryStatus: "Lost" },
   { n: 18, clientId: "c-10", kind: "repoint", title: "Inishbeg signal tower: repointing", location: "Inishbeg Head", county: "Donegal", target: 44100, margin: 23, status: "Declined", sentDaysAgo: 33, source: "Tender", loggedBy: "Colm Henebry", enquiryStatus: "Lost" },
@@ -389,7 +389,7 @@ export function seedPastCommercial(r: Rng, today: string, targets: Map<number, n
     const sell = quoteTotal(lines);
     const sentDay = workdays(today, q.sent);
     const responded = workdays(sentDay, q.won ? r.int(3, 7) : r.int(6, 16));
-    quotes.push({ id, ref: "", enquiryId: enqId, clientId: q.clientId, title: q.title, status: q.won ? "Accepted" : "Declined", lines, costing: costingFor(q.kind, sell, q.margin), sentAt: at(sentDay, "16:20"), openedAt: at(workdays(sentDay, 1), "09:40"), respondedAt: at(responded, "11:15"), poNumber: q.po, validDays: 60, drafted: false, kind: WORK[q.kind].title });
+    quotes.push({ id, ref: "", enquiryId: enqId, clientId: q.clientId, title: q.title, status: q.won ? "Accepted" : "Declined", lines, costing: costingFor(q.kind, sell, q.margin), sentAt: at(sentDay, "16:20"), respondedAt: at(responded, "11:15"), poNumber: q.po, validDays: 60, drafted: false, kind: WORK[q.kind].title });
     enquiries.push({ id: enqId, ref: "", receivedAt: at(workdays(sentDay, -r.int(4, 9)), "10:05"), source: q.source, loggedBy: q.loggedBy, clientId: q.clientId, contactName: CLIENTS.find((c) => c.id === q.clientId)!.contactName, location: q.location, county: q.county, description: ((d) => d.charAt(0).toUpperCase() + d.slice(1))(q.title.split(": ")[1] ?? q.title), status: q.won ? "Won" : "Lost", quoteId: id, notes: "" });
   }
   // Numbered in the order they went out, below today's first quote and enquiry.
@@ -411,10 +411,9 @@ export function seedCommercial(r: Rng, today: string, targets: Map<number, numbe
     const target = targets.get(q.n) ?? q.target;
     const lines = linesFor(r, q.kind, target, id, ITEMS[q.n]);
     const sell = quoteTotal(lines);
-    // Quotes go out on working days; the client opens them the next working day.
+    // Quotes go out on working days.
     const sentDay = q.sentDaysAgo != null ? weekday(addDays(today, -q.sentDaysAgo)) : undefined;
     const answered = q.status === "Accepted" || q.status === "Declined" || q.status === "Queried";
-    const opened = answered || q.status === "Opened";
     const respondedDay = sentDay && answered ? workdays(sentDay, r.int(3, 7)) : undefined;
     quotes.push({
       id,
@@ -426,7 +425,6 @@ export function seedCommercial(r: Rng, today: string, targets: Map<number, numbe
       lines,
       costing: costingFor(q.kind, sell, q.margin),
       sentAt: sentDay ? at(sentDay, "16:20") : undefined,
-      openedAt: sentDay && opened ? at(workdays(sentDay, 1), "09:40") : undefined,
       // The query on the walled garden quote is the email in the inbox from yesterday afternoon.
       respondedAt: q.responded ? at(workdays(today, q.responded[0]), q.responded[1]) : respondedDay ? at(respondedDay < today ? respondedDay : workdays(today, -1), "11:15") : undefined,
       chasedAt: q.chasedDaysAgo != null ? at(workdays(today, -q.chasedDaysAgo), "10:05") : undefined,

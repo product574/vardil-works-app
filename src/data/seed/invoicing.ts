@@ -8,6 +8,7 @@ import { invoiceNo } from "@/lib/billing";
 import { billingEmail, DEFAULT_EMAIL, emailFor, pdfName, routeWords } from "@/lib/invoices";
 import type { Db, SendRoute } from "../types";
 import { at, workdays } from "./util";
+import { PORTAL } from "@/lib/apps";
 
 export function fillInvoicing(db: Db, today: string, domain: string, company: string, region: "IE" | "UK") {
   const accounts = db.people.find((x) => x.level === "accounts");
@@ -28,7 +29,7 @@ export function fillInvoicing(db: Db, today: string, domain: string, company: st
     if (i.status === "Held") i.history.push({ at: at(raised, "09:06"), who: "System", what: `Held: ${i.holdReason ?? "a manager has held it"}` });
     if (!i.issuedOn) continue;
 
-    const via: SendRoute[] = c?.portalEnabled ? ["email", "portal"] : ["email"];
+    const via: SendRoute[] = PORTAL && c?.portalEnabled ? ["email", "portal"] : ["email"];
     i.sentAt = at(i.issuedOn, "10:40");
     i.sentTo = billingEmail(c);
     i.sentVia = via;
@@ -60,8 +61,8 @@ export function fillInvoicing(db: Db, today: string, domain: string, company: st
   if (queried) {
     const c = db.clients.find((x) => x.id === queried.clientId);
     const raisedAt = at(notAfter(workdays(queried.dueOn ?? today, 3)), "11:20");
-    db.invoiceQueries.push({ id: "iq-1", salesInvoiceId: queried.id, raisedAt, via: "Portal", raisedBy: c?.contactName ?? "The client", text: "Before we release payment our surveyor needs the measured breakdown behind the final account figure. Can you send it on?", status: "Open", replies: [] });
-    queried.history?.push({ at: raisedAt, who: c?.contactName ?? "The client", what: "Query raised in the portal" });
+    db.invoiceQueries.push({ id: "iq-1", salesInvoiceId: queried.id, raisedAt, via: PORTAL ? "Portal" : "Email", raisedBy: c?.contactName ?? "The client", text: "Before we release payment our surveyor needs the measured breakdown behind the final account figure. Can you send it on?", status: "Open", replies: [] });
+    queried.history?.push({ at: raisedAt, who: c?.contactName ?? "The client", what: PORTAL ? "Query raised in the portal" : "Query raised by email" });
   }
 
   // The council's invoice is late for a plain reason, noted for whoever picks it up next.
@@ -73,7 +74,7 @@ export function fillInvoicing(db: Db, today: string, domain: string, company: st
   if (claimed) {
     const c = db.clients.find((x) => x.id === claimed.clientId);
     claimed.clientPaidOn = notAfter(workdays(today, -1));
-    claimed.history?.push({ at: at(claimed.clientPaidOn, "16:05"), who: c?.contactName ?? "The client", what: "Client says in the portal that it is paid" });
+    claimed.history?.push({ at: at(claimed.clientPaidOn, "16:05"), who: c?.contactName ?? "The client", what: PORTAL ? "Client says in the portal that it is paid" : "Client says by email that it is paid" });
   }
 
   // A settled query on a paid job, so the list of queries has a finished one to show.

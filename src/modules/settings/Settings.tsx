@@ -9,6 +9,7 @@ import { REGION } from "@/lib/money";
 import { Button, cx, Dialog, Fact, Field, PageBody, PageHead, Panel, Section, Segmented } from "@/ui";
 import { PickFile } from "@/ui/files";
 import { toast } from "@/ui/toast";
+import { PORTAL } from "@/lib/apps";
 
 export const COLOURS: [string, string][] = [
   ["#4682B4", "Steel blue"],
@@ -216,7 +217,7 @@ export function About() {
       <PageBody className="grid max-w-3xl gap-6">
         <Section title="What you are looking at">
           <Panel className="grid gap-2 px-4 py-4">
-            <p>One system for the whole firm: sales, projects, the weekly plan, people, plant and fleet, files, invoicing, the shared email, a client portal, a phone view for the crew, and an admin area for requests, access and billing.</p>
+            <p>One system for the whole firm: sales, projects, the weekly plan, people, plant and fleet, files, invoicing, the shared email, {PORTAL ? "a client portal, " : ""}a phone view for the crew, and an admin area for requests, access and billing.</p>
             <p>The firm is invented. It is set up as a conservation and restoration contractor so the detail is realistic, and it can be re-branded for any contractor under Branding.</p>
             <p>Where the system reads paperwork, drafts a reply or suggests where something belongs, a person always checks and approves it. Nothing is sent on its own.</p>
           </Panel>

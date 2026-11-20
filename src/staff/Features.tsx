@@ -7,7 +7,7 @@ import { PERMISSIONS } from "@/data/permissions";
 import { ROLES } from "@/data/roles";
 import { useData, usePrefs } from "@/data/store";
 import type { DepartmentKey, PermKey } from "@/data/types";
-import { APP_KEYS, appsOff, PACKAGES, packageOf } from "@/lib/apps";
+import { APP_KEYS, appsOff, PACKAGES, packageOf, PAUSED_APPS } from "@/lib/apps";
 import { Badge, Button, PageBody, PageHead, Panel, Section, Tick } from "@/ui";
 import { toast } from "@/ui/toast";
 
@@ -43,7 +43,7 @@ export function Features() {
   const automationsOff = usePrefs((s) => s.automationsOff);
   const setAutomationsOff = usePrefs((s) => s.setAutomationsOff);
   const setPackage = usePrefs((s) => s.setPackage);
-  const current = packageOf(APP_KEYS.filter((k) => !off.includes(k)), !automationsOff);
+  const current = packageOf(APP_KEYS.filter((k) => !off.includes(k) && !PAUSED_APPS.includes(k)), !automationsOff);
   if (!access.staffMode) return <Navigate to="/" replace />;
 
   const row = (k: string) => rows.find((a) => a.id === k);
@@ -144,7 +144,7 @@ export function Features() {
                   </tr>
                 ))}
                 {head("Departments they can open", true)}
-                {DEPARTMENTS.filter((d) => d.key !== "vardil").map((d) => {
+                {DEPARTMENTS.filter((d) => d.key !== "vardil" && !(PAUSED_APPS as string[]).includes(d.key)).map((d) => {
                   const name = d.title ?? d.label;
                   return (
                     <tr key={d.key}>

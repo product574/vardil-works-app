@@ -28,6 +28,7 @@ import { costBreakdown, marginPct, quoteTotal } from "@/lib/quotes";
 import { daysBetween, dueState, nextServiceDate } from "@/lib/status";
 import { nextWorkWeek, workWeek } from "@/lib/week";
 import { ASK_ACTIVITY } from "./tools";
+import { PORTAL } from "@/lib/apps";
 
 /** Screens that open one record, so answers can link straight to it. */
 export const RECORD_LINKS: [pattern: string, what: string][] = [
@@ -154,7 +155,7 @@ export function buildSnapshot(db: Db, today: string, brand: Brand): string {
   out.push(
     [
       "## Dashboard figures (as on the Dashboard overview)",
-      `Sales: ${k.sales.enquiriesToQuote} enquiries to quote; ${k.sales.quotesOut} quotes out (sent or opened); ${k.sales.openedNotAnswered} opened but not answered; ${k.sales.queried} queried.`,
+      `Sales: ${k.sales.enquiriesToQuote} enquiries to quote; ${k.sales.quotesOut} quotes out with no answer yet; ${k.sales.dueAChase} of them due a chase (sent a week or more ago, not chased this week); ${k.sales.queried} queried.`,
       `Sites: ${k.sites.live} live; ${k.sites.peopleOnSite} people marked on site today; ${k.sites.timeStampsNotSent} live sites have not sent today's time stamps; ${k.sites.notStarted} projects not started; ${k.sites.openRequests} open site requests.`,
       `Money: ${k.money.toInvoice} ready to invoice worth ${n0(k.money.toInvoiceValue)}; ${k.money.held} held; ${k.money.overdue} invoices past their due date worth ${n0(k.money.overdueValue)} gross; ${k.money.supplierToCheck} supplier invoices for accounts to check; ${k.money.toApprove} supplier and subcontractor invoices waiting for approval; ${k.money.toPay} approved and waiting to be paid worth ${n0(k.money.toPayValue)} gross, ${k.money.toPayLate} of them past their date.`,
       `Compliance: ${k.compliance.certsExpired} training tickets expired; ${k.compliance.certsSoon} expiring within 30 days; ${k.compliance.plantOverdue} plant checks overdue; ${k.compliance.fleetOverdue} vehicle items overdue; ${k.compliance.holidaysPending} holiday requests waiting; ${k.compliance.hiredToReturn} hire returns notified.`,
@@ -289,25 +290,25 @@ export function buildSnapshot(db: Db, today: string, brand: Brand): string {
   out.push(table("Holidays", ["person", "from", "to", "status", "asked by", "note", "why declined"], db.holidays.map((h) => [name(h.personId), h.from, h.to, h.status, h.via, h.note ?? "", h.status === "Declined" ? `${h.declineNote ?? "no note left"}${h.decidedBy ? `, by ${h.decidedBy}` : ""}` : ""])));
 
   // Sales
-  out.push(table("Clients", ["id", "name", "type", "contact", "phone", "email", "payment terms", "account ref", "portal"], db.clients.map((c) => [c.id, c.name, c.type, c.contactName, c.contactPhone, c.contactEmail, `${c.termsDays} days`, c.accountRef, c.portalEnabled ? "on" : "off"])));
+  out.push(table("Clients", ["id", "name", "type", "contact", "phone", "email", "payment terms", "account ref", ...(PORTAL ? ["portal"] : [])], db.clients.map((c) => [c.id, c.name, c.type, c.contactName, c.contactPhone, c.contactEmail, `${c.termsDays} days`, c.accountRef, ...(PORTAL ? [c.portalEnabled ? "on" : "off"] : [])])));
   const earlierTender = (q: Db["quotes"][number]) => (q.status === "Accepted" || q.status === "Declined") && !!q.respondedAt && q.respondedAt.slice(0, 10) < addDays(today, -120);
   out.push(
     table(
       "Enquiries, the last four months and any still open (older ones are in Quotes, by their tender)",
       ["ref", "received", "source", "client", "contact", "where", "what they want", "status", "quote"],
-      db.enquiries.filter((e) => e.receivedAt.slice(0, 10) >= addDays(today, -120) || !e.quoteId || ["Draft", "Sent", "Opened", "Queried", "Awaiting approval"].includes(db.quotes.find((q) => q.id === e.quoteId)?.status ?? "")).map((e) => [e.ref, `${e.receivedAt.slice(0, 10)} (${rel(e.receivedAt, today)})`, e.source, client.get(e.clientId)?.name ?? "", e.contactName, `${e.location}, ${e.county}`, e.description, e.status, db.quotes.find((q) => q.id === e.quoteId)?.ref ?? "none yet"]),
+      db.enquiries.filter((e) => e.receivedAt.slice(0, 10) >= addDays(today, -120) || !e.quoteId || ["Draft", "Sent", "Queried", "Awaiting approval"].includes(db.quotes.find((q) => q.id === e.quoteId)?.status ?? "")).map((e) => [e.ref, `${e.receivedAt.slice(0, 10)} (${rel(e.receivedAt, today)})`, e.source, client.get(e.clientId)?.name ?? "", e.contactName, `${e.location}, ${e.county}`, e.description, e.status, db.quotes.find((q) => q.id === e.quoteId)?.ref ?? "none yet"]),
     ),
   );
   out.push(
     table(
       "Quotes, the last four months and any not yet decided",
-      ["ref", "client", "title", "status", "total before VAT", "estimated cost", "margin", "sent", "opened", "client answered", "chased", "client's question", "purchase order"],
+      ["ref", "client", "title", "status", "total before VAT", "estimated cost", "margin", "sent", "client answered", "chased", "client's question", "purchase order"],
       db.quotes.filter((q) => !earlierTender(q)).map((q) => {
         const sell = quoteTotal(q.lines);
         const cost = costBreakdown(q.costing).total;
         const m = marginPct(sell, cost);
         const d = (s?: string) => (s ? `${s.slice(0, 10)} (${rel(s, today)})` : "");
-        return [q.ref, client.get(q.clientId)?.name ?? "", q.title, q.status, n2(sell), n2(cost), m == null ? "-" : `${m}%`, d(q.sentAt), d(q.openedAt), d(q.respondedAt), d(q.chasedAt), q.query ?? "", q.poNumber ?? ""];
+        return [q.ref, client.get(q.clientId)?.name ?? "", q.title, q.status, n2(sell), n2(cost), m == null ? "-" : `${m}%`, d(q.sentAt), d(q.respondedAt), d(q.chasedAt), q.query ?? "", q.poNumber ?? ""];
       }),
     ),
   );
@@ -352,15 +353,23 @@ export function buildSnapshot(db: Db, today: string, brand: Brand): string {
   out.push(table("Older supplier and subcontractor invoices, all approved and paid, one line per supplier", ["supplier", "invoices", "net in all", "dated", "projects"], bySupplier));
   out.push(
     table(
-      "Variations (extras)",
+      "Variations (extra work)",
       ["project", "raised by", "when", "what was found", "measured", "estimated value", "status", "written in"],
       db.variations.map((v) => [code(v.projectId), name(v.raisedById), v.raisedAt.slice(0, 10), v.description, v.measured, n2(v.estimatedValue), v.status, v.originalLanguage ?? "en"]),
+    ),
+  );
+  // Snags (20 Nov): a job's final account is on hold while any of its snags is open.
+  out.push(
+    table(
+      "Snags (a job's final account is on hold while any snag on it is open; Projects, Requests and variations)",
+      ["project", "what", "where", "from", "to be fixed by", "added", "status"],
+      db.snags.map((x) => [code(x.projectId), x.what, x.where, x.from === "client" ? "the client's list" : "our own walk-round", x.fixBy ?? "nobody yet", x.raisedAt.slice(0, 10), x.status === "Open" ? "open" : `fixed by ${x.fixedBy} ${x.fixedAt?.slice(0, 10)}`]),
     ),
   );
   out.push(table("Site requests (the managing director answers each yes or no in Admin, Requests)", ["project", "kind", "what", "how many", "needed from", "needed to", "asked by", "status", "yes or no"], db.requests.map((r) => [r.projectId ? code(r.projectId) : "general, not for one site", r.kind === "other" ? "something else" : r.kind.replace("_", " "), r.description, r.quantity, r.neededFrom, r.neededTo, r.requestedBy, r.status, r.decision ? `${r.decision.toLowerCase()} by ${r.decidedBy}${r.declineNote ? ` (note: ${r.declineNote})` : ""}` : r.status !== "Open" ? "" : r.heldBy === "site" ? "with the site manager, not yet asked of the office" : "waiting"])));
   out.push(table("Spending requests (Admin, Requests)", ["what", "supplier", "for", "amount ex VAT", "asked by", "asked", "why", "status"], db.spendRequests.map((x) => [x.what, x.supplier, x.projectId ? code(x.projectId) : "the firm", n2(x.amount), name(x.requestedById), x.createdAt.slice(0, 16).replace("T", " "), x.reason, x.status === "Waiting" ? "waiting" : `${x.status.toLowerCase()} by ${x.decidedBy}`])));
   out.push(table("Supplies on order for sites", ["from", "supplier or subcontractor", "project", "what", "ordered", "due", "status"], db.supplies.map((x) => [x.from, x.party, code(x.projectId), x.description, x.orderedOn, `${x.dueOn} (${rel(x.dueOn, today)})`, x.progress ? `${x.status}, ${x.progress}` : x.status])));
-  out.push(table("Updates from subcontractors and suppliers in the portal", ["when", "from", "supplier or subcontractor", "project", "update"], db.portalNotes.map((x) => [x.at.slice(0, 16).replace("T", " "), x.from, x.party, x.projectId ? code(x.projectId) : "", x.text])));
+  out.push(table(PORTAL ? "Updates from subcontractors and suppliers in the portal" : "Updates from subcontractors and suppliers", ["when", "from", "supplier or subcontractor", "project", "update"], db.portalNotes.map((x) => [x.at.slice(0, 16).replace("T", " "), x.from, x.party, x.projectId ? code(x.projectId) : "", x.text])));
 
   // Plant and fleet
   out.push(
@@ -462,7 +471,7 @@ export function buildSnapshot(db: Db, today: string, brand: Brand): string {
   const next = nextInvoice(db, today);
   out.push(
     table(
-      `What the firm pays Vardil for this system (Admin, Billing): ${sub.plan}, ${n2(sub.perUser)} per person with a sign-in a month before VAT; site phones and the client portal included. Next invoice ${next.issuedOn} for ${next.month.slice(0, 7)}: ${next.users} people, ${n2(next.amount)}. Past invoices`,
+      `What the firm pays Vardil for this system (Admin, Billing): ${sub.plan}, ${n2(sub.perUser)} per person with a sign-in a month before VAT; site phones ${PORTAL ? "and the client portal " : ""}included. Next invoice ${next.issuedOn} for ${next.month.slice(0, 7)}: ${next.users} people, ${n2(next.amount)}. Past invoices`,
       ["invoice", "month", "issued", "people", "amount ex VAT", "status"],
       db.subscriptionInvoices.map((i) => [i.number, i.month.slice(0, 7), i.issuedOn, i.users, n2(i.amount), invoicePaid(i, today) ? `paid ${i.collectOn}` : `due, taken ${i.collectOn}`]),
     ),

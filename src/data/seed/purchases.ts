@@ -11,6 +11,7 @@ import { accountRefOf, partyOf, payBy, remittanceEmail } from "@/lib/purchases";
 import { r2 } from "@/lib/money";
 import type { CostCategoryKey, Db, Subcontractor, SupplierInvoice } from "../types";
 import { at, lastWeekday, workdays } from "./util";
+import { PORTAL } from "@/lib/apps";
 
 const pid = (code: string) => `pr-${code}`;
 
@@ -32,7 +33,8 @@ export function seedSubcontractors(): Subcontractor[] {
 type Pending = { id: string; from: string; no: string; code: string; sent: number; time: string; lines: [description: string, amount: number, category: CostCategoryKey][]; sub?: boolean; asked?: [daysAgo: number, time: string]; back?: [daysAgo: number, time: string, reason: string]; siteOk?: [daysAgo: number, time: string] };
 
 /**
- * Invoices that have been checked, or sent in through the portal, and are waiting for someone
+ * Invoices that have been checked (or sent in through the portal, when it is on; while it is
+ * paused the office adds a subcontractor's by email, decision 231) and are waiting for someone
  * who may approve them. Two are from suppliers, five from subcontractors, one of which a site
  * manager has sent back. With Jimmy's chain (20 Nov) each waits on its site manager first; the
  * Slieve Bloom and Portumna ones he has approved, so they wait on the managing director.
@@ -71,8 +73,8 @@ export function seedPendingPurchases(today: string, people: Db["people"], projec
       readStatus: "needs_review",
       lines: d.lines.map(([description, amount]) => ({ description, amount })),
       allocations: d.lines.map(([description, amount, category], n) => ({ id: `al-${d.id}-${n + 1}`, projectId: pid(d.code), category, amount, description })),
-      ...(sub ? { party: "subcontractor" as const, subcontractorId: sub.id, via: "portal" as const } : {}),
-      ...(d.back ? { sentBack: { by: manager(d.code), at: at(day(d.back[0]), d.back[1]), reason: d.back[2] } } : d.sub ? { askedBy: sub?.contactName ?? d.from, askedAt: received } : d.asked ? { askedBy: accounts, askedAt: at(day(d.asked[0]), d.asked[1]) } : {}),
+      ...(sub ? { party: "subcontractor" as const, subcontractorId: sub.id, via: PORTAL ? ("portal" as const) : ("email" as const) } : {}),
+      ...(d.back ? { sentBack: { by: manager(d.code), at: at(day(d.back[0]), d.back[1]), reason: d.back[2] } } : d.sub ? { askedBy: PORTAL ? (sub?.contactName ?? d.from) : accounts, askedAt: received } : d.asked ? { askedBy: accounts, askedAt: at(day(d.asked[0]), d.asked[1]) } : {}),
       // Jimmy's chain (20 Nov): everything asked for waits on the site manager first; two he has
       // already said yes to, so they wait on the managing director.
       ...(!d.back && (d.sub || d.asked) ? { siteStep: true } : {}),

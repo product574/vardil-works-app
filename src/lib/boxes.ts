@@ -25,7 +25,7 @@ export type Box = { figures: Figure[]; bar: Bar; lines: Line[] };
 
 type Opts = { money: (n: number) => string; seeValues: boolean };
 
-const OUT = new Set(["Sent", "Opened", "Queried"]);
+const OUT = new Set(["Sent", "Queried"]);
 const PRICING = new Set(["Draft", "Awaiting approval"]);
 
 export function salesBox(db: Pick<Db, "quotes" | "enquiries" | "projects">, today: string, o: Opts): Box {

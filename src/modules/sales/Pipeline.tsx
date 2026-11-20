@@ -13,6 +13,7 @@ import { costBreakdown, marginFlag, marginPct, quoteTotal } from "@/lib/quotes";
 import { Button, cx, Dialog, Empty, Field, PageBody, PageHead, Panel, Switch } from "@/ui";
 import { EnquiryBadge } from "@/ui/status";
 import { toast } from "@/ui/toast";
+import { PORTAL } from "@/lib/apps";
 
 export const quoteMargin = (q: Quote) => marginPct(quoteTotal(q.lines), costBreakdown(q.costing).total);
 const clientName = (db: Db, id: string) => db.clients.find((c) => c.id === id)?.name ?? "";
@@ -58,8 +59,7 @@ export function PipelineBoard() {
     const cols: Column[] = [
       { stage: "enquiry", label: "To quote", hint: "Enquiries with no quote yet", enquiries: db.enquiries.filter((e) => e.status === "Logged" && !e.quoteId) },
       { stage: "drafting", label: "Drafting", hint: "Being priced or waiting for approval", quotes: by("Draft", "Awaiting approval") },
-      { stage: "sent", label: "Sent", hint: "With the client, not opened", quotes: by("Sent") },
-      { stage: "opened", label: "Opened", hint: "Opened, no answer", quotes: by("Opened") },
+      { stage: "sent", label: "Sent", hint: "With the client, no answer yet", quotes: by("Sent") },
       { stage: "queried", label: "Queried", hint: "Client has a question", quotes: by("Queried") },
       { stage: "won", label: "Won", hint: "Accepted, now a project", quotes: by("Accepted") },
     ];
@@ -257,9 +257,9 @@ function MoveDialog({ moving, onPick, onClose, onDeclined }: { moving: { card: C
   const what: Record<MoveKind, string> = {
     draft: `A quote is drafted from ${ref}, priced from your rate books. It waits in Drafting and in Approvals until someone checks it and sends it.`,
     discard: `The draft ${ref} is thrown away, with the approval waiting for it, and ${e?.ref ?? "its enquiry"} goes back to To quote.`,
-    send: `${ref} goes to ${client?.contactName} at ${client?.name} and shows in their portal.${q?.status === "Awaiting approval" ? " The approval waiting for it is closed." : ""}`,
+    send: `${ref} goes to ${client?.contactName} at ${client?.name}${PORTAL ? " and shows in their portal" : " by email"}.${q?.status === "Awaiting approval" ? " The approval waiting for it is closed." : ""}`,
     resend: `The revised ${ref} goes to ${client?.contactName} again, as the answer to their question.`,
-    backToDraft: `${ref} comes back from ${client?.name} so it can be changed. It leaves their portal until it is sent again.`,
+    backToDraft: `${ref} comes back from ${client?.name} so it can be changed.${PORTAL ? " It leaves their portal until it is sent again." : " Tell them a revised tender is on its way."}`,
     query: `Record what ${client?.contactName} asked, by phone or email. ${ref} moves to Queried, where it can be repriced and sent again.`,
     accept: `${client?.name} accepts ${ref}. A project is created with the next site code, with the priced items as its scope.`,
     decline: `${ref} is recorded as declined by ${client?.name}, and its enquiry as lost.`,
@@ -302,7 +302,7 @@ function MoveDialog({ moving, onPick, onClose, onDeclined }: { moving: { card: C
     close();
   };
 
-  const stages: Stage[] = ["enquiry", "drafting", "sent", "opened", "queried", "won", "lost"];
+  const stages: Stage[] = ["enquiry", "drafting", "sent", "queried", "won", "lost"];
   return (
     <Dialog
       open

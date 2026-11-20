@@ -11,7 +11,7 @@ const dayName = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString("en
 
 /** What is missing before the week can go out, in plain words. Null when it can. */
 export function rosterBlocker(c: Connections): string | null {
-  if (!c.email && !c.whatsapp) return "Connect email or WhatsApp in Admin, Connections first.";
+  if (!c.email && !c.whatsapp) return "Email and WhatsApp are not set up for your firm yet. Vardil sets them up when a firm joins: ask us to finish it.";
   return null;
 }
 

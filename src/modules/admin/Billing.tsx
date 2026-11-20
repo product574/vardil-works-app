@@ -6,6 +6,7 @@ import { dFull, dShort, plural } from "@/lib/format";
 import { money2 } from "@/lib/money";
 import { currentPlan, invoicePaid, nextInvoice } from "@/lib/subscription";
 import { Badge, Button, Dialog, PageBody, PageHead, Panel, Section } from "@/ui";
+import { PORTAL } from "@/lib/apps";
 
 const monthName = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString("en-IE", { month: "long", year: "numeric", timeZone: "UTC" });
 
@@ -33,7 +34,7 @@ export function Billing() {
             <div className="min-w-0 flex-1">
               <h2 className="text-[1.08rem]">{plan.plan}</h2>
               <p className="mt-1">
-                {plural(next.users, "person", "people")} with a sign-in, at {m(plan.perUser)} each a month before VAT. Site phones and the client portal are included.
+                {plural(next.users, "person", "people")} with a sign-in, at {m(plan.perUser)} each a month before VAT. Site phones are included{PORTAL ? ", and so is the client portal" : ""}.
               </p>
               <p className="mt-1 text-muted">
                 Next invoice on {dFull(next.issuedOn)}, for {monthName(next.month)}: {m(next.amount)} before VAT.
@@ -82,7 +83,7 @@ export function Billing() {
         </Section>
       </PageBody>
       <Dialog open={changing} onClose={() => setChanging(false)} title="Change plan" footer={<Button onClick={() => setChanging(false)}>Close</Button>}>
-        <p>The plan follows the team. Everyone in the office or running a site who signs in counts as one person, and each invoice follows the count for its month. Operatives on the site phone and clients in the portal are not counted.</p>
+        <p>The plan follows the team. Everyone in the office or running a site who signs in counts as one person, and each invoice follows the count for its month. Operatives on the site phone {PORTAL ? "and clients in the portal " : ""}are not counted.</p>
         <p className="mt-2">
           To add someone, add them in People; who can sign in, and to what, is in{" "}
           <Link to="/admin/access" className="font-medium text-accent-ink underline decoration-accent/60 underline-offset-[3px] hover:decoration-accent" onClick={() => setChanging(false)}>

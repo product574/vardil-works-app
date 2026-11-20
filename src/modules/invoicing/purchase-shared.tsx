@@ -13,6 +13,7 @@ import { approvalBy, approveLabel, type Approver, approverWords, chainOf, mayApp
 import { subInsuranceFlags } from "@/lib/compliance";
 import { Badge, Button, cx, Dialog, Field } from "@/ui";
 import { toast } from "@/ui/toast";
+import { PORTAL } from "@/lib/apps";
 
 export function usePurchases() {
   const db = useData((s) => s.db);
@@ -123,7 +124,7 @@ export function ApproveDialog({ s, allocations, actor, onClose }: { s: SupplierI
     >
       <div className="grid gap-3">
         <Summary s={s} />
-        {flags.length > 0 && <p className="rounded-md bg-bad-soft px-2.5 py-2 text-[0.93rem] text-bad">{flags.join(". ")}. You can still approve; ask them to send the new schedule through their portal.</p>}
+        {flags.length > 0 && <p className="rounded-md bg-bad-soft px-2.5 py-2 text-[0.93rem] text-bad">{flags.join(". ")}. You can still approve; ask them {PORTAL ? "to send the new schedule through their portal" : "for the new schedule"}.</p>}
         <p className="text-muted">
           {siteOnly ? "You approve it for the site: the work was done or the goods arrived. It then goes to the managing director, who approves it into job costs." : credit ? `It comes off the job costs of ${codes.join(" and ")}. Nothing is paid on a credit note.` : `It goes into the job costs of ${codes.join(" and ")}, and on to accounts, who pay it by ${dFull(payBy(s))} and mark it paid.`}
         </p>
@@ -165,7 +166,7 @@ export function SendBackDialog({ s, actor, onClose }: { s: SupplierInvoice; acto
         }}
       >
         <Summary s={s} />
-        <Field label="What is wrong with it" hint={partyOf(s) === "subcontractor" ? `${contact ?? s.supplier} reads this in their portal, beside the invoice.` : "Accounts see this on the invoice and put it right before asking again."}>
+        <Field label="What is wrong with it" hint={PORTAL && partyOf(s) === "subcontractor" ? `${contact ?? s.supplier} reads this in their portal, beside the invoice.` : "Accounts see this on the invoice and put it right before asking again."}>
           {(id) => <textarea id={id} rows={3} className="field" value={reason} onChange={(e) => setReason(e.target.value)} />}
         </Field>
       </form>
@@ -207,7 +208,7 @@ export function PaidDialog({ s, onClose }: { s: SupplierInvoice; onClose: (done:
           e.preventDefault();
           if (bad) return;
           markPurchasePaid(s.id, { paidOn, ref, email: !!to && email });
-          toast(`${s.supplier} ${s.invoiceNo} marked paid${to ? (email ? `. ${to.contactName} is told in the portal and by email` : `. ${to.contactName} is told in the portal`) : ""}`, { label: "Undo", run: () => unmarkPurchasePaid(s.id) });
+          toast(`${s.supplier} ${s.invoiceNo} marked paid${to ? (PORTAL ? (email ? `. ${to.contactName} is told in the portal and by email` : `. ${to.contactName} is told in the portal`) : email ? `. Remittance advice emailed to ${to.contactName}` : "") : ""}`, { label: "Undo", run: () => unmarkPurchasePaid(s.id) });
           onClose(true);
         }}
       >
@@ -220,7 +221,7 @@ export function PaidDialog({ s, onClose }: { s: SupplierInvoice; onClose: (done:
         </div>
         {to ? (
           <div className="grid gap-1">
-            <p className="text-muted">{to.name} sees it as paid in their portal as soon as you confirm.</p>
+            <p className="text-muted">{PORTAL ? `${to.name} sees it as paid in their portal as soon as you confirm.` : `${to.name} is only told if you email them.`}</p>
             <label className="flex items-center gap-2">
               <input type="checkbox" checked={email} onChange={(e) => setEmail(e.target.checked)} /> Also email a remittance advice to {to.email}
             </label>

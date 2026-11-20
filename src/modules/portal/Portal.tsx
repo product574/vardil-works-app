@@ -39,7 +39,7 @@ export function Portal() {
         </Panel>
       </PageBody>
     );
-  const quotes = db.quotes.filter((q) => q.clientId === client.id && ["Sent", "Opened", "Queried"].includes(q.status));
+  const quotes = db.quotes.filter((q) => q.clientId === client.id && ["Sent", "Queried"].includes(q.status));
   const order = { Live: 0, "Not started": 1, Complete: 2, Invoiced: 3, Closed: 4 } as Record<string, number>;
   // A payment accounts have marked as received is news for the client, for a month.
   const paid = db.salesInvoices.filter((i) => i.clientId === client.id && i.status === "Paid" && recently(i.paidOn, day)).sort((a, b) => (b.paidOn ?? "").localeCompare(a.paidOn ?? ""));

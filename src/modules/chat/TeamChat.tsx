@@ -13,7 +13,7 @@ import { Avatar, Button, cx, Dialog, Empty, Menu } from "@/ui";
  * Team chat, laid out like Ping in the reference demos (16 Nov, Oisin): a side panel with the
  * channels and direct messages the signed-in person belongs to, and the open conversation with
  * a message box along the bottom. The channels are the firm's own Teams or Slack ones (Admin,
- * Connections). On a phone the list and the conversation are one screen each.
+ * Connections, until 20 Nov; Teams now). On a phone the list and the conversation are one screen each.
  */
 export function TeamChat() {
   const { channelId } = useParams();

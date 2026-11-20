@@ -54,7 +54,7 @@ export const APPS: App[] = [
         label: "Tenders",
         // The tender list first; the drag-and-drop board and the ones waiting on a client stay a tab away.
         tabs: [
-          t("sales", "/sales/tenders", "All tenders", { count: (db) => db.quotes.filter((q) => ["Draft", "Awaiting approval", "Sent", "Opened", "Queried"].includes(q.status)).length }),
+          t("sales", "/sales/tenders", "All tenders", { count: (db) => db.quotes.filter((q) => ["Draft", "Awaiting approval", "Sent", "Queried"].includes(q.status)).length }),
           t("sales", "/sales", "Board", { end: true }),
           t("sales", "/sales/awaiting", "Awaiting response", { count: (db) => db.quotes.filter((q) => q.status === "Queried").length, countTone: "warn" }),
         ],

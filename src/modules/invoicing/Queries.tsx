@@ -10,6 +10,7 @@ import { Badge, Button, Empty, PageBody, PageHead, Panel, Section } from "@/ui";
 import { toast } from "@/ui/toast";
 import { LogQueryDialog } from "./InvoicePage";
 import { StageBadge, useInv } from "./shared";
+import { PORTAL } from "@/lib/apps";
 
 const LINK = "text-accent-ink underline-offset-2 hover:underline";
 const VIA: Record<InvoiceQuery["via"], string> = { Portal: "in the portal", Email: "by email", Phone: "by phone" };
@@ -50,7 +51,7 @@ export function ClientQueries() {
         <Section title={`Open (${open.length})`}>
           {open.length === 0 ? (
             <Panel>
-              <Empty title="Nothing is being questioned">When a client asks about an invoice in their portal, or you log a call or an email, it appears here.</Empty>
+              <Empty title="Nothing is being questioned">{PORTAL ? "When a client asks about an invoice in their portal, or you log a call or an email, it appears here." : "When a client questions an invoice, log the call or the email on that invoice and it appears here."}</Empty>
             </Panel>
           ) : (
             <div className="grid gap-3">
@@ -137,7 +138,7 @@ function QueryCard({ q }: { q: InvoiceQuery }) {
               e.preventDefault();
               if (!reply.trim()) return;
               replyToInvoiceQuery(q.id, reply);
-              toast(`Reply sent. ${c?.portalEnabled ? `${q.raisedBy} sees it in the portal` : "It is on the invoice for whoever rings them back"}`);
+              toast(`Reply sent. ${PORTAL && c?.portalEnabled ? `${q.raisedBy} sees it in the portal` : "It is on the invoice for whoever rings them back"}`);
               setReply("");
             }}
           >

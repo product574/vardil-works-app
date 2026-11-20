@@ -4,7 +4,7 @@ import { Navigate, useLocation, useNavigate, useParams } from "react-router-dom"
 import { openClientDemo, sendWorkspace, type SendResult, useWorkspace } from "@/app/workspace";
 import { useAccess } from "@/data/access";
 import { usePrefs } from "@/data/store";
-import { ALWAYS_ON, APP_INFO, type AppKey, type ClientConfig, type ClientLook, type ClientPerson, DEMO_DAYS, DEMO_LEVELS, type DemoLevel, type DemoStage, demoState, irishToday, LEVEL_NAMES, MAX_EMAILS, PACKAGES, type PersonActivity, sampleDomain, shiftDay, SOLD_APPS, splitEmails, STAGE_NAMES, starterLook } from "@/lib/apps";
+import { ALWAYS_ON, APP_INFO, type AppKey, type ClientConfig, type ClientLook, type ClientPerson, DEMO_DAYS, type DemoLevel, type DemoStage, demoState, irishToday, LEVEL_NAMES, MAX_EMAILS, OFFERED_LEVELS, PACKAGES, type PersonActivity, sampleDomain, shiftDay, SOLD_APPS, splitEmails, STAGE_NAMES, starterLook } from "@/lib/apps";
 import { dFull, plural } from "@/lib/format";
 import { shrinkImage } from "@/lib/image";
 import { defaultDesign, type InvoiceDesign } from "@/lib/invoices";
@@ -96,7 +96,7 @@ function ClientForm({ client }: { client: ClientConfig | null }) {
   const addEmails = () => {
     const { good, bad } = splitEmails(adding);
     if (bad.length) return setError(`Not an email: ${bad.join(", ")}. Named emails only, such as majella@oldstone.ie.`);
-    const fresh = good.filter((e) => !people.some((p) => p.email === e)).map((email): ClientPerson => ({ email, levels: [...DEMO_LEVELS] }));
+    const fresh = good.filter((e) => !people.some((p) => p.email === e)).map((email): ClientPerson => ({ email, levels: [...OFFERED_LEVELS] }));
     if (people.length + fresh.length > MAX_EMAILS) return setError(`One client can have ${MAX_EMAILS} people at most.`);
     setPeople([...people, ...fresh]);
     setAdding("");
@@ -399,7 +399,7 @@ const appsLine = (a: PersonActivity) =>
 
 /** One person on the list: their email, a toggle per level, how much they have used it, and Take off. */
 function PersonRow({ person, activity, onLevels, onRemove }: { person: ClientPerson; activity?: PersonActivity; onLevels: (l: DemoLevel[]) => void; onRemove: () => void }) {
-  const flip = (l: DemoLevel) => onLevels(person.levels.includes(l) ? person.levels.filter((x) => x !== l) : DEMO_LEVELS.filter((x) => x === l || person.levels.includes(x)));
+  const flip = (l: DemoLevel) => onLevels(person.levels.includes(l) ? person.levels.filter((x) => x !== l) : OFFERED_LEVELS.filter((x) => x === l || person.levels.includes(x)));
   return (
     <li className="grid gap-1.5 px-3 py-2">
       <div className="flex items-center gap-2">
@@ -409,7 +409,7 @@ function PersonRow({ person, activity, onLevels, onRemove }: { person: ClientPer
         </Button>
       </div>
       <div className="flex flex-wrap gap-1.5" role="group" aria-label={`Levels for ${person.email}`}>
-        {DEMO_LEVELS.map((l) => {
+        {OFFERED_LEVELS.map((l) => {
           const on = person.levels.includes(l);
           return (
             <button key={l} type="button" aria-pressed={on} onClick={() => flip(l)} className={cx("press rounded-md border px-2 py-0.5 text-[0.87rem]", on ? "border-accent bg-accent-soft text-accent-ink" : "border-line-strong text-muted hover:border-accent")}>

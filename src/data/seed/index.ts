@@ -27,11 +27,12 @@ import { APPROVAL_LIMIT, fillPurchases, seedPendingPurchases, seedSubcontractors
 import { fillManagementDates, seedDayInstructions, seedExpenses, seedOvertimeClaims, seedActivity, seedFiles, seedMail, seedManagement, seedMoney, seedPayrollChecks, seedPayrollExports, seedSiteAccess } from "./office";
 import { seedPeople } from "./people";
 import { isPastCode, quoteTargets, seedProjects } from "./projects";
+import { seedSnags } from "./snags";
 import { seedSubscription } from "./subscription";
 import { seedTenders } from "./tenders";
 import { seedPortalNotes, seedSpendRequests, seedSupplies } from "./supply";
 import { builtInBankHolidays } from "@/lib/bank-holidays";
-import { demoDay, rng, workdays } from "./util";
+import { at, demoDay, pastWorkdays, rng, workdays } from "./util";
 
 export { demoDay } from "./util";
 
@@ -123,6 +124,7 @@ function buildIrishSeed(realToday: string, opts: { emailDomain?: string; vatPct?
     enquiries,
     quotes,
     ...proj,
+    snags: seedSnags(day, proj.projects, people),
     spendRequests: seedSpendRequests(day, people.find((p) => p.id === "p-103")?.certs.find((c) => c.name === "Abrasive wheels")?.expires ?? workdays(day, 7)),
     supplies: seedSupplies(day),
     portalNotes: seedPortalNotes(day),
@@ -162,7 +164,12 @@ function buildIrishSeed(realToday: string, opts: { emailDomain?: string; vatPct?
     repairs: [],
     certSubmissions: [],
     rosterSends: [],
-    connections: {},
+    // Email and WhatsApp are set up by Vardil when a firm joins (20 Nov, decision 232): there is
+    // no Connections screen, and Send the week works from the first day.
+    connections: {
+      email: { provider: "Outlook", account: `office@${domain}`, at: at(pastWorkdays(day, 15)[0] ?? day, "10:30"), by: "Vardil" },
+      whatsapp: { number: opts.region === "UK" ? "+44 1539 555 0100" : "+353 91 555 0100", at: at(pastWorkdays(day, 15)[0] ?? day, "10:40"), by: "Vardil" },
+    },
   };
   // Written last, from the finished records.
   fillManagementDates(db, day, opts.region ?? "IE");

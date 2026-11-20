@@ -196,7 +196,8 @@ export const router = create([
           screen("admin/approvals", admin, (m) => m.InvoiceApprovals),
           screen("admin/billing", admin, (m) => m.Billing),
           screen("admin/bank-holidays", admin, (m) => m.BankHolidays),
-          screen("admin/connections", admin, (m) => m.Connections),
+          // Connections went from Admin on 20 Nov (decision 232): email and WhatsApp are set up by Vardil when a firm joins.
+          { path: "admin/connections", element: <Navigate to="/admin" replace /> },
           screen("admin/automations", admin, (m) => m.Automations),
           screen("admin/activity", admin, (m) => m.ActivityLog),
           screen("admin/repairs", admin, (m) => m.Repairs),

@@ -13,7 +13,7 @@ import { bankHolidayOn, closureDays, isBankHoliday, isRestDay } from "@/lib/bank
 import { addDays, dayOfWeek, isWeekend } from "@/lib/dates";
 import { billingEmail, grossOf, linesNet, nextAccountsNo, routeWords } from "@/lib/invoices";
 import { TENDER_CHECKS } from "@/lib/tenders";
-import { approveStep, chainOf, CHAIN_WORDS, nextFileNo, partyOf, purchaseStage, receiptEmail, remittanceEmail, startsOnSite } from "@/lib/purchases";
+import { addPurchaseProblem, approveStep, chainOf, CHAIN_WORDS, nextFileNo, partyOf, purchaseStage, receiptEmail, remittanceEmail, startsOnSite } from "@/lib/purchases";
 import { REGION } from "@/lib/money";
 import { normaliseReg } from "@/lib/fleet";
 import { overtimeText, overtimeTotal, restDayKind, restDayProblem, storedDouble } from "@/lib/overtime";
@@ -23,6 +23,7 @@ import { personWeek } from "@/lib/availability";
 import { driverSiteOn, dropOutcome } from "@/lib/roster";
 import { money2, r2 } from "@/lib/money";
 import { quoteTotal } from "@/lib/quotes";
+import { openSnags, takesSnags } from "@/lib/snags";
 import { attendanceShort, type DayMark, restDayMark } from "@/lib/week";
 import { addMinutes, checkCode, type CodeCheck, codesLeft, isLocked, LOCK_MINUTES, MAX_TRIES, phoneDigits, SESSION_DAYS, triesLeft } from "@/lib/phone-auth";
 import { levelOf, levelValue, signedInPersonId } from "./access";
@@ -31,7 +32,7 @@ import { ROLES } from "./roles";
 import { costingFor, linesFor, WORK, type WorkKind } from "./seed/commercial";
 import { rng } from "./seed/util";
 import { getDay, useData, usePrefs } from "./store";
-import type { PhoneAccount, AccessKey, AccessRow, Allocation, Attendance, Cert, Client, Course, Db, Expense, DepartmentKey, Enquiry, ID, LevelKey, PermKey, Person, PhotoStage, Language, Mail, MailAttachment, MailIntent, Proof, RequestKind, RoleKey, FileCategory, FileKind, FleetDocCategory, InvoiceLine, InvoiceQuery, Project, SalesInvoice, Scaffold, SendRoute, SubPaper, Variation, Vehicle, Base, BaseKind, ComplianceItem, Day, Garage, InvoiceStatus, LicenceKey, RepairCategory, RepairInvoice, RepairLine, Todo, RepairReport, RepairStatus, CertSubmission, RosterSend, PayChain, TenderCheck, TenderFileKind } from "./types";
+import type { PhoneAccount, AccessKey, AccessRow, Allocation, Attendance, Cert, Client, Course, Db, Expense, DepartmentKey, Enquiry, ID, LevelKey, PermKey, Person, PhotoStage, Language, Mail, MailAttachment, MailIntent, Proof, RequestKind, RoleKey, FileCategory, FileKind, FleetDocCategory, InvoiceLine, InvoiceQuery, Project, SalesInvoice, Scaffold, SendRoute, SubPaper, Variation, Vehicle, Base, BaseKind, ComplianceItem, Day, Garage, InvoiceStatus, LicenceKey, RepairCategory, RepairInvoice, RepairLine, Todo, RepairReport, RepairStatus, CertSubmission, RosterSend, PayChain, TenderCheck, TenderFileKind, Snag, SupplierInvoice } from "./types";
 
 const mutate = (fn: (db: Db) => void) => useData.getState().mutate(fn);
 
@@ -657,7 +658,6 @@ export function sendQuote(quoteId: ID) {
     if (!q) return;
     q.status = "Sent";
     q.sentAt = nowStamp();
-    delete q.openedAt;
     delete q.respondedAt;
     delete q.query;
     const e = db.enquiries.find((x) => x.id === q.enquiryId);
@@ -831,7 +831,6 @@ export function quoteBackToDraft(quoteId: ID) {
     const was = q.status;
     q.status = "Draft";
     delete q.sentAt;
-    delete q.openedAt;
     delete q.respondedAt;
     delete q.chasedAt;
     const e = db.enquiries.find((x) => x.id === q.enquiryId);
@@ -1059,20 +1058,76 @@ export function raiseExtra(projectId: ID, v: { description: string; measured: st
     p.invoiceHold = true;
     syncHold(db, p.id);
     const live = p.status === "Live";
-    db.approvals.unshift({ id: newId("ap"), kind: "variation", title: `Variation: ${v.measured || v.description.slice(0, 50)}`, rationale: `Raised by ${actorName(db)} on the project page. ${live ? "The final account will be held until it is agreed." : "The final account is held until it is agreed."}`, createdAt: nowStamp(), status: "Pending", variationId: id, projectId });
-    audit(db, projectId, `Extras raised: ${v.measured || v.description}`);
+    db.approvals.unshift({ id: newId("ap"), kind: "variation", title: `Variation: ${v.measured || v.description.slice(0, 50)}`, rationale: `Raised by ${actorName(db)} in the office. ${live ? "The final account will be held until it is agreed." : "The final account is held until it is agreed."}`, createdAt: nowStamp(), status: "Pending", variationId: id, projectId });
+    audit(db, projectId, `Variation raised: ${v.measured || v.description}`);
     log(db, live ? "Drafted a variation for approval" : "Drafted a variation and held the final account", `${p.code} ${p.name}`, "projects", "Assistant");
   });
 }
 
-export function setSnagging(projectId: ID, open: boolean) {
+/**
+ * A snag added to a job's list (20 Nov, decision 234): by the site manager on a walk-round, or by
+ * the office from the client's list. While any snag is open the job's final account is on hold.
+ */
+export function addSnag(projectId: ID, s: { what: string; where: string; from: Snag["from"]; fixBy?: string; photo?: { name: string; dataUrl: string } }) {
   mutate((db) => {
     const p = db.projects.find((x) => x.id === projectId);
-    if (!p) return;
-    p.snaggingFlag = open;
-    p.invoiceHold = open || p.extrasFlag;
-    audit(db, p.id, open ? (p.status === "Live" ? "Snagging opened" : "Snagging opened: final account held") : "Snagging closed");
+    if (!p || !takesSnags(p) || !s.what.trim()) return;
+    const who = actorName(db);
+    const first = !p.snaggingFlag;
+    db.snags.unshift({
+      id: newId("snag"),
+      projectId,
+      what: s.what.trim(),
+      where: s.where.trim(),
+      from: s.from,
+      ...(s.fixBy?.trim() ? { fixBy: s.fixBy.trim() } : {}),
+      ...(s.photo ? { photo: { ...s.photo, addedBy: who, addedAt: nowStamp() } } : {}),
+      raisedBy: who,
+      raisedAt: nowStamp(),
+      status: "Open",
+    });
+    p.snaggingFlag = true;
+    p.invoiceHold = true;
+    audit(db, p.id, `Snag added: ${s.what.trim()}${first && p.status !== "Live" ? ". Final account on hold" : ""}`);
     syncHold(db, p.id);
+    log(db, "Added a snag", `${p.code} ${p.name}: ${s.what.trim()}`, "projects");
+  });
+}
+
+/** A snag put right. When it was the job's last open one, snagging no longer holds the final account. */
+export function fixSnag(id: ID) {
+  mutate((db) => {
+    const s = db.snags.find((x) => x.id === id);
+    const p = db.projects.find((x) => x.id === s?.projectId);
+    if (!s || !p || s.status !== "Open") return;
+    s.status = "Fixed";
+    s.fixedBy = actorName(db);
+    s.fixedAt = nowStamp();
+    const left = openSnags(db.snags, p.id).length;
+    if (left === 0 && p.snaggingFlag) {
+      p.snaggingFlag = false;
+      p.invoiceHold = p.extrasFlag;
+      audit(db, p.id, `Snag fixed: ${s.what}. ${p.invoiceHold ? "No snags left: still on hold for variations" : p.status === "Live" ? "No snags left" : "No snags left: final account released"}`);
+      syncHold(db, p.id);
+    } else audit(db, p.id, `Snag fixed: ${s.what}`);
+    log(db, "Marked a snag fixed", `${p.code} ${p.name}: ${s.what}`, "projects");
+  });
+}
+
+/** Take back a "fixed" pressed by mistake: the snag is open again, and holds the final account as before. */
+export function reopenSnag(id: ID) {
+  mutate((db) => {
+    const s = db.snags.find((x) => x.id === id);
+    const p = db.projects.find((x) => x.id === s?.projectId);
+    if (!s || !p || s.status !== "Fixed") return;
+    s.status = "Open";
+    delete s.fixedBy;
+    delete s.fixedAt;
+    p.snaggingFlag = true;
+    p.invoiceHold = true;
+    audit(db, p.id, `Snag opened again: ${s.what}`);
+    syncHold(db, p.id);
+    log(db, "Opened a snag again", `${p.code} ${p.name}: ${s.what}`, "projects");
   });
 }
 
@@ -1084,7 +1139,8 @@ export function clearHold(projectId: ID) {
     p.extrasFlag = false;
     p.snaggingFlag = false;
     p.invoiceHold = false;
-    audit(db, p.id, "Invoice hold cleared by a manager");
+    const snags = openSnags(db.snags, p.id).length;
+    audit(db, p.id, `Final account hold cleared by a manager${snags ? `, with ${snags === 1 ? "1 snag" : `${snags} snags`} still open` : ""}`);
     syncHold(db, p.id);
     log(db, "Cleared an invoice hold", `${p.code} ${p.name}`, "projects");
   });
@@ -1116,7 +1172,7 @@ function settleExtras(db: Db, p: Project) {
   if (!p.extrasFlag || db.variations.some((x) => x.projectId === p.id && x.status === "Draft")) return;
   p.extrasFlag = false;
   p.invoiceHold = p.snaggingFlag;
-  audit(db, p.id, p.invoiceHold ? "No extras left to agree: still held for snagging" : p.status === "Live" ? "No extras left to agree" : "No extras left to agree: final account released");
+  audit(db, p.id, p.invoiceHold ? "No variations left to agree: still on hold for snagging" : p.status === "Live" ? "No variations left to agree" : "No variations left to agree: final account released");
   syncHold(db, p.id);
 }
 
@@ -2383,6 +2439,53 @@ export function markPurchasesExported(ids: ID[], packageName: string) {
 }
 
 /**
+ * The office adds an invoice that came by email, by post or was handed in (20 Nov, decision 237):
+ * the copy, who it is from, its number, date and amount, and the job it is for. Whoever adds it
+ * has checked it against the paper, so with `send` it goes straight for approval: to the job's
+ * site manager first under Jimmy's chain, then the managing director. Without `send` it waits in
+ * Money out to be checked, for an invoice that covers more than one job. A name that matches a
+ * subcontractor on file makes it theirs. Returns its id, or null when it was refused.
+ */
+export function addPurchaseInvoice(f: { from: string; invoiceNo: string; invoiceDate: string; description: string; net: number; vatPct: number; projectId: ID; category: Allocation["category"]; via: NonNullable<SupplierInvoice["via"]>; copy?: { name: string; dataUrl: string }; send: boolean }): ID | null {
+  let id: ID | null = null;
+  mutate((db) => {
+    const p = db.projects.find((x) => x.id === f.projectId);
+    if (!p || addPurchaseProblem(f, getDay(), db.supplierInvoices)) return;
+    const sub = db.subcontractors.find((x) => x.name.trim().toLowerCase() === f.from.trim().toLowerCase());
+    const supplier = sub?.name ?? f.from.trim();
+    const subtotal = r2(f.net);
+    const vat = r2((subtotal * f.vatPct) / 100);
+    const description = f.description.trim() || (sub ? `Work at ${p.name}` : `Supplied to ${p.name}`);
+    const category = sub ? "labour" : f.category;
+    id = newId("si");
+    db.supplierInvoices.unshift({
+      id,
+      supplier,
+      invoiceNo: f.invoiceNo.trim(),
+      invoiceDate: f.invoiceDate,
+      docType: "invoice",
+      subtotal,
+      vat,
+      total: r2(subtotal + vat),
+      jobRef: p.code,
+      fileName: f.copy?.name ?? `${supplier} ${f.invoiceNo.trim()}.pdf`,
+      receivedAt: nowStamp(),
+      readStatus: "needs_review",
+      lines: [{ description, amount: subtotal }],
+      allocations: [{ id: newId("al"), projectId: p.id, category, amount: subtotal, description }],
+      ...(sub ? { party: "subcontractor" as const, subcontractorId: sub.id } : {}),
+      via: f.via,
+      fileNo: nextFileNo(db.supplierInvoices),
+      dueOn: addDays(f.invoiceDate, sub?.termsDays ?? 30),
+      ...(f.send ? { askedBy: actorName(db), askedAt: nowStamp(), ...(startsOnSite(chainOf(db.approvalLimits)) ? { siteStep: true } : {}) } : {}),
+      ...(f.copy ? { copy: f.copy } : {}),
+    });
+    log(db, f.send ? `Added a ${sub ? "subcontractor's" : "supplier's"} invoice and sent it for approval` : `Added a ${sub ? "subcontractor's" : "supplier's"} invoice to check`, `${supplier} ${f.invoiceNo.trim()}, ${p.code} ${p.name}`, "invoicing");
+  });
+  return id;
+}
+
+/**
  * A subcontractor sends an invoice in through the portal, for one of their sites. It is theirs
  * to describe, so nothing needs reading: it is charged to that site under labour and
  * subcontractors and goes straight to whoever may approve it (the site's manager or the
@@ -3540,26 +3643,6 @@ export function removeClosure(closure: ID) {
     if (!days.length) return;
     db.bankHolidays = db.bankHolidays.filter((h) => h.closure !== closure);
     log(db, "Removed a company closure", `${days[0]!.name}, ${days[0]!.date} to ${days[days.length - 1]!.date}`, "admin");
-  });
-}
-
-/** Connect the firm's email or WhatsApp (Admin, Connections). In the demo a pretend sign-in: nothing leaves the browser. */
-export function connectEmail(provider: "Gmail" | "Outlook", account: string) {
-  mutate((db) => {
-    db.connections.email = { provider, account: account.trim(), at: nowStamp(), by: actorName(db) };
-    log(db, "Connected email", `${provider}, ${account.trim()}`, "admin");
-  });
-}
-export function connectWhatsApp(number: string) {
-  mutate((db) => {
-    db.connections.whatsapp = { number: number.trim(), at: nowStamp(), by: actorName(db) };
-    log(db, "Connected WhatsApp Business", number.trim(), "admin");
-  });
-}
-export function disconnect(which: "email" | "whatsapp") {
-  mutate((db) => {
-    delete db.connections[which];
-    log(db, which === "email" ? "Disconnected email" : "Disconnected WhatsApp", "", "admin");
   });
 }
 
