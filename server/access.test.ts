@@ -102,3 +102,18 @@ describe("Cloudflare Access token check", () => {
     expect(accessToken(new Request("https://x/"))).toBeNull();
   });
 });
+
+describe("refusalReason", async () => {
+  const { refusalReason } = await import("./access");
+  const enc = (o: object) => btoa(JSON.stringify(o)).replace(/=+$/, "").replace(/\+/g, "-").replace(/\//g, "_");
+  const tok = (p: object) => `${enc({ alg: "RS256" })}.${enc(p)}.sig`;
+  const o = { teamDomain: "team.cloudflareaccess.com", audiences: ["mine"], now: 1_000_000_000_000 };
+  it("names what is wrong without letting anyone in", () => {
+    expect(refusalReason(null, o)).toEqual({ why: "no_token" });
+    expect(refusalReason("x", o)).toEqual({ why: "not_a_token" });
+    expect(refusalReason(tok({ iss: "https://other.cloudflareaccess.com" }), o).why).toBe("other_team");
+    expect(refusalReason(tok({ iss: "https://team.cloudflareaccess.com", aud: ["theirs"] }), o)).toEqual({ why: "other_application", aud: ["theirs"] });
+    expect(refusalReason(tok({ iss: "https://team.cloudflareaccess.com", aud: "mine", exp: 1 }), o).why).toBe("expired");
+    expect(refusalReason(tok({ iss: "https://team.cloudflareaccess.com", aud: "mine", exp: 9e12 }), o).why).toBe("signature");
+  });
+});

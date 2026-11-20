@@ -12,7 +12,7 @@
  *      (server/cloudflare.ts) and anyone who left it is signed out. "visit" and "seen" record what a
  *      prospect does in their demo (decision 210); staff are never recorded.
  */
-import { ACCESS_DEFAULTS, accessToken, verifyAccessToken } from "../../server/access";
+import { ACCESS_DEFAULTS, accessToken, refusalReason, verifyAccessToken } from "../../server/access";
 import { type AlertEnv, sendAlert, signInAlert } from "../../server/alerts";
 import { type CloudflareEnv, cloudflareLinked, revokeSignIns, syncAccessGroup } from "../../server/cloudflare";
 import { requestGate } from "../../server/validate";
@@ -31,9 +31,14 @@ export interface Env extends CloudflareEnv, AlertEnv {
 const json = (status: number, body: Record<string, unknown>) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", "cache-control": "no-store", "x-content-type-options": "nosniff" } });
 
-export async function who(request: Request, env: Env) {
+function accessOpts(env: Env) {
   const teamDomain = env.ACCESS_TEAM_DOMAIN || ACCESS_DEFAULTS.teamDomain;
   const audiences = env.ACCESS_AUD ? env.ACCESS_AUD.split(",").map((s) => s.trim()).filter(Boolean) : ACCESS_DEFAULTS.audiences;
+  return { teamDomain, audiences };
+}
+
+export async function who(request: Request, env: Env) {
+  const { teamDomain, audiences } = accessOpts(env);
   const user = await verifyAccessToken(accessToken(request), { teamDomain, audiences, certsUrl: env.ACCESS_CERTS_URL }).catch(() => null);
   return user ? { email: user.email.toLowerCase(), staff: isStaff(user.email, staffDomains(env.STAFF_DOMAINS)) } : null;
 }
@@ -73,7 +78,8 @@ async function endPassedDemos(db: D1Database, env: Env, today: string) {
 
 export const onRequestGet: PagesFunction<Env> = async ({ request, env, waitUntil }) => {
   const me = await who(request, env);
-  if (!me) return json(401, { error: "signin" });
+  // Says why, so a Pages project set up wrong can be put right (ACCESS_AUD; README, Vardil HQ).
+  if (!me) return json(401, { error: "signin", ...refusalReason(accessToken(request), accessOpts(env)) });
   if (!env.DB) return json(503, { error: "not_configured" });
   await ensureWorkspaceSchema(env.DB);
   const today = irishToday();

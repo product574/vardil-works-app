@@ -103,3 +103,28 @@ export async function verifyAccessToken(
   if (typeof payload.email !== "string" || !payload.email.includes("@")) return null;
   return { email: payload.email.toLowerCase(), sub: String(payload.sub ?? "") };
 }
+
+/**
+ * Why a token was refused, for the person signed in to read on /api/workspace (20 Nov): the
+ * usual cause on a new Pages project is ACCESS_AUD not naming the Access application in front
+ * of it. Read from the token without trusting it, so it only ever describes the visitor's own
+ * cookie; nothing here lets anyone in. An application's AUD tag is an identifier, not a secret.
+ */
+export function refusalReason(token: string | null, opts: { teamDomain: string; audiences: string[]; now?: number }): { why: string; aud?: string[]; iss?: string } {
+  if (!token) return { why: "no_token" };
+  const parts = token.split(".");
+  if (parts.length !== 3) return { why: "not_a_token" };
+  let payload: Record<string, unknown>;
+  try {
+    payload = json(parts[1]!);
+  } catch {
+    return { why: "not_a_token" };
+  }
+  const iss = typeof payload.iss === "string" ? payload.iss : "";
+  if (iss !== `https://${opts.teamDomain}`) return { why: "other_team", iss };
+  const aud = (Array.isArray(payload.aud) ? payload.aud : [payload.aud]).filter((a): a is string => typeof a === "string");
+  if (!aud.some((a) => opts.audiences.includes(a))) return { why: "other_application", aud };
+  const secs = Math.floor((opts.now ?? Date.now()) / 1000);
+  if (typeof payload.exp === "number" && payload.exp < secs) return { why: "expired" };
+  return { why: "signature" };
+}
