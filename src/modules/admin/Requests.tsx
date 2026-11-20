@@ -8,7 +8,7 @@ import { restDayKindOf } from "@/lib/bank-holidays";
 import { suggestedSplit } from "@/lib/overtime-claims";
 import { dFull, dShort, plural, when } from "@/lib/format";
 import { money0, money2 } from "@/lib/money";
-import { type Approver, approverWords, mayApprove } from "@/lib/purchases";
+import { type Approver, approverWords, chainOf, mayApprove } from "@/lib/purchases";
 import { ApproveDialog, SendBackDialog } from "@/modules/invoicing/purchase-shared";
 import { directorQueue, recentlyDecided } from "@/lib/requests";
 import { Badge, Button, type DeclineAsk, DeclineDialog, DeclineNote, Dialog, Empty, Field, NumInput, PageBody, PageHead, Panel, Section } from "@/ui";
@@ -31,7 +31,7 @@ export function Requests() {
     <>
       <PageHead
         title="Requests"
-        note={total === 0 ? "Nothing is waiting for a yes or no." : `${plural(total, "thing")} waiting for you: leave, requests from the phones and the sites, overtime claims, repairs, certificates to check, reimbursements${access.apps.on("invoicing") ? `, and supplier invoices over the ${money0(limit, region)} accounts may approve` : ""}.`}
+        note={total === 0 ? "Nothing is waiting for a yes or no." : `${plural(total, "thing")} waiting for you: leave, requests from the phones and the sites, overtime claims, repairs, certificates to check, reimbursements${access.apps.on("invoicing") ? (chainOf(db.approvalLimits) === "accounts-limit" ? `, and supplier invoices over the ${money0(limit, region)} accounts may approve` : ", and invoices the site managers have approved") : ""}.`}
       />
       <PageBody className="grid max-w-6xl gap-6">
         <RequestsBody />
@@ -466,9 +466,9 @@ export function RequestsBody({ embedded }: { embedded?: boolean }) {
         )}
 
         {q.invoices.length > 0 && access.apps.on("invoicing") && (
-          <Section title={`Supplier invoices over ${money0(limit, region)} before VAT (${q.invoices.length})`} aside={<Link to="/invoicing/approve" className="font-medium text-accent-ink underline-offset-2 hover:underline">To approve in Invoicing</Link>}>
+          <Section title={chainOf(db.approvalLimits) === "accounts-limit" ? `Supplier invoices over ${money0(limit, region)} before VAT (${q.invoices.length})` : `Invoices approved by the site, for your yes (${q.invoices.length})`} aside={<Link to="/invoicing/approve" className="font-medium text-accent-ink underline-offset-2 hover:underline">To approve in Invoicing</Link>}>
             <Panel className="overflow-x-auto">
-              <table className="tbl" aria-label="Supplier invoices waiting for your approval">
+              <table className="tbl" aria-label="Invoices waiting for your approval">
                 <thead>
                   <tr>
                     <th>Supplier</th>
@@ -497,7 +497,7 @@ export function RequestsBody({ embedded }: { embedded?: boolean }) {
                         <span className="block text-[0.87rem]">{when(s.askedAt ?? "", day)}</span>
                       </td>
                       <td className="text-right whitespace-nowrap">
-                        {mayApprove(s, approver, limit, db.projects) ? (
+                        {mayApprove(s, approver, limit, db.projects, chainOf(db.approvalLimits)) ? (
                           <span className="inline-flex gap-1.5">
                             <Button size="sm" variant="ghost" aria-label={`Send back: ${s.supplier} ${s.invoiceNo}`} onClick={() => setInvBox({ what: "back", id: s.id })}>
                               Send back
@@ -507,7 +507,7 @@ export function RequestsBody({ embedded }: { embedded?: boolean }) {
                             </Button>
                           </span>
                         ) : (
-                          <span className="text-[0.93rem] text-muted">Waiting for {approverWords(s, limit, db.projects, (id) => db.people.find((p) => p.id === id)?.name)}</span>
+                          <span className="text-[0.93rem] text-muted">Waiting for {approverWords(s, limit, db.projects, (id) => db.people.find((p) => p.id === id)?.name, chainOf(db.approvalLimits))}</span>
                         )}
                       </td>
                     </tr>

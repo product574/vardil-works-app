@@ -4,7 +4,7 @@
  */
 import type { CertSubmission, Db, Expense, Holiday, OvertimeClaim, Project, RepairReport, SiteAccess, SiteRequest, SpendRequest, SupplierInvoice } from "@/data/types";
 import { notPaid } from "./reimbursements";
-import { partyOf, purchaseStage } from "./purchases";
+import { approveStep, chainOf, partyOf, purchaseStage } from "./purchases";
 import { opensSite, seesEveryProject } from "./site-access";
 
 export type DirectorQueue = {
@@ -44,10 +44,18 @@ export function directorQueue(db: Db, opts: { crewToOffice?: boolean } = {}): Di
   };
 }
 
-/** Supplier invoices only someone who may approve any invoice can approve: over the accounts limit, before VAT. */
+/**
+ * Invoices waiting for the managing director. With Jimmy's chain (20 Nov) that is every invoice,
+ * supplier's or subcontractor's, whose site manager has said yes (or that never had a site step);
+ * with "site manager only" none; with the old rule, supplier invoices over the accounts limit.
+ */
 export function waitingForDirector(db: Pick<Db, "supplierInvoices" | "approvalLimits">): SupplierInvoice[] {
   const limit = db.approvalLimits.find((l) => l.id === "supplier")?.amount ?? 0;
-  return db.supplierInvoices.filter((s) => partyOf(s) === "supplier" && purchaseStage(s) === "approve" && s.subtotal > limit);
+  const chain = chainOf(db.approvalLimits);
+  const waiting = db.supplierInvoices.filter((s) => purchaseStage(s) === "approve");
+  if (chain === "site-md") return waiting.filter((s) => approveStep(s) === "final");
+  if (chain === "site") return waiting.filter((s) => approveStep(s) === "final" && !s.siteStep);
+  return waiting.filter((s) => partyOf(s) === "supplier" && s.subtotal > limit);
 }
 
 /** Everything waiting, as one list of ids, for counts. */

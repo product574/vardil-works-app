@@ -12,7 +12,7 @@ import { plantBlocks, renewedTo, ticketBlocks } from "@/lib/compliance";
 import { bankHolidayOn, closureDays, isBankHoliday, isRestDay } from "@/lib/bank-holidays";
 import { addDays, dayOfWeek, isWeekend } from "@/lib/dates";
 import { billingEmail, grossOf, linesNet, nextAccountsNo, routeWords } from "@/lib/invoices";
-import { nextFileNo, partyOf, purchaseStage, receiptEmail, remittanceEmail } from "@/lib/purchases";
+import { approveStep, chainOf, CHAIN_WORDS, nextFileNo, partyOf, purchaseStage, receiptEmail, remittanceEmail, startsOnSite } from "@/lib/purchases";
 import { REGION } from "@/lib/money";
 import { normaliseReg } from "@/lib/fleet";
 import { overtimeText, overtimeTotal, restDayKind, restDayProblem, storedDouble } from "@/lib/overtime";
@@ -30,7 +30,7 @@ import { ROLES } from "./roles";
 import { costingFor, linesFor, WORK, type WorkKind } from "./seed/commercial";
 import { rng } from "./seed/util";
 import { getDay, useData, usePrefs } from "./store";
-import type { PhoneAccount, AccessKey, AccessRow, Allocation, Attendance, Cert, Client, Course, Db, Expense, DepartmentKey, Enquiry, ID, LevelKey, PermKey, Person, PhotoStage, Language, Mail, MailAttachment, MailIntent, Proof, RequestKind, RoleKey, FileCategory, FileKind, FleetDocCategory, InvoiceLine, InvoiceQuery, Project, SalesInvoice, Scaffold, SendRoute, SubPaper, Variation, Vehicle, Base, BaseKind, ComplianceItem, Day, Garage, InvoiceStatus, LicenceKey, RepairCategory, RepairInvoice, RepairLine, Todo, RepairReport, RepairStatus, CertSubmission, RosterSend } from "./types";
+import type { PhoneAccount, AccessKey, AccessRow, Allocation, Attendance, Cert, Client, Course, Db, Expense, DepartmentKey, Enquiry, ID, LevelKey, PermKey, Person, PhotoStage, Language, Mail, MailAttachment, MailIntent, Proof, RequestKind, RoleKey, FileCategory, FileKind, FleetDocCategory, InvoiceLine, InvoiceQuery, Project, SalesInvoice, Scaffold, SendRoute, SubPaper, Variation, Vehicle, Base, BaseKind, ComplianceItem, Day, Garage, InvoiceStatus, LicenceKey, RepairCategory, RepairInvoice, RepairLine, Todo, RepairReport, RepairStatus, CertSubmission, RosterSend, PayChain } from "./types";
 
 const mutate = (fn: (db: Db) => void) => useData.getState().mutate(fn);
 
@@ -2148,8 +2148,41 @@ export function sendForApproval(id: ID, allocations: Omit<Allocation, "id">[]) {
     s.allocations = allocations.map((a) => ({ ...a, id: newId("al") }));
     s.askedBy = actorName(db);
     s.askedAt = nowStamp();
+    // Jimmy's chain (20 Nov): the site manager of the job approves first.
+    if (startsOnSite(chainOf(db.approvalLimits))) s.siteStep = true;
+    else delete s.siteStep;
+    delete s.siteApprovedBy;
+    delete s.siteApprovedAt;
     delete s.sentBack;
     log(db, `Sent a ${whose(s)} invoice for approval`, purchaseName(s), "invoicing");
+  });
+}
+
+/**
+ * The site manager of the job says yes (20 Nov, Jimmy's chain). With "site manager, then
+ * managing director" it goes on to the managing director; with "site manager only" his yes
+ * approves it into job costs. Who may is `approvalBy` in src/lib/purchases.ts.
+ */
+export function siteApprovePurchase(id: ID) {
+  let finished = false;
+  mutate((db) => {
+    const s = db.supplierInvoices.find((x) => x.id === id);
+    if (!s || purchaseStage(s) !== "approve" || approveStep(s) !== "site") return;
+    s.siteApprovedBy = actorName(db);
+    s.siteApprovedAt = nowStamp();
+    log(db, `Approved a ${whose(s)} invoice for the site`, purchaseName(s), "invoicing");
+    finished = chainOf(db.approvalLimits) === "site";
+  });
+  if (finished) approvePurchase(id);
+}
+
+/** Change who approves the invoices the firm pays (Admin, Invoice approvals). Invoices already waiting keep their steps. */
+export function setPayChain(chain: PayChain) {
+  mutate((db) => {
+    const row = db.approvalLimits.find((x) => x.id === "supplier");
+    if (!row || chainOf(db.approvalLimits) === chain) return;
+    row.chain = chain;
+    log(db, "Changed who approves invoices", CHAIN_WORDS[chain].title, "admin");
   });
 }
 
@@ -2161,6 +2194,9 @@ export function sendBackPurchase(id: ID, reason: string) {
     s.sentBack = { by: actorName(db), at: nowStamp(), reason: reason.trim() };
     delete s.askedBy;
     delete s.askedAt;
+    delete s.siteStep;
+    delete s.siteApprovedBy;
+    delete s.siteApprovedAt;
     log(db, `Sent a ${whose(s)} invoice back`, `${purchaseName(s)}: ${reason.trim()}`, "invoicing");
   });
 }
@@ -2172,6 +2208,9 @@ export function takeBackPurchase(id: ID) {
     if (!s || purchaseStage(s) !== "approve") return;
     delete s.askedBy;
     delete s.askedAt;
+    delete s.siteStep;
+    delete s.siteApprovedBy;
+    delete s.siteApprovedAt;
     log(db, `Took a ${whose(s)} invoice back from approval`, purchaseName(s), "invoicing");
   });
 }
@@ -2187,6 +2226,9 @@ export function reopenSupplierInvoice(id: ID) {
     delete s.confirmedAt;
     delete s.askedBy;
     delete s.askedAt;
+    delete s.siteStep;
+    delete s.siteApprovedBy;
+    delete s.siteApprovedAt;
     log(db, `Reopened a ${whose(s)} invoice`, purchaseName(s), "invoicing");
   });
 }
@@ -2274,6 +2316,7 @@ export function subcontractorSendsInvoice(subcontractorId: ID, f: { projectId: I
       dueOn: addDays(f.invoiceDate, sub.termsDays),
       askedBy: sub.contactName,
       askedAt: nowStamp(),
+      ...(startsOnSite(chainOf(db.approvalLimits)) ? { siteStep: true } : {}),
       ...(f.copy ? { copy: f.copy } : {}),
     });
     log(db, "Sent an invoice through the portal", `${sub.name} ${f.invoiceNo.trim()}, ${p.code} ${p.name}`, "portal", sub.contactName);

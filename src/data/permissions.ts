@@ -24,7 +24,7 @@ export const PERMISSIONS: { key: PermKey; group: "Projects" | "Sales" | "People"
   { key: "recordInspections", group: "Compliance", label: "Record scaffold inspections", hint: "The weekly inspection of scaffolds and towers, putting one on the register and taking it off, on the sites they can see" },
   { key: "manageInvoices", group: "Invoicing", label: "Handle invoices", hint: "Check supplier invoices and approve the small ones, send client invoices, mark invoices paid, export to Sage" },
   { key: "approveInvoices", group: "Invoicing", label: "Approve invoices of any size", hint: "Supplier invoices over the limit accounts may approve, and any subcontractor's invoice. Also sets that limit" },
-  { key: "approveSubInvoices", group: "Invoicing", label: "Approve subcontractor invoices for their own sites", hint: "A subcontractor's invoice for a site they run, before accounts pay it (Projects, Subcontractor invoices)" },
+  { key: "approveSubInvoices", group: "Invoicing", label: "Approve invoices for their own sites", hint: "The site manager's yes on an invoice for a site they run, before it goes on (Projects, Invoices to approve). Which invoices depends on Admin, Invoice approvals" },
 ];
 
 export const ALL_PERMS: PermKey[] = PERMISSIONS.map((p) => p.key);

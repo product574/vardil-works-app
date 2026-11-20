@@ -660,7 +660,7 @@ function JobScreen({ site, me, day, onBack }: { site: Project; me: Person; day: 
         {row("overtime", "Overtime claims", Clock, count(w.overtime))}
         {row("receipts", "Reimbursements", Receipt, count(w.receipts))}
         {row("crew", "Crew requests", Tray, count(w.crew, "warn"))}
-        {projects && row("subs", "Subcontractor invoices", Invoice, count(subsWaiting(db, site.id).length))}
+        {projects && row("subs", "Invoices to approve", Invoice, count(subsWaiting(db, site.id).length))}
         {projects && (
           <>
             <h3 className="mt-2 text-[0.93rem] font-medium text-muted">The job</h3>

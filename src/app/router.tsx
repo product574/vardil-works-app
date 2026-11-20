@@ -185,6 +185,7 @@ export const router = create([
           screen("admin", admin, (m) => m.Requests),
           screen("admin/access", admin, (m) => m.RolesAccess),
           screen("admin/sites", admin, (m) => m.SiteAccess),
+          screen("admin/approvals", admin, (m) => m.InvoiceApprovals),
           screen("admin/billing", admin, (m) => m.Billing),
           screen("admin/bank-holidays", admin, (m) => m.BankHolidays),
           screen("admin/connections", admin, (m) => m.Connections),

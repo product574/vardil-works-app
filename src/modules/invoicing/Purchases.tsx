@@ -3,12 +3,12 @@ import { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { readSupplierInvoice, reopenSupplierInvoice, sendForApproval, setApprovalLimit, takeBackPurchase, unmarkPurchasePaid } from "@/data/actions";
 import { usePrefs } from "@/data/store";
-import type { CostCategoryKey, Db, SupplierInvoice } from "@/data/types";
+import type { CostCategoryKey, Db, PayChain, SupplierInvoice } from "@/data/types";
 import { PACKAGE } from "@/lib/accounts-export";
 import { dFull, dShort, plural, tOf } from "@/lib/format";
 import { allocationBalance, jobRefMatches, suggestCategory } from "@/lib/job-costs";
 import { money0, money2, r2 } from "@/lib/money";
-import { limitWords, needsAccounts, owedOut, partyOf, payBy, payWords, purchaseStage, type PurchaseStage, sitesOf, viaWords } from "@/lib/purchases";
+import { limitWords, needsAccounts, owedOut, partyOf, payBy, payWords, purchaseStage, type PurchaseStage, sitesOf, startsOnSite, viaWords } from "@/lib/purchases";
 import { isPdf } from "@/lib/image";
 import { subInsuranceFlags } from "@/lib/compliance";
 import { Button, cx, Dialog, Empty, NumInput, PageBody, PageHead, Panel, Section, Segmented } from "@/ui";
@@ -59,7 +59,7 @@ export function SubcontractorInvoices() {
  * listed by where each invoice stands; subcontractors by site, since several share a site.
  */
 function PurchaseQueue({ party }: { party: Party }) {
-  const { db, region, limit, project } = usePurchases();
+  const { db, region, limit, project, chain } = usePurchases();
   const [params, setParams] = useSearchParams();
   const mine = db.supplierInvoices.filter((s) => partyOf(s) === party);
   const siteOf = (s: SupplierInvoice) => project(s.allocations[0]?.projectId) ?? db.projects.find((p) => !!s.jobRef && jobRefMatches(s.jobRef, p.code));
@@ -78,8 +78,8 @@ function PurchaseQueue({ party }: { party: Party }) {
         title={party === "supplier" ? "Supplier invoices" : "Subcontractor invoices"}
         note={
           party === "supplier"
-            ? `${todo} to deal with, ${waiting} waiting for approval. Each invoice is read within the hour of arriving; accounts check the reading against the paper and say which job each line belongs to. Up to ${money0(limit, region)} before VAT accounts approve it themselves; above that the managing director approves. Approved invoices go to To be paid.`
-            : `${waiting} waiting for approval, ${todo} with accounts. Subcontractors send their invoices in through the portal, one for each site. The site's manager or the managing director approves each one, then accounts pay it.`
+            ? `${todo} to deal with, ${waiting} waiting for approval. Each invoice is read within the hour of arriving; accounts check the reading against the paper and say which job each line belongs to. ${chainNote(chain, money0(limit, region))} Approved invoices go to To be paid.`
+            : `${waiting} waiting for approval, ${todo} with accounts. Subcontractors send their invoices in through the portal, one for each site. ${chain === "accounts-limit" ? "The site's manager or the managing director approves each one, then accounts pay it." : chainNote(chain, "")}`
         }
       />
       <PageBody className="grid max-w-[92rem] grid-cols-1 items-start gap-4 lg:grid-cols-[15rem_minmax(0,1fr)]">
@@ -115,7 +115,7 @@ function PurchaseQueue({ party }: { party: Party }) {
 
 /** `pin` keeps this invoice on screen after an action moves it down the queue, so the result can be seen. */
 function PurchaseDetail({ s, pin }: { s: SupplierInvoice; pin: () => void }) {
-  const { db, day, region, limit, canEdit, canApprove, waitsFor, sub } = usePurchases();
+  const { db, day, region, limit, canEdit, canApprove, waitsFor, sub, chain, approvalBy } = usePurchases();
   const legalName = usePrefs((x) => x.brand.legalName);
   const [lines, setLines] = useState<Line[]>(() => suggestLines(s, db));
   const [box, setBox] = useState<"approve" | "back" | "paid" | null>(null);
@@ -326,14 +326,14 @@ function PurchaseDetail({ s, pin }: { s: SupplierInvoice; pin: () => void }) {
               {open &&
                 (mine ? (
                   <>
-                    <p className="mr-auto max-w-[60ch] text-[0.93rem] text-muted">{blocked ? "Give every line a project, and make the lines add up to the subtotal, before approving." : subbie ? (stage === "back" ? `It is back with ${s.supplier}, who can send a corrected invoice. Approve this one only if it has since been put right.` : "You may approve this one. It then goes to accounts to be paid.") : limitWords(s, limit, region)}</p>
+                    <p className="mr-auto max-w-[60ch] text-[0.93rem] text-muted">{blocked ? "Give every line a project, and make the lines add up to the subtotal, before approving." : subbie ? (stage === "back" ? `It is back with ${s.supplier}, who can send a corrected invoice. Approve this one only if it has since been put right.` : "You may approve this one. It then goes to accounts to be paid.") : limitWords(s, limit, region, chain)}</p>
                     <Button variant="primary" disabled={blocked} onClick={() => setBox("approve")}>
                       Approve to job costs
                     </Button>
                   </>
                 ) : canEdit ? (
                   <>
-                    <p className="mr-auto max-w-[60ch] text-[0.93rem] text-muted">{blocked ? "Give every line a project, and make the lines add up to the subtotal, before sending it on." : subbie ? `A subcontractor's invoice is approved by whoever runs the site: ${waitsFor({ ...s, allocations: asChecked.map((a, n) => ({ ...a, id: String(n) })) })}.` : limitWords(s, limit, region)}</p>
+                    <p className="mr-auto max-w-[60ch] text-[0.93rem] text-muted">{blocked ? "Give every line a project, and make the lines add up to the subtotal, before sending it on." : startsOnSite(chain) ? `It goes to ${waitsFor({ ...s, siteStep: true, siteApprovedAt: undefined, allocations: asChecked.map((a, n) => ({ ...a, id: String(n) })) })}. After that it is on To be paid.` : subbie ? `A subcontractor's invoice is approved by whoever runs the site: ${waitsFor({ ...s, allocations: asChecked.map((a, n) => ({ ...a, id: String(n) })) })}.` : limitWords(s, limit, region, chain)}</p>
                     <Button
                       variant="primary"
                       disabled={blocked}
@@ -358,7 +358,7 @@ function PurchaseDetail({ s, pin }: { s: SupplierInvoice; pin: () => void }) {
                     <>
                       <Button onClick={() => setBox("back")}>Send back</Button>
                       <Button variant="primary" onClick={() => setBox("approve")}>
-                        Approve to job costs
+                        {approvalBy(s) === "site" ? "Approve for the site" : "Approve to job costs"}
                       </Button>
                     </>
                   ) : (
@@ -474,7 +474,7 @@ const PARTY_TABS = (count: (f: Filter) => number): { value: Filter; label: strin
  * back on the ones they may decide, and who the others are waiting for.
  */
 export function ToApprove() {
-  const { db, region, limit, access, canApprove, waitsFor, project } = usePurchases();
+  const { db, region, limit, access, canApprove, waitsFor, project, chain } = usePurchases();
   const [filter, setFilter] = useState<Filter>("all");
   const [box, setBox] = useState<{ s: SupplierInvoice; what: "approve" | "back" } | null>(null);
   const [changing, setChanging] = useState(false);
@@ -486,8 +486,8 @@ export function ToApprove() {
     <>
       <PageHead
         title="To approve"
-        note={`${plural(waiting.length, "invoice")} waiting for approval, ${money2(r2(waiting.reduce((t, s) => t + s.subtotal, 0)), region)} before VAT. ${yours === 0 ? "None of them is yours to approve." : `${yours} of them ${yours === 1 ? "is" : "are"} yours to approve.`} Accounts approve a supplier's invoice up to ${money0(limit, region)} before VAT; above that the managing director approves. A subcontractor's invoice is approved by the manager of its site or the managing director.`}
-        actions={access.may("approveInvoices") && <Button onClick={() => setChanging(true)}>Change the {money0(limit, region)} limit</Button>}
+        note={`${plural(waiting.length, "invoice")} waiting for approval, ${money2(r2(waiting.reduce((t, s) => t + s.subtotal, 0)), region)} before VAT. ${yours === 0 ? "None of them is yours to approve." : `${yours} of them ${yours === 1 ? "is" : "are"} yours to approve.`} ${chain === "accounts-limit" ? `Accounts approve a supplier's invoice up to ${money0(limit, region)} before VAT; above that the managing director approves. A subcontractor's invoice is approved by the manager of its site or the managing director.` : chainNote(chain, "")}`}
+        actions={access.may("approveInvoices") && (chain === "accounts-limit" ? <Button onClick={() => setChanging(true)}>Change the {money0(limit, region)} limit</Button> : access.can("admin") && <Link to="/admin/approvals" className="font-medium text-accent-ink underline-offset-2 hover:underline">Who approves, in Admin</Link>)}
       />
       <PageBody className="grid max-w-[92rem] grid-cols-1 gap-4">
         <div className="max-w-full min-w-0 overflow-x-auto whitespace-nowrap">
@@ -560,6 +560,13 @@ export function ToApprove() {
       {changing && <LimitDialog limit={limit} onClose={() => setChanging(false)} />}
     </>
   );
+}
+
+/** What the chain is, in one sentence, for the top of each Money out page (20 Nov). */
+function chainNote(chain: PayChain, limit: string) {
+  if (chain === "site-md") return "Each invoice is approved first by the site manager of the job, then by the managing director.";
+  if (chain === "site") return "Each invoice is approved by the site manager of the job.";
+  return `Up to ${limit} before VAT accounts approve it themselves; above that the managing director approves.`;
 }
 
 const capitalFirst = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);

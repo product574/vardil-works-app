@@ -13,6 +13,8 @@ import { useAsk } from "@/ai/state";
 import { useGate } from "./AuthPages";
 import { signOut } from "./auth";
 import { DEPARTMENTS, departmentFor, type NavItem } from "./departments";
+import { APPS, type App, placeOf, type Section, tabOf } from "./apps";
+import type { DepartmentKey } from "@/data/types";
 import { staff } from "./staff";
 import { noteApp, useAllowedLevels } from "./workspace";
 import { clearScreenState } from "./screen-state";
@@ -87,8 +89,10 @@ export function Shell() {
   // A role only reaches the departments it has been given in Admin > Roles and access.
   if (!access.can(dept.key)) return <Navigate to={access.home} replace />;
 
-  const allowed = DEPARTMENTS.filter((d) => d.inBar && access.can(d.key));
-  const showBar = allowed.length > 1;
+  // The bottom bar holds the five apps (20 Nov, the Oldstone template); Email, Team chat, the
+  // Site phone and Admin are small buttons in the top bar.
+  const apps = APPS.filter((a) => a.sections.some((sec) => sec.tabs.some((t) => access.can(t.dept))));
+  const showBar = apps.length > 1;
   // Ask AI is for the managing director only (decision 46), never for anyone they sign in as.
   const showAsk = access.askAi && askOpen;
 
@@ -97,7 +101,6 @@ export function Shell() {
       {staff.ui && <staff.ui.Bar />}
       <TopBar />
       <div className="flex min-h-0 flex-1">
-        {dept.key !== "site" && !dept.ownLayout && <Sidebar />}
         {dept.ownLayout ? (
           // Email and Team chat draw their own side panel and scroll their own parts.
           <main id="main" className="flex min-w-0 flex-1 overflow-hidden">
@@ -105,13 +108,13 @@ export function Shell() {
           </main>
         ) : (
           <main id="main" className={cx("min-w-0 flex-1 overflow-y-auto", showBar && "pb-24")}>
-            <SideNavCompact />
+            {dept.key !== "site" && <SectionNav />}
             <Outlet />
           </main>
         )}
         {showAsk && <AskPanel />}
       </div>
-      {showBar && <DepartmentBar keys={allowed.map((d) => d.key)} besideAsk={showAsk} />}
+      {showBar && <AppBar apps={apps} besideAsk={showAsk} />}
       <Toaster />
     </div>
   );
@@ -175,7 +178,8 @@ function TopBar() {
         <div className="flex-1" />
       )}
 
-      <span className="hidden text-[0.93rem] text-muted sm:inline">{dWeekday(day)}</span>
+      <UtilityButtons className={away} />
+      <span className="hidden text-[0.93rem] text-muted xl:inline">{dWeekday(day)}</span>
       <button type="button" onClick={() => setTheme(theme === "dark" ? "light" : "dark")} aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"} className={cx("press grid size-9 place-items-center rounded-md text-muted hover:bg-accent-soft hover:text-accent-ink", away)}>
         {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
       </button>
@@ -447,96 +451,154 @@ function useNavCounts() {
   return (count: ((d: typeof db, today: string, me: string | null) => number) | undefined) => (count ? count(db, day, me) : 0);
 }
 
-/** A department's sidebar groups, without the managing director's own screens for anyone else, or the staff's own for a client. */
-function useGroups(pathname: string) {
-  const { role, may, apps } = useAccess();
+/** Is a screen in the list for this person? The managing director's own screens, a client's, a firm's apps and permissions. */
+function useShows() {
+  const { role, may, apps, can } = useAccess();
   const md = role === "md";
+  return (it: NavItem & { dept?: DepartmentKey }) => (!it.dept || can(it.dept)) && (!it.app || apps.on(it.app)) && (!it.automations || apps.automations) && (md ? !it.notMd : !it.mdOnly) && !(it.staffOnly && role === "client") && (!it.perm || may(it.perm));
+}
+
+/** An app's sections this person may open, each with only the screens they may open. */
+function useSections(app: App): Section[] {
+  const shows = useShows();
+  return app.sections.map((sec) => ({ ...sec, tabs: sec.tabs.filter(shows) })).filter((sec) => sec.tabs.length > 0);
+}
+
+/** Where an app opens for this person: the first screen of its first section they may open. */
+function useAppHome() {
+  const shows = useShows();
+  return (app: App) => app.sections.flatMap((sec) => sec.tabs).find(shows)?.to ?? "/dashboard";
+}
+
+const sectionBtn = (active: boolean) => cx("press inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md border px-3 font-medium whitespace-nowrap", active ? "border-accent bg-accent-soft text-accent-ink" : "border-line-strong bg-surface text-ink hover:border-accent hover:text-accent-ink");
+
+/**
+ * Level 3 (20 Nov): an app's sections as buttons across the top of the page, and the screens of
+ * the open section as tabs under them. Outside the five apps (Admin, Settings, Vardil HQ) the
+ * department's own screens are the buttons. No left sidebar (Jimmy: "strip it back").
+ */
+function SectionNav() {
+  const location = useLocation();
+  const n = useNavCounts();
+  const shows = useShows();
+  const here = placeOf(location.pathname);
+  const dept = departmentFor(location.pathname);
   const db = useData((s) => s.db);
   const brand = usePrefs((s) => s.brand);
-  // An item that belongs to another app, or to Automations, goes when the firm does not have it (19 Nov).
-  const has = (it: NavItem) => (!it.app || apps.on(it.app)) && (!it.automations || apps.automations);
-  return departmentFor(pathname)
-    .groups.map((g) => ({ ...g, items: [...g.items, ...(g.more?.(db, brand) ?? [])].filter((it) => has(it) && (md ? !it.notMd : !it.mdOnly) && !(it.staffOnly && role === "client") && (!it.perm || may(it.perm))) }))
-    .filter((g) => g.items.length > 0);
-}
-
-function Sidebar() {
-  const location = useLocation();
-  const dept = departmentFor(location.pathname);
-  const groups = useGroups(location.pathname);
-  const n = useNavCounts();
+  const sections = useSections(here?.app ?? APPS[0]!);
+  if (!here) {
+    const items = dept.groups.flatMap((g) => [...g.items, ...(g.more?.(db, brand) ?? [])]).filter(shows);
+    if (items.length < 2) return null;
+    return (
+      <nav aria-label={`${dept.title ?? dept.label} sections`} className="flex gap-2 overflow-x-auto border-b border-line bg-side px-5 py-2.5 max-sm:px-3">
+        {items.map((it) => (
+          <NavLink key={it.to} to={it.to} end={it.end} className={({ isActive }) => sectionBtn(isActive)}>
+            {it.label}
+            <Count n={n(it.count)} tone={it.countTone ?? "accent"} />
+          </NavLink>
+        ))}
+      </nav>
+    );
+  }
+  const open = sections.find((sec) => sec.key === here.section.key);
+  const tabs = open?.tabs ?? [];
+  const onTab = open ? tabOf(open, location.pathname) : undefined;
+  if (sections.length < 2 && tabs.length < 2) return null;
+  // A section's button counts only what needs attention (warn or bad); plain counts stay on the tabs.
+  const urgent = (it: NavItem) => it.countTone === "warn" || it.countTone === "bad";
+  const sectionCount = (sec: Section) => sec.tabs.filter(urgent).reduce((t, it) => t + n(it.count), 0);
   return (
-    <nav aria-label={`${dept.label} screens`} className="hidden w-52 shrink-0 overflow-y-auto border-r border-line bg-side px-2.5 py-3 md:block">
-      <p className="px-2 pb-1 font-display text-[1.15rem] font-semibold">{dept.title ?? dept.label}</p>
-      {groups.map((g) => (
-        <div key={g.label} className="mt-3">
-          <p className="px-2 pb-1 text-[0.87rem] text-muted">{g.label}</p>
-          <ul>
-            {g.items.map((it) => (
-              <li key={it.to}>
-                <NavLink to={it.to} end={it.end} className={({ isActive }) => cx("flex min-h-9 items-center gap-2 rounded-md px-2 py-1.5 leading-tight", isActive ? "bg-surface font-medium text-accent-ink shadow-[inset_0_0_0_1px_var(--line)]" : "hover:bg-surface/70")}>
-                  <span className="min-w-0 flex-1">{it.label}</span>
-                  <Count n={n(it.count)} tone={it.countTone ?? "accent"} />
-                </NavLink>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ))}
-    </nav>
+    <div className="border-b border-line bg-side">
+      {sections.length > 1 && (
+        <nav aria-label={`${here.app.label} sections`} className="flex gap-2 overflow-x-auto px-5 pt-2.5 pb-2.5 max-sm:px-3">
+          {sections.map((sec) => {
+            const active = sec.key === here.section.key;
+            const count = sectionCount(sec);
+            return (
+              <NavLink key={sec.key} to={sec.tabs[0]!.to} aria-current={active ? "page" : undefined} className={sectionBtn(active)}>
+                {sec.label}
+                {count > 0 && <Count n={count} tone={sec.tabs.some((it) => it.countTone === "bad" && n(it.count) > 0) ? "bad" : "warn"} />}
+              </NavLink>
+            );
+          })}
+        </nav>
+      )}
+      {tabs.length > 1 && (
+        <nav aria-label={`${here.section.label} screens`} className={cx("flex gap-1 overflow-x-auto px-4 max-sm:px-2", sections.length < 2 && "pt-1.5")}>
+          {tabs.map((it) => (
+            <NavLink key={it.to} to={it.to} end={it.end} aria-current={onTab?.to === it.to ? "page" : undefined} className={cx("inline-flex h-10 shrink-0 items-center gap-1.5 border-b-2 px-2.5 font-medium whitespace-nowrap", onTab?.to === it.to ? "border-accent text-accent-ink" : "border-transparent text-muted hover:text-ink")}>
+              {it.label}
+              <Count n={n(it.count)} tone={it.countTone ?? "accent"} />
+            </NavLink>
+          ))}
+        </nav>
+      )}
+    </div>
   );
 }
 
-/** On narrow screens the sidebar becomes a row of links above the page. */
-function SideNavCompact() {
-  const location = useLocation();
-  const dept = departmentFor(location.pathname);
-  const items = useGroups(location.pathname).flatMap((g) => g.items);
-  if (items.length < 2) return null;
-  return (
-    <nav aria-label={`${dept.label} screens`} className="flex gap-1 overflow-x-auto border-b border-line bg-side px-3 py-2 md:hidden">
-      {items.map((it) => (
-        <NavLink key={it.to} to={it.to} end={it.end} className={({ isActive }) => cx("h-9 shrink-0 rounded-md px-3 leading-9 whitespace-nowrap", isActive ? "bg-surface font-medium text-accent-ink" : "text-muted")}>
-          {it.label}
-        </NavLink>
-      ))}
-    </nav>
-  );
-}
+// ── The bottom bar: the five apps ─────────────────────────────────────────────
 
-// ── Department bar ────────────────────────────────────────────────────────────
-
-function DepartmentBar({ keys, besideAsk }: { keys: string[]; besideAsk: boolean }) {
+function AppBar({ apps, besideAsk }: { apps: App[]; besideAsk: boolean }) {
   const location = useLocation();
-  const current = departmentFor(location.pathname);
-  const n = useNavCounts();
+  const current = placeOf(location.pathname)?.app.key;
+  const homeOf = useAppHome();
   return (
-    <nav aria-label="Departments" className={cx("pointer-events-none fixed inset-x-0 bottom-3 z-30 flex justify-center px-2", besideAsk && "md:right-[27rem]")}>
+    <nav aria-label="Apps" className={cx("pointer-events-none fixed inset-x-0 bottom-3 z-30 flex justify-center px-2", besideAsk && "md:right-[27rem]")}>
       <ul className="pointer-events-auto flex max-w-full gap-1 overflow-x-auto rounded-[14px] border border-line bg-surface p-1.5 shadow-dock">
-        {DEPARTMENTS.filter((d) => keys.includes(d.key)).map((d) => {
-          const active = d.key === current.key;
-          const Icon = d.icon;
+        {apps.map((a) => {
+          const active = a.key === current;
+          const Icon = a.icon;
           return (
-            <li key={d.key}>
+            <li key={a.key}>
               <NavLink
-                to={d.home}
+                to={homeOf(a)}
                 aria-current={active ? "page" : undefined}
-                className={cx("press flex h-14 w-[4.9rem] flex-col items-center justify-center gap-0.5 rounded-lg text-[0.87rem] leading-tight", active ? "bg-accent-strong font-medium text-white" : "text-muted hover:bg-accent-soft hover:text-accent-ink")}
+                className={cx("press flex h-14 w-[5.6rem] flex-col items-center justify-center gap-0.5 rounded-lg text-[0.93rem] leading-tight", active ? "bg-accent-strong font-medium text-white" : "text-muted hover:bg-accent-soft hover:text-accent-ink")}
               >
-                <span className="relative">
-                  <Icon size={22} weight={active ? "fill" : "regular"} />
-                  {n(d.badge) > 0 && (
-                    <span aria-label={`${n(d.badge)} unread`} className={cx("absolute -top-1.5 -right-3 min-w-5 rounded-full px-1 text-center text-[0.8125rem] leading-5 font-medium", active ? "bg-white text-accent-ink" : "bg-accent-strong text-white")}>
-                      {n(d.badge)}
-                    </span>
-                  )}
-                </span>
-                <span className="whitespace-nowrap">{d.label}</span>
+                <Icon size={22} weight={active ? "fill" : "regular"} />
+                <span className="whitespace-nowrap">{a.label}</span>
               </NavLink>
             </li>
           );
         })}
       </ul>
+    </nav>
+  );
+}
+
+/** Email, Team chat, the Site phone and Admin (and Vardil HQ for our staff): small buttons in the top bar. */
+const UTILITIES: DepartmentKey[] = ["inbox", "chat", "site", "admin", "vardil"];
+
+function UtilityButtons({ className }: { className?: string }) {
+  const access = useAccess();
+  const location = useLocation();
+  const current = departmentFor(location.pathname).key;
+  const n = useNavCounts();
+  const list = UTILITIES.map((k) => DEPARTMENTS.find((d) => d.key === k)).filter((d): d is (typeof DEPARTMENTS)[number] => !!d && access.can(d.key));
+  // Someone with only one of these (an operative's phone, say) has nothing to switch to.
+  if (list.length === 0 || access.departments.length < 2) return null;
+  return (
+    <nav aria-label="Email, chat, phone and admin" className={cx("flex shrink-0 items-center gap-0.5", className)}>
+      {list.map((d) => {
+        const Icon = d.icon;
+        const active = d.key === current;
+        const badge = n(d.badge);
+        return (
+          <NavLink
+            key={d.key}
+            to={d.home}
+            title={d.label}
+            aria-label={badge > 0 ? `${d.label}, ${badge} unread` : d.label}
+            aria-current={active ? "page" : undefined}
+            className={cx("press relative inline-flex h-9 items-center gap-1.5 rounded-md px-2 text-[0.93rem] font-medium", active ? "bg-accent-soft text-accent-ink" : "text-muted hover:bg-accent-soft hover:text-accent-ink")}
+          >
+            <Icon size={20} weight={active ? "fill" : "regular"} />
+            <span className="hidden 2xl:inline">{d.label}</span>
+            {badge > 0 && <span aria-hidden className="absolute -top-0.5 right-0 min-w-4.5 rounded-full bg-accent-strong px-1 text-center text-[0.8125rem] leading-4.5 text-white">{badge}</span>}
+          </NavLink>
+        );
+      })}
     </nav>
   );
 }
@@ -573,7 +635,7 @@ export function NotFound() {
     <div className="px-5 py-10">
       <h1 className="text-[1.45rem]">There is no screen here</h1>
       <p className="mt-1 max-w-[60ch] text-muted">
-        Nothing in the demo lives at this address. It may be an old or mistyped link. The screens of {dept.label} are in the list on the left, and every department is in the bar along the bottom.
+        Nothing in the demo lives at this address. It may be an old or mistyped link. The sections of {dept.label} are the buttons across the top, and the apps are in the bar along the bottom.
       </p>
     </div>
   );

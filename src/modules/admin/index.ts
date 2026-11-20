@@ -8,3 +8,4 @@ export { SiteAccess } from "./SiteAccess";
 export { BankHolidays } from "./BankHolidays";
 export { Repairs } from "./Repairs";
 export { VardilWorks } from "./VardilWorks";
+export { InvoiceApprovals } from "./InvoiceApprovals";

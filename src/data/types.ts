@@ -145,6 +145,27 @@ export type Quote = {
   query?: string;
   /** The kind of work it prices, from its rate book: "Lime repointing", "Roof re-slating". For the tender reports. */
   kind?: string;
+  /** The tender's own sections (20 Nov, the Oldstone template): return date, documents, subcontractors, photos, workings, checks. */
+  tender?: Tender;
+};
+
+// ── Tenders (20 Nov) ──────────────────────────────────────────────────────────
+
+/** What a file kept with a tender is: the client's documents, a site photo, or our own workings. */
+export type TenderFileKind = "Specification" | "Bill of quantities" | "Drawings" | "Other document" | "Site photo" | "Buildsoft" | "Workings";
+export type TenderFile = { id: ID; kind: TenderFileKind; name: string; sizeKb: number; addedAt: Stamp; addedBy: string; caption?: string; tone?: number; dataUrl?: string };
+/** A subcontractor asked to price one trade on a tender, and what they came back with. The one picked is in the tender's price. */
+export type SubPrice = { id: ID; trade: string; subcontractorId?: ID; name: string; askedAt: Day; price?: number; receivedAt?: Day; note?: string; picked?: boolean };
+/** The checks before a tender goes: documents read, subcontractors priced, workings checked, price approved. */
+export type TenderCheck = "docs" | "subs" | "workings" | "price";
+export type Tender = {
+  /** The day the tender must be back with the client. */
+  returnBy: Day;
+  files: TenderFile[];
+  subPrices: SubPrice[];
+  checks: Partial<Record<TenderCheck, { by: string; at: Stamp }>>;
+  /** The total from the Buildsoft estimate, typed in to check against the priced items. */
+  buildsoftTotal?: number;
 };
 
 // ── Projects ──────────────────────────────────────────────────────────────────
@@ -798,10 +819,27 @@ export type SupplierInvoice = {
   exportedAt?: Stamp;
   /** The copy a subcontractor attached in the portal, or the office attached when logging it. */
   copy?: { name: string; dataUrl: string };
+  /**
+   * The site manager's step (20 Nov, Jimmy's chain): set when it was asked for, so the site
+   * manager of the job approves it before the managing director does. Stamped once he has.
+   */
+  siteStep?: boolean;
+  siteApprovedBy?: string;
+  siteApprovedAt?: Stamp;
 };
 
+/**
+ * Who approves an invoice the firm pays (20 Nov, set in Admin, Invoice approvals, from each
+ * firm's answers to the onboarding form):
+ * "site-md": the site manager of the job, then the managing director, then the office pays (Jimmy's own);
+ * "site": the site manager of the job alone, then the office pays;
+ * "accounts-limit": accounts up to the limit before VAT, the managing director above, and a
+ * subcontractor's invoice by whoever runs the site (the rule from 18 Nov).
+ */
+export type PayChain = "site-md" | "site" | "accounts-limit";
+
 /** A money limit somebody may approve up to. "supplier": what accounts may approve on a supplier invoice, before VAT; above it the managing director approves. */
-export type ApprovalLimit = { id: "supplier"; amount: number };
+export type ApprovalLimit = { id: "supplier"; amount: number; chain?: PayChain };
 
 
 /** A week of timesheet hours sent to Sage Payroll: hours only, pay is worked out in Sage. */

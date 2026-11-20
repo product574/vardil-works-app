@@ -29,24 +29,25 @@ export function seedSubcontractors(): Subcontractor[] {
   ];
 }
 
-type Pending = { id: string; from: string; no: string; code: string; sent: number; time: string; lines: [description: string, amount: number, category: CostCategoryKey][]; sub?: boolean; asked?: [daysAgo: number, time: string]; back?: [daysAgo: number, time: string, reason: string] };
+type Pending = { id: string; from: string; no: string; code: string; sent: number; time: string; lines: [description: string, amount: number, category: CostCategoryKey][]; sub?: boolean; asked?: [daysAgo: number, time: string]; back?: [daysAgo: number, time: string, reason: string]; siteOk?: [daysAgo: number, time: string] };
 
 /**
  * Invoices that have been checked, or sent in through the portal, and are waiting for someone
- * who may approve them. Two are from suppliers and over the limit, so they wait for the
- * managing director; five are from subcontractors, one of which a site manager has sent back.
+ * who may approve them. Two are from suppliers, five from subcontractors, one of which a site
+ * manager has sent back. With Jimmy's chain (20 Nov) each waits on its site manager first; the
+ * Slieve Bloom and Portumna ones he has approved, so they wait on the managing director.
  */
 export function seedPendingPurchases(today: string, people: Db["people"], projects: Db["projects"], subcontractors: Subcontractor[], vat: { goods: number; work: number }): SupplierInvoice[] {
   const day = (n: number) => workdays(today, n);
   const accounts = people.find((p) => p.level === "accounts")?.name ?? "Accounts";
   const manager = (code: string) => people.find((p) => p.id === projects.find((x) => x.code === code)?.siteManagerId)?.name ?? "The site manager";
   const list: Pending[] = [
-    { id: "si-p1", from: "Slieve Bloom Sawmills", no: "SBS-7755", code: "C725", sent: -3, time: "08:15", lines: [["Reclaimed pitch pine joists, 28 m", 1344, "material"], ["Oak bearers, 200 x 200, 6 m", 990, "material"]], asked: [-2, "11:20"] },
+    { id: "si-p1", from: "Slieve Bloom Sawmills", no: "SBS-7755", code: "C725", sent: -3, time: "08:15", lines: [["Reclaimed pitch pine joists, 28 m", 1344, "material"], ["Oak bearers, 200 x 200, 6 m", 990, "material"]], asked: [-2, "11:20"], siteOk: [-1, "16:10"] },
     { id: "si-p2", from: "Atlantic Lead and Copper", no: "ALC-6631", code: "C721", sent: -2, time: "08:15", lines: [["Code 5 lead sheet, 4 rolls", 1640, "material"], ["Copper nails and clips, 1 lot", 145, "material"]], asked: [-1, "14:05"] },
     { id: "si-p3", from: "Corrib Scaffolding", no: "CS-INV-9921", code: "C719", sent: -1, time: "16:40", sub: true, lines: [["Scaffold adaptation at the tower, labour and fittings", 1180, "labour"], ["Weekly scaffold inspections and tags, 2 weeks", 100, "labour"]] },
     { id: "si-p4", from: "Lahinch Roofing and Leadwork", no: "LRL-0412", code: "C721", sent: -2, time: "17:05", sub: true, lines: [["Strip and re-slate the north pitch, two weeks", 5200, "labour"], ["Leadwork to the valley and chimney flashings", 1040, "labour"]] },
     { id: "si-p5", from: "Curragh Electrical Services", no: "CES-2231", code: "C722", sent: -1, time: "12:25", sub: true, lines: [["Temporary site electrics, distribution board and leads", 540, "labour"], ["Lightning conductor test and certificate", 350, "labour"]] },
-    { id: "si-p6", from: "Portumna Decorative Plasterwork", no: "PDP-118", code: "C720", sent: -3, time: "15:30", sub: true, lines: [["Cornice run in place, drawing room, first stage", 3400, "labour"]] },
+    { id: "si-p6", from: "Portumna Decorative Plasterwork", no: "PDP-118", code: "C720", sent: -3, time: "15:30", sub: true, lines: [["Cornice run in place, drawing room, first stage", 3400, "labour"]], siteOk: [-1, "17:35"] },
     { id: "si-p7", from: "Kinvara Stone Carvers", no: "KSC-325", code: "C722", sent: -4, time: "10:50", sub: true, lines: [["Indent stones carved to template, 9 no.", 2790, "labour"]], back: [-2, "10:15", "Nine stones are invoiced but seven have reached site. Please invoice the seven now, and the other two when they are delivered."] },
   ];
   return list.map((d): SupplierInvoice => {
@@ -72,6 +73,10 @@ export function seedPendingPurchases(today: string, people: Db["people"], projec
       allocations: d.lines.map(([description, amount, category], n) => ({ id: `al-${d.id}-${n + 1}`, projectId: pid(d.code), category, amount, description })),
       ...(sub ? { party: "subcontractor" as const, subcontractorId: sub.id, via: "portal" as const } : {}),
       ...(d.back ? { sentBack: { by: manager(d.code), at: at(day(d.back[0]), d.back[1]), reason: d.back[2] } } : d.sub ? { askedBy: sub?.contactName ?? d.from, askedAt: received } : d.asked ? { askedBy: accounts, askedAt: at(day(d.asked[0]), d.asked[1]) } : {}),
+      // Jimmy's chain (20 Nov): everything asked for waits on the site manager first; two he has
+      // already said yes to, so they wait on the managing director.
+      ...(!d.back && (d.sub || d.asked) ? { siteStep: true } : {}),
+      ...(d.siteOk ? { siteApprovedBy: manager(d.code), siteApprovedAt: at(day(d.siteOk[0]), d.siteOk[1]) } : {}),
     };
   });
 }

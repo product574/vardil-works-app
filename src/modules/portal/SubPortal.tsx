@@ -10,7 +10,7 @@ import type { Project, Subcontractor, SupplierInvoice } from "@/data/types";
 import { dFull, dShort, plural } from "@/lib/format";
 import { VAT_RATES } from "@/lib/invoices";
 import { money2, r2 } from "@/lib/money";
-import { approverWords, portalStanding, purchaseStage, recently } from "@/lib/purchases";
+import { approverWords, chainOf, portalStanding, purchaseStage, recently, startsOnSite } from "@/lib/purchases";
 import { CopyLink } from "@/modules/invoicing/purchase-shared";
 import { Badge, Button, cx, Dialog, Empty, Field, NumInput, PageBody, PageHead, Panel, Tel } from "@/ui";
 import { PickFile, useProofPick } from "@/ui/files";
@@ -363,7 +363,7 @@ function SendInvoice({ sub, sites, projectId, onClose }: { sub: Subcontractor; s
           if (problem || !p) return;
           const id = subcontractorSendsInvoice(sub.id, { projectId: p.id, invoiceNo: no, invoiceDate: date, description: text, net, vatPct, copy: copy.proof ?? undefined });
           if (!id) return;
-          const who = approverWords({ party: "subcontractor", subtotal: net, allocations: [{ id: "", projectId: p.id, category: "labour", amount: net, description: text }] }, limit, db.projects, (personId) => db.people.find((x) => x.id === personId)?.name);
+          const who = approverWords({ party: "subcontractor", subtotal: net, allocations: [{ id: "", projectId: p.id, category: "labour", amount: net, description: text }], siteStep: startsOnSite(chainOf(db.approvalLimits)) }, limit, db.projects, (personId) => db.people.find((x) => x.id === personId)?.name, chainOf(db.approvalLimits));
           toast(`${no.trim()} sent for ${p.code}. It is with ${who} to approve`);
           onClose();
         }}

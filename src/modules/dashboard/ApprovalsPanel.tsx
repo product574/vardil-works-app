@@ -42,7 +42,7 @@ const SENDS = new Set<ApprovalKind>(["reply", "chaser", "client_update", "cert_r
  * again when clicked, and none is open until someone opens one. Anything to or from a client
  * comes first. A link with ?open=<id> (from Ask AI or the AI overview) opens that row.
  */
-export function ApprovalsPanel({ className }: { className?: string }) {
+export function ApprovalsPanel({ className, title = "Approvals" }: { className?: string; title?: string }) {
   const db = useData((s) => s.db);
   const day = useDay();
   const [params, setParams] = useSearchParams();
@@ -146,7 +146,7 @@ export function ApprovalsPanel({ className }: { className?: string }) {
 
   return (
     <Section
-      title="Approvals"
+      title={title}
       className={className}
       aside={
         <Segmented

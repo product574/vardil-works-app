@@ -2,7 +2,7 @@
 // stands, who may approve it, what is waiting to be paid, the rows the accounts package gets,
 // and the words that tell a client or a subcontractor that an invoice has been paid.
 import type { Region } from "@/config/brand";
-import type { CostCategoryKey, Project, Subcontractor, SupplierInvoice } from "@/data/types";
+import type { ApprovalLimit, CostCategoryKey, PayChain, Project, Subcontractor, SupplierInvoice } from "@/data/types";
 import { addDays } from "./dates";
 import { dFull } from "./format";
 import { firstName } from "./invoices";
@@ -61,33 +61,73 @@ type Site = Pick<Project, "id" | "siteManagerId" | "contractsManagerId">;
 /** Someone runs a site when they are its site manager or its contracts manager. */
 export const runsSite = (p: Pick<Site, "siteManagerId" | "contractsManagerId">, personId: string | null) => !!personId && (p.siteManagerId === personId || p.contractsManagerId === personId);
 
+// ── The chain (20 Nov) ────────────────────────────────────────────────────────
+
+/** The chain this firm uses. Jimmy's (site manager, then managing director) unless set otherwise. */
+export const chainOf = (limits: Pick<ApprovalLimit, "id" | "chain">[]): PayChain => limits.find((x) => x.id === "supplier")?.chain ?? "site-md";
+
+export const CHAIN_WORDS: Record<PayChain, { title: string; steps: string[] }> = {
+  "site-md": { title: "Site manager, then managing director", steps: ["Accounts check what was read from the invoice and send it on", "The site manager of the job approves it: only the site knows the work was done or the goods arrived", "The managing director approves it", "The office pays it and marks it paid"] },
+  site: { title: "Site manager only", steps: ["Accounts check what was read from the invoice and send it on", "The site manager of the job approves it", "The office pays it and marks it paid"] },
+  "accounts-limit": { title: "Accounts up to a limit, managing director above", steps: ["Accounts check a supplier's invoice and approve it themselves up to the limit before VAT; above it the managing director approves", "A subcontractor's invoice is approved by whoever runs the site, or the managing director", "The office pays it and marks it paid"] },
+};
+
+/** Does this chain start with the site manager of the job? Then sending an invoice on asks him first. */
+export const startsOnSite = (chain: PayChain) => chain !== "accounts-limit";
+
+/** Which approval it is waiting for: the site manager's (his step not done yet) or the last one. */
+export const approveStep = (s: Pick<SupplierInvoice, "siteStep" | "siteApprovedAt">): "site" | "final" => (s.siteStep && !s.siteApprovedAt ? "site" : "final");
+
+/** The managers of the sites an invoice is charged to. */
+const managersOf = (s: Pick<SupplierInvoice, "allocations">, projects: Site[]) => sitesOf(s).map((id) => projects.find((p) => p.id === id));
+
 /**
- * May this person approve this invoice into job costs?
+ * May this person approve this invoice now? And would their yes finish it (approved into job
+ * costs) or only do the site manager's step?
  *
- * A supplier's invoice: accounts, up to the limit before VAT; above it, only someone who may
- * approve any invoice. A subcontractor's invoice: whoever runs the site it is for, since only
- * the site knows the work was done, or someone who may approve any invoice. Accounts never.
+ * "accounts-limit" (18 Nov): a supplier's invoice by accounts up to the limit before VAT, above
+ * it only someone who may approve any invoice; a subcontractor's by whoever runs the site, or
+ * someone who may approve any invoice. Accounts never approve a subcontractor's.
+ * "site-md" (Jimmy's, 20 Nov): first the site manager of the job, then the managing director.
+ * The managing director may approve at either step, which finishes it.
+ * "site": the site manager of the job alone (or the managing director).
  */
-export function mayApprove(s: Pick<SupplierInvoice, "party" | "subtotal" | "allocations">, who: Approver, limit: number, projects: Site[]) {
-  if (who.approvesAll) return true;
-  if (partyOf(s) === "subcontractor") {
-    const sites = sitesOf(s).map((id) => projects.find((p) => p.id === id));
-    return who.approvesOwnSites && sites.length > 0 && sites.every((p) => !!p && runsSite(p, who.personId));
-  }
-  return who.handles && s.subtotal <= limit;
+export function mayApprove(s: Pick<SupplierInvoice, "party" | "subtotal" | "allocations" | "siteStep" | "siteApprovedAt">, who: Approver, limit: number, projects: Site[], chain: PayChain = "accounts-limit") {
+  return approvalBy(s, who, limit, projects, chain) !== null;
 }
 
-/** Who an invoice is waiting for, in words: "the managing director", "Eoin Brosnan or the managing director". */
-export function approverWords(s: Pick<SupplierInvoice, "party" | "subtotal" | "allocations">, limit: number, projects: Site[], nameOf: (personId: string) => string | undefined) {
-  if (partyOf(s) === "subcontractor") {
-    const managers = [...new Set(sitesOf(s).map((id) => projects.find((p) => p.id === id)?.siteManagerId).filter((x): x is string => !!x))].map(nameOf).filter((n): n is string => !!n);
-    return managers.length ? `${managers.join(" and ")} or the managing director` : "the managing director";
+export function approvalBy(s: Pick<SupplierInvoice, "party" | "subtotal" | "allocations" | "siteStep" | "siteApprovedAt">, who: Approver, limit: number, projects: Site[], chain: PayChain = "accounts-limit"): "finish" | "site" | null {
+  if (who.approvesAll) return "finish";
+  const runsAll = () => {
+    const sites = managersOf(s, projects);
+    return sites.length > 0 && sites.every((p) => !!p && runsSite(p, who.personId));
+  };
+  if (chain === "accounts-limit") {
+    if (partyOf(s) === "subcontractor") return who.approvesOwnSites && runsAll() ? "finish" : null;
+    return who.handles && s.subtotal <= limit ? "finish" : null;
   }
+  // The site manager's own step: anyone who runs every site it is charged to (no money limit on it).
+  if (approveStep(s) === "site" && who.approvesOwnSites && runsAll()) return chain === "site" ? "finish" : "site";
+  return null;
+}
+
+/** Who an invoice is waiting for, in words: "the managing director", "Eoin Brosnan, then the managing director". */
+export function approverWords(s: Pick<SupplierInvoice, "party" | "subtotal" | "allocations" | "siteStep" | "siteApprovedAt">, limit: number, projects: Site[], nameOf: (personId: string) => string | undefined, chain: PayChain = "accounts-limit") {
+  const managers = [...new Set(managersOf(s, projects).map((p) => p?.siteManagerId).filter((x): x is string => !!x))].map(nameOf).filter((n): n is string => !!n);
+  const site = managers.length ? managers.join(" and ") : "the site manager";
+  if (chain === "site-md") return approveStep(s) === "site" ? `${site}, then the managing director` : "the managing director";
+  if (chain === "site") return approveStep(s) === "site" ? site : "the managing director";
+  if (partyOf(s) === "subcontractor") return managers.length ? `${site} or the managing director` : "the managing director";
   return s.subtotal <= limit ? "accounts" : "the managing director";
 }
 
+/** The badge's words for an invoice waiting for approval, by step. */
+export const approveLabel = (s: Pick<SupplierInvoice, "siteStep" | "siteApprovedAt">) => (approveStep(s) === "site" ? "Site manager to approve" : s.siteApprovedAt ? "Managing director to approve" : "Waiting for approval");
+
 /** Why a supplier's invoice goes where it goes, for the line beside the button. */
-export function limitWords(s: Pick<SupplierInvoice, "subtotal">, limit: number, region: Region) {
+export function limitWords(s: Pick<SupplierInvoice, "subtotal">, limit: number, region: Region, chain: PayChain = "accounts-limit") {
+  if (chain === "site-md") return "The site manager of the job approves it first, then the managing director. After that it is on To be paid.";
+  if (chain === "site") return "The site manager of the job approves it. After that it is on To be paid.";
   return s.subtotal <= limit ? `${money2(s.subtotal, region)} before VAT is within the ${money0(limit, region)} that accounts may approve.` : `${money2(s.subtotal, region)} before VAT is over the ${money0(limit, region)} that accounts may approve, so the managing director approves it.`;
 }
 

@@ -28,6 +28,7 @@ import { fillManagementDates, seedDayInstructions, seedExpenses, seedOvertimeCla
 import { seedPeople } from "./people";
 import { isPastCode, quoteTargets, seedProjects } from "./projects";
 import { seedSubscription } from "./subscription";
+import { seedTenders } from "./tenders";
 import { seedPortalNotes, seedSpendRequests, seedSupplies } from "./supply";
 import { builtInBankHolidays } from "@/lib/bank-holidays";
 import { demoDay, rng, workdays } from "./util";
@@ -140,7 +141,7 @@ function buildIrishSeed(realToday: string, opts: { emailDomain?: string; vatPct?
     files,
     ...money,
     subcontractors,
-    approvalLimits: [{ id: "supplier", amount: APPROVAL_LIMIT }],
+    approvalLimits: [{ id: "supplier", amount: APPROVAL_LIMIT, chain: "site-md" }],
     companyPapers: seedCompanyPapers(day),
     courses,
     scaffolds: seedScaffolds(day, proj.projects, people, (ref) => assets.hiredPlant.find((h) => h.hireRef === ref)?.onHireFrom),
@@ -167,6 +168,7 @@ function buildIrishSeed(realToday: string, opts: { emailDomain?: string; vatPct?
   fillManagementDates(db, day, opts.region ?? "IE");
   fillInvoicing(db, day, domain, opts.legalName ?? DEFAULT_BRAND.legalName, "IE");
   fillPurchases(db, day, domain, opts.legalName ?? DEFAULT_BRAND.legalName, "IE", vatPct);
+  seedTenders(db, day);
   db.overtimeClaims = seedOvertimeClaims(db, day);
   db.payrollExports = seedPayrollExports(db, day);
   db.payrollChecks = seedPayrollChecks(db.payrollExports);

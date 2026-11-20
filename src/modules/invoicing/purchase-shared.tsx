@@ -4,12 +4,12 @@
 import { DownloadSimple } from "@phosphor-icons/react";
 import { useId, useState } from "react";
 import { useAccess } from "@/data/access";
-import { actAs, approvePurchase, markPurchasePaid, sendBackPurchase, unmarkPurchasePaid } from "@/data/actions";
+import { actAs, approvePurchase, markPurchasePaid, sendBackPurchase, siteApprovePurchase, unmarkPurchasePaid } from "@/data/actions";
 import { useData, useDay, usePrefs } from "@/data/store";
 import type { Allocation, SupplierInvoice } from "@/data/types";
 import { dFull } from "@/lib/format";
 import { money2 } from "@/lib/money";
-import { type Approver, approverWords, mayApprove, partyOf, payBy, PURCHASE_LABEL, PURCHASE_TONE, purchaseStage } from "@/lib/purchases";
+import { approvalBy, approveLabel, type Approver, approverWords, chainOf, mayApprove, partyOf, payBy, PURCHASE_LABEL, PURCHASE_TONE, purchaseStage } from "@/lib/purchases";
 import { subInsuranceFlags } from "@/lib/compliance";
 import { Badge, Button, cx, Dialog, Field } from "@/ui";
 import { toast } from "@/ui/toast";
@@ -22,16 +22,21 @@ export function usePurchases() {
   const limit = db.approvalLimits.find((x) => x.id === "supplier")?.amount ?? 500;
   const approver: Approver = { personId: access.personId, handles: access.may("manageInvoices"), approvesAll: access.may("approveInvoices"), approvesOwnSites: access.may("approveSubInvoices") };
   const nameOf = (id: string) => db.people.find((p) => p.id === id)?.name;
+  const chain = chainOf(db.approvalLimits);
   return {
     db,
     day,
     region,
     access,
     limit,
+    chain,
+    approver,
+    /** Would this person's yes finish it, or only do the site manager's step (Jimmy's chain)? */
+    approvalBy: (s: SupplierInvoice, who: Approver = approver) => approvalBy(s, who, limit, db.projects, chain),
     /** Check invoices, send them for approval, mark them paid: accounts. */
     canEdit: access.may("manageInvoices"),
-    canApprove: (s: SupplierInvoice) => mayApprove(s, approver, limit, db.projects),
-    waitsFor: (s: SupplierInvoice) => approverWords(s, limit, db.projects, nameOf),
+    canApprove: (s: SupplierInvoice) => mayApprove(s, approver, limit, db.projects, chain),
+    waitsFor: (s: SupplierInvoice) => approverWords(s, limit, db.projects, nameOf, chain),
     project: (id: string | undefined) => db.projects.find((p) => p.id === id),
     sub: (id: string | undefined) => db.subcontractors.find((x) => x.id === id),
   };
@@ -41,7 +46,7 @@ export function PurchaseBadge({ s, className }: { s: SupplierInvoice; className?
   const stage = purchaseStage(s);
   return (
     <Badge tone={PURCHASE_TONE[stage]} className={className}>
-      {PURCHASE_LABEL[stage]}
+      {stage === "approve" ? approveLabel(s) : PURCHASE_LABEL[stage]}
     </Badge>
   );
 }
@@ -83,7 +88,10 @@ function Summary({ s }: { s: SupplierInvoice }) {
  */
 /** `actor`: who approves it, when it is done on a site manager's phone shown to the office (merged 19 Nov). */
 export function ApproveDialog({ s, allocations, actor, onClose }: { s: SupplierInvoice; allocations?: Omit<Allocation, "id">[]; actor?: string; onClose: (done: boolean) => void }) {
-  const { project, sub } = usePurchases();
+  const { project, sub, approvalBy: by } = usePurchases();
+  // On a site manager's phone shown to the office, the yes is his (he runs the site), whoever is looking.
+  const step = actor ? by(s, { personId: actor, handles: false, approvesAll: false, approvesOwnSites: true }) : by(s);
+  const siteOnly = step === "site" && purchaseStage(s) === "approve";
   const day = useDay();
   // A subcontractor's lapsed insurance is flagged here, not held (Compliance, 18 Nov): the approver decides.
   const flags = s.subcontractorId && sub(s.subcontractorId) ? subInsuranceFlags(sub(s.subcontractorId)!, day) : [];
@@ -101,9 +109,10 @@ export function ApproveDialog({ s, allocations, actor, onClose }: { s: SupplierI
           <Button
             variant="primary"
             onClick={() => {
-              if (actor) actAs(actor, () => approvePurchase(s.id, allocations));
-              else approvePurchase(s.id, allocations);
-              toast(credit ? `${s.supplier} ${s.invoiceNo} approved and taken off job costs` : `${s.supplier} ${s.invoiceNo} approved. It is with accounts to be paid`);
+              const go = () => (siteOnly ? siteApprovePurchase(s.id) : approvePurchase(s.id, allocations));
+              if (actor) actAs(actor, go);
+              else go();
+              toast(siteOnly ? `${s.supplier} ${s.invoiceNo} approved for the site. It goes to the managing director next` : credit ? `${s.supplier} ${s.invoiceNo} approved and taken off job costs` : `${s.supplier} ${s.invoiceNo} approved. It is with accounts to be paid`);
               onClose(true);
             }}
           >
@@ -116,7 +125,7 @@ export function ApproveDialog({ s, allocations, actor, onClose }: { s: SupplierI
         <Summary s={s} />
         {flags.length > 0 && <p className="rounded-md bg-bad-soft px-2.5 py-2 text-[0.93rem] text-bad">{flags.join(". ")}. You can still approve; ask them to send the new schedule through their portal.</p>}
         <p className="text-muted">
-          {credit ? `It comes off the job costs of ${codes.join(" and ")}. Nothing is paid on a credit note.` : `It goes into the job costs of ${codes.join(" and ")}, and on to accounts, who pay it by ${dFull(payBy(s))} and mark it paid.`}
+          {siteOnly ? "You approve it for the site: the work was done or the goods arrived. It then goes to the managing director, who approves it into job costs." : credit ? `It comes off the job costs of ${codes.join(" and ")}. Nothing is paid on a credit note.` : `It goes into the job costs of ${codes.join(" and ")}, and on to accounts, who pay it by ${dFull(payBy(s))} and mark it paid.`}
         </p>
       </div>
     </Dialog>

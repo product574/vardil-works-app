@@ -2,7 +2,7 @@ import { ArrowLeft } from "@phosphor-icons/react";
 import { useState } from "react";
 import { useAccess } from "@/data/access";
 import { blocksText, bookingFor, scaffoldDue, scaffoldUnsafe, standing, subInsuranceFlags, ticketBlocks } from "@/lib/compliance";
-import { approverWords, partyOf, purchaseStage, runsSite, sitesOf } from "@/lib/purchases";
+import { approvalBy, approveStep, approverWords, chainOf, partyOf, purchaseStage, sitesOf, startsOnSite } from "@/lib/purchases";
 import { money2 } from "@/lib/money";
 import { ApproveDialog, SendBackDialog } from "@/modules/invoicing/purchase-shared";
 import { actAs, addToRoster, correctAttendance, inspectScaffold, markAttendance, requestPerson, sendTimeStamps, setDayInstruction, stampRestDay } from "@/data/actions";
@@ -721,7 +721,14 @@ export function cannotWork(db: Db, siteId: string, day: string) {
 
 export const scaffoldsDue = (db: Db, siteId: string, day: string) => db.scaffolds.filter((s) => s.projectId === siteId && standing(s) && (scaffoldDue(s) < day || scaffoldUnsafe(s))).length;
 
-export const subsWaiting = (db: Db, siteId: string) => db.supplierInvoices.filter((s) => partyOf(s) === "subcontractor" && sitesOf(s).includes(siteId) && purchaseStage(s) === "approve");
+/**
+ * Invoices waiting on the site manager of this site. With Jimmy's chain (20 Nov) that is any
+ * invoice still at his step, a supplier's too; with the old rule, subcontractors' invoices.
+ */
+export function subsWaiting(db: Db, siteId: string) {
+  const onSite = startsOnSite(chainOf(db.approvalLimits));
+  return db.supplierInvoices.filter((s) => sitesOf(s).includes(siteId) && purchaseStage(s) === "approve" && (onSite ? approveStep(s) === "site" : partyOf(s) === "subcontractor"));
+}
 
 export function CannotWorkSheet({ site, day, onClose }: { site: Project; day: string; onClose: () => void }) {
   const db = useData((s) => s.db);
@@ -831,15 +838,18 @@ export function SubInvoiceSheet({ site, me, day, onClose }: { site: Project; me:
   const [box, setBox] = useState<{ what: "approve" | "back"; s: SupplierInvoice } | null>(null);
   const list = subsWaiting(db, site.id);
   const limit = db.approvalLimits.find((x) => x.id === "supplier")?.amount ?? 500;
-  const mine = runsSite(site, me.id);
+  const chain = chainOf(db.approvalLimits);
+  // His own yes, as the person running the site, whoever is looking at the phone.
+  const isMine = (s: SupplierInvoice) => approvalBy(s, { personId: me.id, handles: false, approvesAll: false, approvesOwnSites: true }, limit, db.projects, chain) !== null;
   return (
     <>
-      <Dialog open onClose={onClose} title="Subcontractor invoices">
+      <Dialog open onClose={onClose} title={startsOnSite(chain) ? "Invoices to approve" : "Subcontractor invoices"}>
         <div className="grid gap-3">
-          <p className="text-[0.93rem] text-muted">Invoices subcontractors sent in for {site.code}. Only the site knows the work was done, so they wait for the person running it or the managing director. Once approved, accounts pay them.</p>
+          <p className="text-[0.93rem] text-muted">{startsOnSite(chain) ? `Invoices for ${site.code} waiting for your yes. Only the site knows the work was done or the goods arrived. ${chain === "site-md" ? "After you, the managing director approves them, then the office pays." : "Once you approve, the office pays them."}` : `Invoices subcontractors sent in for ${site.code}. Only the site knows the work was done, so they wait for the person running it or the managing director. Once approved, accounts pay them.`}</p>
           {list.length === 0 && <p>Nothing waiting for approval on {site.code}.</p>}
           <ul className="grid gap-2" aria-label={`Subcontractor invoices for ${site.code}`}>
             {list.map((s) => {
+              const mine = isMine(s);
               const sub = db.subcontractors.find((x) => x.id === s.subcontractorId);
               const flags = sub ? subInsuranceFlags(sub, day) : [];
               return (
@@ -863,7 +873,7 @@ export function SubInvoiceSheet({ site, me, day, onClose }: { site: Project; me:
                       </Button>
                     </span>
                   ) : (
-                    <span className="text-[0.93rem] text-muted">Waiting for {approverWords(s, limit, db.projects, (id) => db.people.find((p) => p.id === id)?.name)}</span>
+                    <span className="text-[0.93rem] text-muted">Waiting for {approverWords(s, limit, db.projects, (id) => db.people.find((p) => p.id === id)?.name, chainOf(db.approvalLimits))}</span>
                   )}
                 </li>
               );
