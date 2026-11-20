@@ -63,7 +63,7 @@ with sync_playwright() as p:
     phone.get_by_role("button", name="Save password").click(); pg.wait_for_timeout(500)
     ok("fingerprint offered", phone.get_by_role("button", name="Turn on fingerprint").count() == 1)
     phone.get_by_role("button", name="Turn on fingerprint").click(); pg.wait_for_timeout(300)
-    ok("operative home: big tiles", all(phone.get_by_role("button", name=re.compile("^" + n)).count() > 0 for n in ["My week", "My hours", "Holidays", "Receipt", "Report a repair", "My tickets", "Something else"]))
+    ok("operative home: big tiles", all(phone.get_by_role("button", name=re.compile("^" + n)).count() > 0 for n in ["My week", "My hours", "Holidays", "Receipt", "Report a repair", "My tickets", "Make a request"]))
     pg.screenshot(path=S + "4-operative.png")
 
     # Sign out, then the password, wrong first.
@@ -91,7 +91,7 @@ with sync_playwright() as p:
         phone.get_by_role("button", name="Unlock with fingerprint").click(); pg.wait_for_timeout(200)
     ok("site manager: my sites and waiting for you", phone.get_by_role("heading", name="My sites today").count() == 1 and phone.get_by_role("heading", name="Waiting for you").count() == 1)
     ok("site manager: no My week or My hours", phone.get_by_role("button", name=re.compile("^My week")).count() == 0 and phone.get_by_role("button", name=re.compile("^My hours")).count() == 0)
-    ok("site manager: the other tiles", all(phone.get_by_role("button", name=re.compile("^" + n)).count() > 0 for n in ["Holidays", "Receipt", "Report a repair", "My tickets", "Something else"]))
+    ok("site manager: the other tiles", all(phone.get_by_role("button", name=re.compile("^" + n)).count() > 0 for n in ["Holidays", "Receipt", "Report a repair", "My tickets", "Make a request"]))
     pg.screenshot(path=S + "5-manager.png")
     sites = phone.get_by_role("region", name="My sites today").get_by_role("button")
     ok("site manager runs at least one site", sites.count() > 0)

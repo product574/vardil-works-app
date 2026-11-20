@@ -417,6 +417,10 @@ function Tiles({ me, operative, open, onSite }: { me: Person; operative: boolean
             <IdentificationCard size={28} className="text-accent-ink" aria-hidden="true" /> Send a licence
           </button>
         )}
+        <button type="button" className={TILE} onClick={() => open("ask")}>
+          <HandPalm size={28} className="text-accent-ink" aria-hidden="true" />
+          <span>Make a request {waiting(general)}</span>
+        </button>
       </div>
       {fleetOn && (
         <button type="button" className={cx(TILE, "grid-flow-col justify-start gap-3 text-left")} onClick={() => open("driving")}>
@@ -427,10 +431,6 @@ function Tiles({ me, operative, open, onSite }: { me: Person; operative: boolean
           </span>
         </button>
       )}
-      <button type="button" className="press flex min-h-12 items-center justify-center gap-2 rounded-lg border border-line-strong bg-surface font-medium" onClick={() => open("ask")}>
-        <HandPalm size={20} aria-hidden="true" /> Something else
-        {general > 0 && <Badge tone="accent">{general} waiting</Badge>}
-      </button>
     </>
   );
 }

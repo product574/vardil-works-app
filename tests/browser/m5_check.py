@@ -146,7 +146,7 @@ def steps(page, ctx):
     phone = phone_of(page, "operative")
     pick_phone(page, "Marek Wiśniewski"); page.wait_for_timeout(300)
     w = phone.bounding_box()["width"]
-    check("Site phone: drawn at phone width, in English, with big tiles", w <= 400 and page.get_by_role("tab", name="Polski").count() == 0 and all(phone.get_by_role("button", name=re.compile("^" + n)).count() == 1 for n in ["Send a photo", "Report extra work", "Something else", "My week"]) and min(phone.get_by_role("button", name=re.compile("^" + n)).bounding_box()["height"] for n in ["Send a photo", "My week"]) >= 56, w)
+    check("Site phone: drawn at phone width, in English, with big tiles", w <= 400 and page.get_by_role("tab", name="Polski").count() == 0 and all(phone.get_by_role("button", name=re.compile("^" + n)).count() == 1 for n in ["Send a photo", "Report extra work", "Make a request", "My week"]) and min(phone.get_by_role("button", name=re.compile("^" + n)).bounding_box()["height"] for n in ["Send a photo", "My week"]) >= 56, w)
     check("Site phone: a Polish stonemason sees his site and the instructions", "C719 St Finian's Church" in phone.inner_text() and "Services on Sunday" in phone.inner_text())
     check("Site phone: the site manager can be rung with one tap", phone.locator("a[href^='tel:']").count() == 1)
     page.screenshot(path=f"{OUT}/162-site-pl.png")
@@ -161,7 +161,7 @@ def steps(page, ctx):
     d.get_by_label("Anything to add (optional)").fill("Beam over the vestry"); d.get_by_role("button", name="Send").click(); page.wait_for_timeout(400)
     v = data(page, "(() => { const v = db.variations[0]; const a = db.approvals.find(a => a.variationId===v.id); return [v.projectId, v.description, v.status, db.people.find(p=>p.id===v.raisedById).name, a.status, db.projects.find(p=>p.id===v.projectId).invoiceHold] })()")
     check("Site phone: an extra reaches the office as a draft for approval", v == ["pr-C719", "Rotten timber found once opened up", "Draft", "Marek Wiśniewski", "Pending", True], v)
-    phone.get_by_role("button", name="Something else").click(); d = dlg()
+    phone.get_by_role("button", name="Make a request").click(); d = dlg()
     check("Site phone: a request needs a description", d.get_by_role("button", name="Send").is_disabled())
     d.get_by_label("Describe it").fill("Two buckets for mortar"); d.get_by_role("button", name="Send").click(); page.wait_for_timeout(300)
     rq = data(page, "[db.requests[0].projectId, db.requests[0].kind, db.requests[0].requestedBy, db.requests[0].status, db.requests[0].heldBy]")

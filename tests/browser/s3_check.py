@@ -126,7 +126,7 @@ def steps(page, ctx):
     go(page, "/site"); show_phone(page, "operative")
     check("Site phone: one phone app, its home screen by role (20 Nov)", phone_of(page, "operative").count() == 1 and page.get_by_label("Site manager's phone").count() == 0)
     phone = phone_of(page, "operative")
-    check("Operative phone: big tiles, with photo, extra work, Receipt, Driving check, My week and Something else", all(phone.get_by_role("button", name=re.compile("^" + n)).count() == 1 for n in ["Send a photo", "Report extra work", "Something else", "Receipt", "Driving check", "My week"]))
+    check("Operative phone: big tiles, with photo, extra work, Receipt, Driving check, My week and Make a request", all(phone.get_by_role("button", name=re.compile("^" + n)).count() == 1 for n in ["Send a photo", "Report extra work", "Make a request", "Receipt", "Driving check", "My week"]))
     # Driving check
     phone.get_by_role("button", name=re.compile("^Driving check")).click(); page.wait_for_timeout(250)
     dlg = page.locator("dialog[open]")

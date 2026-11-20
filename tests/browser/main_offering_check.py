@@ -110,7 +110,7 @@ with sync_playwright() as p:
     phone=pg.get_by_label("Phone app")
     ok("one phone", phone.count()==1 and pg.get_by_label("Site manager's phone").count()==0)
     if phone.get_by_role("button", name="Unlock with fingerprint").count(): phone.get_by_role("button", name="Unlock with fingerprint").click(); pg.wait_for_timeout(200)
-    for name in ["Report a repair","Receipt","Holidays","My week","My hours","My tickets","Something else"]:
+    for name in ["Report a repair","Receipt","Holidays","My week","My hours","My tickets","Make a request"]:
         ok(f"phone has {name}", phone.get_by_role("button", name=re.compile("^"+name)).count()>0)
     ok("no driving check", phone.get_by_text("Driving check").count()==0)
     pg.screenshot(path=S+"7-phone.png")
