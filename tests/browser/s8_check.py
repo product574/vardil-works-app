@@ -1,7 +1,7 @@
 import os, re, shutil, sys, tempfile
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from shots import run, BASE, OUT, phone_of, show_phone, FIX, open_last_week
+from shots import run, BASE, OUT, phone_of, show_phone, FIX, open_last_week, pick_phone, pick_phone_id, unlock
 
 # Round eight, 17 Nov (decisions 95 to 99): the Fleet page made easy, after Oisin's own Oldstone
 # fleet tool; and what came out of the call with Oldstone's managing director the same day: a
@@ -123,10 +123,10 @@ def steps(page, ctx):
     check("Reimbursements: exported claims move to Sent for payment and cannot go twice", main.get_by_role("table", name="Reimbursements to pay").count() == 0 and "Nothing to pay" in main.inner_text() and sent.count() == 3 and "Maeve Quirke" in sent.first.inner_text() and main.get_by_role("button", name="Export for payment").is_disabled() and "2 reimbursements exported for payment, €123.55" in toast(page), toast(page))
     check("Reimbursements: the export is in the activity log", data(page, "[db.activity[0].what, db.activity[0].target, db.activity[0].who]") == ["Exported reimbursements for payment", "2 claims, 123.55", "Maeve Quirke"])
     as_role(page, "Managing director")
-    go(page, "/site")
+    go(page, "/site"); unlock(page)
     show_phone(page, "manager")
-    page.get_by_label("Site manager to view the phone as").select_option(label="Cathal Minogue"); page.wait_for_timeout(300)
-    phone_of(page, "manager").get_by_role("button", name="My profile").click(); page.wait_for_timeout(250)
+    pick_phone(page, "Cathal Minogue"); page.wait_for_timeout(300)
+    phone_of(page, "manager").get_by_role("button", name="Me", exact=True).click(); page.wait_for_timeout(250)
     claims = dlg().get_by_role("list", name="My reimbursements").inner_text()
     check("Phone: whoever claimed sees it has gone for payment", "Sent for payment" in claims and "With the office for payment since" in claims, claims)
     page.keyboard.press("Escape"); page.wait_for_timeout(200)

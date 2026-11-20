@@ -32,7 +32,7 @@ with sync_playwright() as p:
     bar.get_by_role("link", name="Admin").click(); side.get_by_role("link", name="Site access").click(); page.wait_for_selector("table[aria-label='Sites each site manager can open']")
     main.get_by_role("checkbox", name="Eoin Brosnan: C720 Ardmullen House").click(); page.wait_for_selector("text=Eoin Brosnan can now open C720 Ardmullen House")
     bar.get_by_role("link", name="Site phone").click(); page.get_by_role("tab", name="Site manager").click(); page.wait_for_timeout(300)
-    page.get_by_label("Site manager to view the phone as").select_option(label="Eoin Brosnan"); page.wait_for_selector("text=Run by Cathal Minogue")
+    pick_phone(page, "Eoin Brosnan"); page.wait_for_selector("text=Run by Cathal Minogue")
     phone = page.get_by_label("Phone screen")
     phone.get_by_role("button", name=re.compile("^Make a request")).click(); page.wait_for_selector("dialog[open]")
     d = page.locator("dialog[open]")

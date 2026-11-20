@@ -2,7 +2,7 @@ import os, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import re
-from shots import run, BASE, OUT, phone_of, show_phone
+from shots import run, BASE, OUT, phone_of, show_phone, pick_phone, pick_phone_id, unlock
 
 # Step 1 of Aodhan's changes (16 Nov): the new overview (AI overview, top five sites, approvals
 # opened and closed in place with client emails first, the Portal panel), the Admin section,
@@ -147,8 +147,8 @@ def steps(page, ctx):
         check(f"Moved: {old} goes to {new}", page.url.endswith(new), page.url)
 
     # ── Site phone opens in English
-    go(page, "/site")
-    check("Site phone: opens in English, own language one tap away", phone_of(page, "operative").get_by_role("button", name="Send a photo").count() == 1 and page.get_by_role("tab", name="English").get_attribute("aria-selected") == "true")
+    go(page, "/site"); unlock(page)
+    check("Site phone: opens in English (the phone app is English first, 20 Nov)", phone_of(page, "operative").get_by_role("button", name=re.compile("^Send a photo")).count() == 1 and page.get_by_role("tab", name="English").count() == 0)
 
     # ── Other roles
     as_role(page, "Contracts manager")

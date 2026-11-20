@@ -1,7 +1,7 @@
 import os, re, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from shots import run, BASE, OUT, phone_of, show_phone
+from shots import run, BASE, OUT, phone_of, show_phone, pick_phone, pick_phone_id, unlock
 
 # Round ten, 17 Nov (decisions 108 to 116): overtime claimed from the operative's phone and
 # answered by the site manager, the Overtime list under the timesheet, the site manager's phone
@@ -62,11 +62,11 @@ def steps(page, ctx):
     page.screenshot(path=f"{OUT}/1000-timesheet-overtime-list.png", full_page=True)
 
     # ── 2. The operative's phone: My hours, and claiming
-    go(page, "/site")
-    page.get_by_label("Operative to view the phone as").select_option(claim["personId"]); page.wait_for_timeout(300)
+    go(page, "/site"); unlock(page)
+    pick_phone_id(page, claim["personId"]); page.wait_for_timeout(300)
     phone = phone_of(page, "operative")
     if page.get_by_role("tab", name="English").count(): page.get_by_role("tab", name="English").click(); page.wait_for_timeout(200)
-    phone.get_by_role("button", name=re.compile("My hours and overtime")).click(); page.wait_for_timeout(400)
+    phone.get_by_role("button", name=re.compile("^My hours")).click(); page.wait_for_timeout(400)
     d = dlg()
     last = d.get_by_role("region", name="Last week") if d.get_by_role("region", name="Last week").count() else d.locator("section[aria-label='Last week']")
     check("My hours: this week so far and last week, day by day, with totals", d.locator("section[aria-label='This week so far']").count() == 1 and last.count() == 1 and "in all:" in last.inner_text() and "basic" in last.inner_text())
@@ -88,7 +88,7 @@ def steps(page, ctx):
 
     # ── 3. The site manager's phone: claims, and the timesheet for earlier days
     show_phone(page, "manager")
-    page.get_by_label("Site manager to view the phone as").select_option(label="Eoin Brosnan"); page.wait_for_timeout(300)
+    pick_phone(page, "Eoin Brosnan"); page.wait_for_timeout(300)
     phone = phone_of(page, "manager")
     card = phone.get_by_role("button", name=re.compile("^C724"))
     check("Manager's phone: the job card says how many overtime claims wait", "1 overtime claim" in card.inner_text(), card.inner_text())
@@ -105,11 +105,13 @@ def steps(page, ctx):
     check("Manager's phone: it moves to Answered", "approved, 2h x1.5 + 0.5h x2" in d.get_by_role("list", name="Overtime claims answered").inner_text())
     page.screenshot(path=f"{OUT}/1002-manager-claims.png")
     page.keyboard.press("Escape"); page.wait_for_timeout(200)
-    phone.get_by_role("button", name="Timesheet", exact=True).click(); page.wait_for_timeout(300)
+    phone.get_by_role("button", name=re.compile("^Timesheet")).click(); page.wait_for_timeout(300)
     d = dlg()
-    opts = d.get_by_label("Day", exact=True).locator("option").all_inner_texts()
-    check("Manager's timesheet: today and back to the Monday of last week", opts[0].startswith("Today") and len(opts) == data(page, "(() => { const d = new Date(day + 'T12:00:00Z'); return ((d.getUTCDay() + 6) % 7) + 1 + 5 })()"), opts)
-    d.get_by_label("Day", exact=True).select_option(index=1); page.wait_for_timeout(300)
+    # The phone app (20 Nov): the days are buttons, oldest first, today last.
+    btns = d.get_by_role("group", name="Day").get_by_role("button")
+    opts = [btns.nth(i).get_attribute("aria-label") for i in range(btns.count())]
+    check("Manager's timesheet: today and back to the Monday of last week", opts[-1].startswith("Today") and len(opts) == data(page, "(() => { const d = new Date(day + 'T12:00:00Z'); return ((d.getUTCDay() + 6) % 7) + 1 + 5 })()"), opts)
+    btns.nth(btns.count() - 2).click(); page.wait_for_timeout(300)
     lst = d.get_by_role("list", name=re.compile("^People on site"))
     target = lst.locator("> li").filter(has_text="Seán Dunphy")
     check("Manager's timesheet: a sent day shows a Change button", target.get_by_role("button", name=re.compile("^Change Seán Dunphy")).count() == 1 and ", sent" in target.inner_text())
@@ -129,13 +131,13 @@ def steps(page, ctx):
     page.evaluate(f"(() => {{ const k = 'cod.data'; const s = JSON.parse(localStorage.getItem(k)); s.state.db.payrollExports.unshift({{ id: 'pay-test', weekStart: '{lastmon}', at: s.state.day + 'T09:00:00', by: 'Maeve Quirke', people: 20, hours: 700 }}); localStorage.setItem(k, JSON.stringify(s)); }})()")
     # Signed in as the site manager himself (Eoin Brosnan), whose access is his own.
     as_role(page, "Site manager")
-    go(page, "/site")
+    go(page, "/site"); unlock(page)
     phone = phone_of(page, "manager")
     phone.get_by_role("button", name=re.compile("^C724")).click(); page.wait_for_timeout(300)
-    phone.get_by_role("button", name="Timesheet", exact=True).click(); page.wait_for_timeout(300)
-    d = dlg(); d.get_by_label("Day", exact=True).select_option(lastmon); page.wait_for_timeout(300)
+    phone.get_by_role("button", name=re.compile("^Timesheet")).click(); page.wait_for_timeout(300)
+    d = dlg(); d.get_by_role("group", name="Day").get_by_role("button").first.click(); page.wait_for_timeout(300)  # the Monday of last week
     check("Payroll lock: once a week is exported, the site manager's phone cannot change it", "gone to payroll" in d.inner_text() and d.get_by_role("button", name=re.compile("^Change ")).count() == 0, d.inner_text()[:300])
-    d.get_by_label("Day", exact=True).select_option(index=0); page.wait_for_timeout(300)
+    d.get_by_role("group", name="Day").get_by_role("button").last.click(); page.wait_for_timeout(300)
     check("Payroll lock: this week is still his to fill in", "gone to payroll" not in d.inner_text())
     page.keyboard.press("Escape"); page.wait_for_timeout(200)
     go(page, f"/people/timesheet?site={pid('C719')}", "table")
@@ -217,8 +219,8 @@ def steps(page, ctx):
     for path in [f"/people/timesheet?site={pid('C724')}", "/profit", "/schedule/month"]:
         go(page, path, "table")
         check(f"Phone width: {path.split('?')[0]} does not scroll the page sideways", page.evaluate("document.documentElement.scrollWidth") <= 391)
-    go(page, "/site")
-    page.get_by_label("Operative to view the phone as").select_option(claim["personId"]); page.wait_for_timeout(300)
+    go(page, "/site"); unlock(page)
+    pick_phone_id(page, claim["personId"]); page.wait_for_timeout(300)
     if page.get_by_role("tab", name="English").count(): page.get_by_role("tab", name="English").click(); page.wait_for_timeout(200)
     phone_of(page, "operative").get_by_role("button", name=re.compile("My hours")).click(); page.wait_for_timeout(300)
     check("Phone width: My hours fits", page.evaluate("document.documentElement.scrollWidth") <= 391)

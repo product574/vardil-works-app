@@ -1,7 +1,7 @@
 import os, re, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from shots import run, BASE, OUT, phone_of, show_phone
+from shots import run, BASE, OUT, phone_of, show_phone, pick_phone, pick_phone_id, unlock
 
 # Oisin's phone round of 17 Nov (decisions 77 to 79): an operative's request goes to the site
 # manager, who forwards it to management or marks it dealt with (phone and desktop); the planner
@@ -30,7 +30,7 @@ def steps(page, ctx):
     admin_waiting = lambda: data(page, "db.requests.filter(r => r.status==='Open' && !r.decision && r.heldBy!=='site').length")
 
     # ── Operative phone: the day's site manager, instructions, Make a request
-    go(page, "/site")
+    go(page, "/site"); show_phone(page, "operative")
     phone = phone_of(page, "operative")
     check("Operative: today's instructions from the site manager sit above the standing ones", "Today's instructions" in phone.inner_text() and "scaffold inspector" in phone.inner_text() and "Eoin Brosnan, 07:35" in phone.inner_text() and phone.inner_text().index("Today's instructions") < phone.inner_text().index("Site instructions"))
     phone.get_by_role("button", name="Site manager: Eoin Brosnan").click(); page.wait_for_timeout(250)
@@ -39,13 +39,13 @@ def steps(page, ctx):
     page.screenshot(path=f"{OUT}/400-manager-card.png")
     card.get_by_role("button", name="Close").click(); page.wait_for_timeout(200)
     before = admin_waiting()
-    phone.get_by_role("button", name="Make a request").click(); page.wait_for_timeout(250)
+    phone.get_by_role("button", name="Something else").click(); page.wait_for_timeout(250)
     d = dlg()
-    check("Operative: the sheet is called Make a request", d.locator("h2").inner_text() == "Make a request")
+    check("Operative: Something else opens Make a request", d.locator("h2").inner_text() == "Make a request")
     d.get_by_label("Describe it").fill("A second wheelbarrow"); d.get_by_role("button", name="Send").click(); page.wait_for_timeout(300)
     rq = data(page, "db.requests[0]")
     check("Operative: the request goes to the site manager, not the office", rq["heldBy"] == "site" and rq["requestedBy"] == "Marek Wiśniewski" and "site manager" in toast(page) and admin_waiting() == before, (rq, toast(page)))
-    phone.get_by_role("button", name="My week").click(); page.wait_for_timeout(250)
+    phone.get_by_role("button", name=re.compile("^My week")).click(); page.wait_for_timeout(250)
     d = dlg()
     btns = d.get_by_role("button", name=re.compile("^Site manager: Eoin Brosnan, C719"))
     check("My week: the site manager is beside the site on each day", d.locator("li").count() == 5 and btns.count() == 5, d.inner_text())
@@ -53,33 +53,35 @@ def steps(page, ctx):
     check("My week: tapping him opens his details with Call now", dlg().locator("a[href^='tel:']", has_text="Call now").count() == 1)
     dlg().get_by_role("button", name="Close").click(); page.wait_for_timeout(150)
     dlg().get_by_role("button", name="Close").click(); page.wait_for_timeout(150)
-    page.get_by_role("tab", name="Polski").click(); page.wait_for_timeout(250)
-    check("Operative: Make a request and the day's note are there in Polish too", phone.get_by_role("button", name="Złóż prośbę").count() == 1 and "Instrukcje na dziś" in phone.inner_text() and "Napisane po angielsku" in phone.inner_text())
+    # The phone app is in English first (Oisin, 20 Nov); other languages per firm come later.
+    check("Operative: the app is in English", phone.get_by_role("tab", name="Polski").count() == 0 and page.get_by_role("tab", name="Polski").count() == 0)
 
     # ── Site manager phone: front page
     show_phone(page, "manager")
-    page.get_by_label("Site manager to view the phone as").select_option(label="Eoin Brosnan"); page.wait_for_timeout(300)
+    pick_phone(page, "Eoin Brosnan"); page.wait_for_timeout(300)
     phone = phone_of(page, "manager")
-    jobs = page.get_by_role("list", name="My jobs").get_by_role("button")
-    check("Site manager: the job shows how many requests wait from the crew", "2 requests from the crew" in jobs.first.inner_text(), jobs.first.inner_text())
-    check("Site manager: driving check and reimbursement are on the front page, apart from the jobs", "Vehicle and expenses" in phone.inner_text() and phone.get_by_role("button", name="Driving check").count() == 1 and phone.get_by_role("button", name="Claim a reimbursement").count() == 1)
-    phone.get_by_role("button", name="Driving check").click(); page.wait_for_timeout(250)
+    jobs = phone.get_by_role("region", name="My sites today").get_by_role("button")
+    check("Site manager: Waiting for you shows the requests from the crew", "2" in phone.get_by_role("button", name=re.compile("^Crew requests")).inner_text(), phone.get_by_role("button", name=re.compile("^Crew requests")).inner_text())
+    check("Site manager: driving check and receipt are on the front page, apart from the sites", phone.get_by_role("button", name=re.compile("^Driving check")).count() == 1 and phone.get_by_role("button", name=re.compile("^Receipt")).count() == 1)
+    phone.get_by_role("button", name=re.compile("^Driving check")).click(); page.wait_for_timeout(250)
     check("Site manager: the driving check knows his vehicle", "Assigned vehicle" in dlg().inner_text() and dlg().get_by_role("button", name="OK").count() == 10)
     page.keyboard.press("Escape"); page.wait_for_timeout(200)
-    phone.get_by_role("button", name="My profile").click(); page.wait_for_timeout(250)
+    phone.get_by_role("button", name="Me", exact=True).click(); page.wait_for_timeout(250)
     d = dlg()
-    check("Site manager: a profile at the top left with his details and Sign out", "Eoin Brosnan" in d.inner_text() and "Site manager" in d.inner_text() and d.get_by_role("button", name="Sign out").count() == 1)
-    d.get_by_role("button", name="Request holidays").click()
+    check("Site manager: Me at the top left with his details and Sign out", "Eoin Brosnan" in d.inner_text() and d.get_by_role("button", name="Sign out of the app").count() == 1)
+    d.get_by_role("button", name="Close").last.click(); page.wait_for_timeout(200)
+    phone.get_by_role("button", name=re.compile("^Holidays")).click(); page.wait_for_timeout(250)
+    d = dlg()
     d.get_by_label("Reason (optional)").fill("Family wedding")
-    d.get_by_role("button", name="Send request").click(); page.wait_for_timeout(300)
+    d.get_by_role("button", name="Ask for these days").click(); page.wait_for_timeout(300)
     h = data(page, "db.holidays[0]")
-    check("Site manager: he can ask for holidays from his profile", h["personId"] == "p-sm1" and h["status"] == "Requested" and h["note"] == "Family wedding", h)
-    d.get_by_role("button", name="Close").click(); page.wait_for_timeout(200)
+    check("Site manager: he can ask for holidays from the Holidays tile", h["personId"] == "p-sm1" and h["status"] == "Requested" and h["note"] == "Family wedding", h)
+    d.get_by_role("button", name="Close").last.click(); page.wait_for_timeout(200)
 
     # ── Inside a job: crew requests
     jobs.first.click(); page.wait_for_timeout(250)
-    check("Site manager: inside a job there is no driving check or reimbursement", phone.get_by_role("button", name="Driving check").count() == 0 and phone.get_by_role("button", name="Claim a reimbursement").count() == 0)
-    phone.get_by_role("button", name="Requests from the crew").click(); page.wait_for_timeout(250)
+    check("Site manager: inside a job there is no driving check or receipt", phone.get_by_role("button", name=re.compile("^Driving check")).count() == 0 and phone.get_by_role("button", name=re.compile("^Receipt")).count() == 0)
+    phone.get_by_role("button", name=re.compile("^Crew requests")).click(); page.wait_for_timeout(250)
     d = dlg()
     lst = d.get_by_role("list", name="Requests from the crew").locator("> li")
     check("Crew requests: both of Marek's requests are in the job", lst.count() == 2 and "Marek Wiśniewski" in lst.first.inner_text())
@@ -159,16 +161,15 @@ def steps(page, ctx):
     check("Requests (office): the sidebar number is everything open", side.get_by_role("link", name=f"Requests {n_open}").count() == 1, side.inner_text())
 
     # ── The operative sees the new instructions; the site manager's own desktop
-    go(page, "/site")
+    go(page, "/site"); show_phone(page, "operative")
     check("Operative: the phone shows the instructions just put up", "Crane on the north side until 15:00" in phone_of(page, "operative").inner_text())
-    as_role(page, "Site manager")
-    go(page, "/site")
-    phone = phone_of(page, "manager")
-    check("Site manager signed in: his own phone, with the profile button", page.get_by_label("Site manager to view the phone as").count() == 0 and phone.get_by_role("button", name="My profile").count() == 1)
     # A fresh request from his crew, to deal with on the desktop
-    show_phone(page, "operative")
-    phone_of(page, "operative").get_by_role("button", name="Make a request").click(); page.wait_for_timeout(250)
+    phone_of(page, "operative").get_by_role("button", name="Something else").click(); page.wait_for_timeout(250)
     dlg().get_by_label("Describe it").fill("Spare hi-vis vests"); dlg().get_by_role("button", name="Send").click(); page.wait_for_timeout(300)
+    as_role(page, "Site manager")
+    go(page, "/site"); unlock(page)
+    phone = phone_of(page, "manager")
+    check("Site manager signed in: his own phone, with Me", page.get_by_label("Whose phone to look at").count() == 0 and phone.get_by_role("button", name="Me", exact=True).count() == 1)
     go(page, "/projects/requests")
     sec = main.locator("section", has_text="From your crew")
     check("Requests (site manager): From your crew, with Forward and Mark dealt with", sec.count() == 1 and sec.get_by_role("button", name="Forward to management: Spare hi-vis vests").count() == 1 and sec.get_by_role("button", name="Mark dealt with: Spare hi-vis vests").count() == 1)
@@ -183,9 +184,9 @@ def steps(page, ctx):
 
     # ── Phone width
     page.set_viewport_size({"width": 390, "height": 844}); page.wait_for_timeout(300)
-    go(page, "/site")
+    go(page, "/site"); unlock(page)
     check("Phone width: the site manager's phone does not scroll sideways", not page.evaluate("document.documentElement.scrollWidth > document.documentElement.clientWidth"))
-    page.get_by_role("list", name="My jobs").get_by_role("button").first.click(); page.wait_for_timeout(200)
+    phone_of(page, "manager").get_by_role("region", name="My sites today").get_by_role("button").first.click(); page.wait_for_timeout(200)
     phone_of(page, "manager").get_by_role("button", name="Month ahead").click(); page.wait_for_timeout(250)
     box = dlg().bounding_box()
     check("Phone width: the month fits the screen", box["width"] <= 390 and not page.evaluate("document.documentElement.scrollWidth > document.documentElement.clientWidth"), box)

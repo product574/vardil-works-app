@@ -1,7 +1,7 @@
 import os, re, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from shots import run, BASE, OUT, phone_of, show_phone
+from shots import run, BASE, OUT, phone_of, show_phone, pick_phone, pick_phone_id, unlock
 
 # Oisin's round of 17 Nov, later (decisions 83 to 87): Attendance history laid out per site from a
 # switch at the top right; Held invoices fitting the page; a site manager's general request, not
@@ -105,13 +105,13 @@ def steps(page, ctx):
     page.set_viewport_size({"width": 1440, "height": 900}); page.wait_for_timeout(250)
 
     # ── 3. Site manager's phone: a general request, not for one site
-    go(page, "/site")
+    go(page, "/site"); unlock(page)
     show_phone(page, "manager")
-    page.get_by_label("Site manager to view the phone as").select_option(label="Eoin Brosnan"); page.wait_for_timeout(300)
+    pick_phone(page, "Eoin Brosnan"); page.wait_for_timeout(300)
     phone = phone_of(page, "manager")
-    gen = phone.get_by_role("button", name=re.compile("^Make a request"))
+    gen = phone.get_by_role("button", name=re.compile("^Something else"))
     text = phone.inner_text()
-    check("Site manager: Make a request is on the front page under General, apart from the jobs", gen.count() == 1 and "Not for one job" in gen.inner_text() and text.index("My jobs") < text.index("General") < text.index("Make a request") < text.index("Vehicle and expenses"), text)
+    check("Site manager: Something else is on the front page for a general request, apart from the sites", gen.count() == 1 and text.index("My sites today") < text.index("Something else"), text)
     queue = data(page, "db.requests.filter(r => r.status==='Open' && !r.decision && r.heldBy!=='site').length")
     gen.click(); page.wait_for_timeout(250)
     d = dlg()
@@ -127,16 +127,16 @@ def steps(page, ctx):
     mine = dlg().get_by_role("list", name="Your general requests")
     check("General request: his own are listed in the sheet with where they stand", mine.locator("li").count() == 1 and "First aid refresher" in mine.inner_text() and "Waiting for the office" in mine.inner_text())
     dlg().get_by_role("button", name="Cancel").click(); page.wait_for_timeout(200)
-    page.get_by_label("Site manager to view the phone as").select_option(label="Cathal Minogue"); page.wait_for_timeout(300)
-    check("General request: another site manager's phone does not show it", "waiting" not in phone_of(page, "manager").get_by_role("button", name=re.compile("^Make a request")).inner_text())
+    pick_phone(page, "Cathal Minogue"); page.wait_for_timeout(300)
+    check("General request: another site manager's phone does not show it", "waiting" not in phone_of(page, "manager").get_by_role("button", name=re.compile("^Something else")).inner_text())
     # Inside a job the site manager can ask for something else too
-    page.get_by_role("list", name="My jobs").get_by_role("button").first.click(); page.wait_for_timeout(200)
-    phone_of(page, "manager").get_by_role("button", name="Make a request").click(); page.wait_for_timeout(250)
+    page.get_by_label("Phone app", exact=True).get_by_role("region", name="My sites today").get_by_role("button").first.click(); page.wait_for_timeout(200)
+    phone_of(page, "manager").get_by_role("button", name=re.compile("^Make a request")).click(); page.wait_for_timeout(250)
     check("Request inside a job: the site manager has Something else there too", dlg().get_by_role("radio").count() == 4 and "not for one job" not in dlg().inner_text())
     dlg().get_by_role("button", name="Cancel").click(); page.wait_for_timeout(200)
     # The operative's form keeps to people and plant
     show_phone(page, "operative")
-    phone_of(page, "operative").get_by_role("button", name="Make a request").click(); page.wait_for_timeout(250)
+    phone_of(page, "operative").get_by_role("button", name="Something else").click(); page.wait_for_timeout(250)
     check("Request on the operative's phone: people and plant only, as before", dlg().get_by_role("radio").count() == 3)
     dlg().get_by_role("button", name="Cancel").click(); page.wait_for_timeout(200)
     # The office
@@ -152,8 +152,8 @@ def steps(page, ctx):
     as_role(page, "Site manager")
     go(page, "/projects/requests", "table")
     check("Requests (Eoin Brosnan): his general request is on his own list, and counted beside Requests", main.locator("tbody tr", has_text="First aid refresher").count() == 1 and page.get_by_role("navigation", name="Projects screens").get_by_role("link", name=re.compile("^Requests")).inner_text().endswith("3"), page.get_by_role("navigation", name="Projects screens").get_by_role("link", name=re.compile("^Requests")).inner_text())
-    go(page, "/site")
-    phone_of(page, "manager").get_by_role("button", name=re.compile("^Make a request")).click(); page.wait_for_timeout(250)
+    go(page, "/site"); unlock(page)
+    phone_of(page, "manager").get_by_role("button", name=re.compile("^Something else")).click(); page.wait_for_timeout(250)
     check("General request: his phone shows the office's answer", "Agreed by Aidan King" in dlg().get_by_role("list", name="Your general requests").inner_text())
     dlg().get_by_role("button", name="Cancel").click(); page.wait_for_timeout(200)
     as_role(page, "Managing director")
@@ -169,19 +169,19 @@ def steps(page, ctx):
     def month_names(cell):
         return sorted(re.sub(r"\s*(\+[\d.]+h( x[\d.]+)?|half day| cannot work)$", "", t.strip()) for t in cell.locator("button > span").all_inner_texts() if t.strip())
     def manager_week(code, who="Eoin Brosnan"):
-        go(page, "/site")
+        go(page, "/site"); unlock(page)
         show_phone(page, "manager")
-        page.get_by_label("Site manager to view the phone as").select_option(label=who); page.wait_for_timeout(250)
-        page.get_by_role("list", name="My jobs").get_by_role("button", name=re.compile("^" + code)).click(); page.wait_for_timeout(200)
+        pick_phone(page, who); page.wait_for_timeout(250)
+        page.get_by_label("Phone app", exact=True).get_by_role("region", name="My sites today").get_by_role("button", name=re.compile("^" + code)).click(); page.wait_for_timeout(200)
         phone_of(page, "manager").get_by_role("button", name="Week ahead").click(); page.wait_for_timeout(250)
         return dlg()
     def operative_week(person_id, which="Next week"):
-        go(page, "/site")
+        go(page, "/site"); unlock(page)
         show_phone(page, "operative")
-        page.get_by_label("Operative to view the phone as").select_option(person_id); page.wait_for_timeout(250)
+        pick_phone_id(page, person_id); page.wait_for_timeout(250)
         # Someone whose own language is not English gets a language switch; put it on English.
         if page.get_by_role("tab", name="English").count(): page.get_by_role("tab", name="English").click(); page.wait_for_timeout(250)
-        phone_of(page, "operative").get_by_role("button", name="My week").click(); page.wait_for_timeout(250)
+        phone_of(page, "operative").get_by_role("button", name=re.compile("^My week")).click(); page.wait_for_timeout(250)
         dlg().get_by_role("tab", name=which).click(); page.wait_for_timeout(250)
         return dlg().get_by_role("list", name=which).locator("> li")
 
@@ -210,10 +210,6 @@ def steps(page, ctx):
     rows = operative_week(rafael)
     check("In step: and on his own phone, My week, Next week, with the site manager to ring", rows.count() == 5 and "C719 St Finian's Church" in rows.first.inner_text() and rows.first.get_by_role("button", name="Site manager: Eoin Brosnan, C719").count() == 1 and "Free" in rows.nth(1).inner_text(), rows.all_inner_texts())
     page.screenshot(path=f"{OUT}/606-my-week-next.png")
-    dlg().get_by_role("button", name="Close").click(); page.wait_for_timeout(200)
-    page.get_by_role("tab", name="Português").click(); page.wait_for_timeout(250)
-    phone_of(page, "operative").get_by_role("button", name="A minha semana").click(); page.wait_for_timeout(250)
-    check("My week: this week and next week are there in his own language", dlg().get_by_role("tab").all_inner_texts() == ["Esta semana", "Próxima semana"])
     dlg().get_by_role("button", name="Close").click(); page.wait_for_timeout(200)
 
     # 4b. Asked for on the site manager's phone, agreed in Admin
@@ -264,8 +260,8 @@ def steps(page, ctx):
     d = manager_week("C720", "Cathal Minogue")
     d.get_by_role("button", name="Close").click(); page.wait_for_timeout(200)
     card = phone_of(page, "operative")
-    page.get_by_role("button", name="All my jobs").click(); page.wait_for_timeout(200)
-    job = page.get_by_role("list", name="My jobs").get_by_role("button").first.inner_text()
+    page.get_by_label("Phone app", exact=True).get_by_role("button", name="All my sites").click(); page.wait_for_timeout(200)
+    job = page.get_by_label("Phone app", exact=True).get_by_role("region", name="My sites today").get_by_role("button").first.inner_text()
     check("Today: the site manager's job card counts the same people", f"{len(att_today)} people on site today" in job, job)
     if prev >= monday:
         att_prev = data(page, f"db.attendance.filter(a => a.projectId==='pr-C720' && a.date==='{prev}').map(a => db.people.find(p => p.id===a.personId).name).sort()")
@@ -303,8 +299,8 @@ def steps(page, ctx):
     check("Given a site: its crew's requests come to him too, with Forward and Mark dealt with", sec.get_by_role("button", name="Mark dealt with: Dust sheets and floor protection for the drawing room").count() == 1 and sec.get_by_role("button", name=re.compile("^Forward to management: Dust sheets")).count() == 1)
     go(page, "/chat", "main h1")
     check("Given a site: he is in its group chat", "C720 Ardmullen House" in page.get_by_role("navigation", name="Channels and direct messages").inner_text())
-    go(page, "/site")
-    jobs = page.get_by_role("list", name="My jobs").get_by_role("button")
+    go(page, "/site"); unlock(page)
+    jobs = page.get_by_label("Phone app", exact=True).get_by_role("region", name="My sites today").get_by_role("button")
     check("Given a site: it is a job on his phone, marked as given, with who runs it", jobs.count() == 3 and "C720 Ardmullen House" in jobs.nth(1).inner_text() and "Run by Cathal Minogue" in jobs.nth(1).inner_text() and "Run by" not in jobs.first.inner_text(), jobs.all_inner_texts())
     page.screenshot(path=f"{OUT}/608-given-job-phone.png")
     go(page, "/schedule", "table")
@@ -317,8 +313,8 @@ def steps(page, ctx):
     grid.get_by_role("checkbox", name="Eoin Brosnan: C720 Ardmullen House").click(); page.wait_for_timeout(300)
     check("Site access: switching it off takes the site away again", not data(page, "db.siteAccess.some(g => g.personId==='p-sm1')") and "can no longer open" in toast(page) and sites_of("Eoin Brosnan") == 2)
     as_role(page, "Site manager")
-    go(page, "/site")
-    check("Taken away: his phone is back to the jobs he runs", page.get_by_role("list", name="My jobs").get_by_role("button").count() == 2)
+    go(page, "/site"); unlock(page)
+    check("Taken away: his phone is back to the jobs he runs", page.get_by_label("Phone app", exact=True).get_by_role("region", name="My sites today").get_by_role("button").count() == 2)
     go(page, "/chat", "main h1")
     check("Taken away: he is out of its group chat", "C720 Ardmullen House" not in page.get_by_role("navigation", name="Channels and direct messages").inner_text())
     as_role(page, "Managing director")

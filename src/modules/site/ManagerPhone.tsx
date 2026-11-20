@@ -1,12 +1,11 @@
-import { ArrowLeft, CalendarBlank, CalendarDots, CalendarPlus, Camera, CarProfile, CaretRight, ClipboardText, Clock, HandPalm, IdentificationCard, Invoice, Ladder, Megaphone, PlusCircle, Receipt, Tray, Truck, UserMinus } from "@phosphor-icons/react";
-import { useEffect, useRef, useState } from "react";
+import { ArrowLeft } from "@phosphor-icons/react";
+import { useState } from "react";
 import { useAccess } from "@/data/access";
 import { blocksText, bookingFor, scaffoldDue, scaffoldUnsafe, standing, subInsuranceFlags, ticketBlocks } from "@/lib/compliance";
 import { approverWords, partyOf, purchaseStage, runsSite, sitesOf } from "@/lib/purchases";
 import { money2 } from "@/lib/money";
 import { ApproveDialog, SendBackDialog } from "@/modules/invoicing/purchase-shared";
 import { actAs, addToRoster, correctAttendance, inspectScaffold, markAttendance, requestPerson, sendTimeStamps, setDayInstruction, stampRestDay } from "@/data/actions";
-import { co } from "@/data/place";
 import { useData, usePrefs } from "@/data/store";
 import type { Db, Person, Project, SupplierInvoice } from "@/data/types";
 import { personWeek, planClashes } from "@/lib/availability";
@@ -16,226 +15,15 @@ import { dShort, dWeekday, plural, when } from "@/lib/format";
 import { DOUBLE_WITHOUT_HALF, doubleOf, doubleWithoutHalf, EARLY_START_NOTE, overtimeTotal, REST_DAY_RULE, restDayProblem } from "@/lib/overtime";
 import { weekExported } from "@/lib/payroll";
 import { crewRequests } from "@/lib/requests";
-import { dayInstruction, dayRoster, managerJobs, whereabouts } from "@/lib/roster";
+import { dayInstruction, dayRoster, whereabouts } from "@/lib/roster";
 import { attendanceShort, fullWeek, nextWorkWeek, shiftMonth, workdaysOfMonth, workWeek } from "@/lib/week";
 import { CorrectDialog } from "@/modules/people/Timesheet";
 import { CrewRequestButtons } from "@/modules/projects/CrewRequestButtons";
 import { Badge, Button, cx, DeclineNote, Dialog, Field, NumInput, Segmented } from "@/ui";
 import { toast } from "@/ui/toast";
-import { CheckLine, DamageSheet, LicenceSheet } from "./fleet-sheets";
-import { claimsLabel, claimsWaiting, OvertimeClaimsSheet } from "./hours";
-import { AskSheet, BIG, DrivingSheet, ExpenseSheet, ExtraSheet, longDate, PhotoSheet, ProfileButton, ProfileSheet } from "./sheets";
 
-type Sheet = "time" | "weekend" | "claims" | "week" | "month" | "notes" | "crew" | "photo" | "extra" | "ask" | "general" | "expense" | "driving" | "damage" | "licence" | "profile" | "cannot" | "scaffolds" | "subs" | null;
 
 const KIND: Record<string, string> = { personnel: "People", own_plant: "Our plant", hired_plant: "Plant to hire", other: "Something else" };
-
-/**
- * A site manager's phone (Oisin, 17 Nov). The front page is the jobs he runs and any he has been
- * given (Admin, Site access), with his profile at the top left and, apart from the jobs, a general
- * request that is not for one site, the driving check and reimbursements. Inside a job: the
- * timesheet (any day back to the Monday of last week, sent days included, since round ten), the
- * crew's overtime claims, the week and month ahead (to look at and to ask for people, never to change the plan),
- * the day's site instructions, what the crew has asked for, photos, extra work and his own requests.
- */
-export function ManagerPhone({ me, day }: { me: Person; day: string }) {
-  const db = useData((s) => s.db);
-  const jobs = managerJobs(db.projects, me.id, db.siteAccess);
-  const [jobId, setJobId] = useState<string | null>(null);
-  const [sheet, setSheet] = useState<Sheet>(null);
-  const job = jobs.find((p) => p.id === jobId);
-  // Marked on the timesheet once the site has marked anyone today, otherwise who is planned: the same rule as the week and month ahead.
-  const today = (id: string) => dayRoster(db.attendance, db.plan, id, day, day);
-  // His own general requests still open with the office.
-  const general = db.requests.filter((r) => r.projectId === null && r.requestedById === me.id && r.status === "Open").length;
-  const waiting = (id: string) => crewRequests(db.requests, [id]).length;
-  const note = job ? dayInstruction(db.dayInstructions, job.id, day) : undefined;
-  const close = () => setSheet(null);
-  // Opening a job, or going back to the list, starts at the top of the phone's screen, as an app does.
-  const root = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const frame = root.current?.closest("section");
-    if (frame && frame.scrollHeight > frame.clientHeight) frame.scrollTo({ top: 0 });
-  }, [jobId]);
-  return (
-    <div ref={root} className="min-h-full w-full bg-canvas" lang="en">
-      <div className="bg-accent-strong px-4 py-3 text-white">
-        {job ? (
-          <>
-            <button type="button" onClick={() => { setJobId(null); setSheet(null); }} className="press -ml-1 mb-1 inline-flex min-h-9 items-center gap-1 rounded px-1 text-[0.93rem] opacity-90 hover:opacity-100">
-              <ArrowLeft size={16} /> All my jobs
-            </button>
-            <p className="font-display text-[1.35rem] leading-tight font-semibold">
-              {job.code} {job.name}
-            </p>
-            <p className="text-[0.93rem] opacity-90">
-              {job.location}, {co(job.county)}
-            </p>
-          </>
-        ) : (
-          <>
-            <div className="flex items-center gap-2">
-              <ProfileButton name={me.name} label="My profile" onClick={() => setSheet("profile")} />
-              <p className="text-[0.93rem] opacity-90">Today, {longDate(day)}</p>
-            </div>
-            <p className="font-display text-[1.35rem] leading-tight font-semibold">{me.name}</p>
-            <p className="text-[0.93rem] opacity-90">Site manager, {plural(jobs.length, "job")}</p>
-          </>
-        )}
-      </div>
-      {!job ? (
-        <div className="grid gap-3 px-4 py-4">
-          <h2 className="text-base">My jobs</h2>
-          {jobs.length === 0 && <p className="rounded-lg bg-warn-soft px-3 py-3 text-warn">You are not running a job at the moment. Ring the office if that is wrong.</p>}
-          <ul className="grid gap-3" aria-label="My jobs">
-            {jobs.map((p) => (
-              <li key={p.id}>
-                <button type="button" className={cx(BIG, "min-h-20 py-3")} onClick={() => setJobId(p.id)}>
-                  <span className="min-w-0 flex-1">
-                    <span className="block">
-                      {p.code} {p.name}
-                    </span>
-                    <span className="block text-[0.93rem] font-normal text-muted">
-                      {p.location}, {co(p.county)}. {p.status === "Live" ? `${plural(today(p.id).rows.length, "person", "people")} ${today(p.id).from === "timesheet" ? "on site today" : "down for today"}` : `Starts ${dShort(p.startDate)}`}
-                    </span>
-                    {p.siteManagerId !== me.id && <span className="block text-[0.93rem] font-normal text-muted">Run by {db.people.find((x) => x.id === p.siteManagerId)?.name}. Given to you by the office</span>}
-                    {(waiting(p.id) > 0 || claimsWaiting(db.overtimeClaims, p.id) > 0 || cannotWork(db, p.id, day).length > 0) && (
-                      <span className="mt-1 flex flex-wrap gap-1.5">
-                        {cannotWork(db, p.id, day).length > 0 && <Badge tone="bad">{plural(cannotWork(db, p.id, day).length, "person", "people")} cannot work</Badge>}
-                        {waiting(p.id) > 0 && <Badge tone="warn">{plural(waiting(p.id), "request")} from the crew</Badge>}
-                        {claimsWaiting(db.overtimeClaims, p.id) > 0 && <Badge tone="accent">{claimsLabel(claimsWaiting(db.overtimeClaims, p.id))}</Badge>}
-                      </span>
-                    )}
-                  </span>
-                  <CaretRight size={20} className="shrink-0 text-muted" />
-                </button>
-              </li>
-            ))}
-          </ul>
-          <h2 className="mt-2 text-base">General</h2>
-          <button type="button" className={BIG} onClick={() => setSheet("general")}>
-            <HandPalm size={24} className="shrink-0 text-accent-ink" />
-            <span className="min-w-0 flex-1">
-              Make a request
-              <span className="block text-[0.87rem] font-normal text-muted">Not for one job. It goes to the office</span>
-            </span>
-            {general > 0 && <Badge tone="accent">{general} waiting</Badge>}
-          </button>
-          <h2 className="mt-2 text-base">Vehicle and expenses</h2>
-          <button type="button" className={BIG} onClick={() => setSheet("driving")}>
-            <Truck size={24} className="shrink-0 text-accent-ink" />
-            <span className="min-w-0 flex-1">
-              Driving check
-              <CheckLine me={me} day={day} />
-            </span>
-          </button>
-          {/* From the Secure-All build's Ops phone (18 Nov): damage to a vehicle, and a new licence. */}
-          <button type="button" className={BIG} onClick={() => setSheet("damage")}>
-            <CarProfile size={24} className="text-accent-ink" /> Report damage
-          </button>
-          <button type="button" className={BIG} onClick={() => setSheet("licence")}>
-            <IdentificationCard size={24} className="text-accent-ink" /> Send a licence
-          </button>
-          <button type="button" className={BIG} onClick={() => setSheet("expense")}>
-            <Receipt size={24} className="text-accent-ink" /> Claim a reimbursement
-          </button>
-        </div>
-      ) : (
-        <div className="grid gap-3 px-4 py-4">
-          <button type="button" className={BIG} onClick={() => setSheet("time")}>
-            <ClipboardText size={24} className="text-accent-ink" /> Timesheet
-          </button>
-          <button type="button" className={BIG} onClick={() => setSheet("weekend")}>
-            <CalendarPlus size={24} className="shrink-0 text-accent-ink" />
-            <span className="min-w-0 flex-1">
-              Overtime time stamp
-              <span className="block text-[0.87rem] font-normal text-muted">Saturday, Sunday or a bank holiday</span>
-            </span>
-          </button>
-          <button type="button" className={BIG} onClick={() => setSheet("claims")}>
-            <Clock size={24} className="shrink-0 text-accent-ink" />
-            <span className="min-w-0 flex-1">
-              Overtime claims
-              <span className="block text-[0.87rem] font-normal text-muted">Extra hours the crew have claimed</span>
-            </span>
-            {claimsWaiting(db.overtimeClaims, job.id) > 0 && <Badge tone="accent">{claimsWaiting(db.overtimeClaims, job.id)}</Badge>}
-          </button>
-          <button type="button" className={BIG} onClick={() => setSheet("week")}>
-            <CalendarBlank size={24} className="text-accent-ink" /> Week ahead
-          </button>
-          <button type="button" className={BIG} onClick={() => setSheet("month")}>
-            <CalendarDots size={24} className="text-accent-ink" /> Month ahead
-          </button>
-          <button type="button" className={BIG} onClick={() => setSheet("notes")}>
-            <Megaphone size={24} className="shrink-0 text-accent-ink" />
-            <span className="min-w-0 flex-1">
-              Site instructions
-              <span className="block text-[0.87rem] font-normal text-muted">{note ? "Up for today" : "Nothing up for today"}</span>
-            </span>
-          </button>
-          <button type="button" className={BIG} onClick={() => setSheet("crew")}>
-            <Tray size={24} className="shrink-0 text-accent-ink" />
-            <span className="min-w-0 flex-1">Requests from the crew</span>
-            {waiting(job.id) > 0 && <Badge tone="warn">{waiting(job.id)}</Badge>}
-          </button>
-          {/* From Compliance and Invoicing (merged 19 Nov, Oisin's picks): who cannot work, the scaffold register, and subcontractor invoices. */}
-          <button type="button" className={BIG} onClick={() => setSheet("cannot")}>
-            <UserMinus size={24} className="shrink-0 text-accent-ink" />
-            <span className="min-w-0 flex-1">
-              Who cannot work
-              <span className="block text-[0.87rem] font-normal text-muted">A ticket run out on this job</span>
-            </span>
-            {cannotWork(db, job.id, day).length > 0 && <Badge tone="bad">{cannotWork(db, job.id, day).length}</Badge>}
-          </button>
-          <button type="button" className={BIG} onClick={() => setSheet("scaffolds")}>
-            <Ladder size={24} className="shrink-0 text-accent-ink" />
-            <span className="min-w-0 flex-1">
-              Scaffold inspections
-              <span className="block text-[0.87rem] font-normal text-muted">Every 7 days and after any change</span>
-            </span>
-            {scaffoldsDue(db, job.id, day) > 0 && <Badge tone="warn">{scaffoldsDue(db, job.id, day)}</Badge>}
-          </button>
-          <button type="button" className={BIG} onClick={() => setSheet("subs")}>
-            <Invoice size={24} className="shrink-0 text-accent-ink" />
-            <span className="min-w-0 flex-1">
-              Subcontractor invoices
-              <span className="block text-[0.87rem] font-normal text-muted">Approve what was done on site</span>
-            </span>
-            {subsWaiting(db, job.id).length > 0 && <Badge tone="accent">{subsWaiting(db, job.id).length}</Badge>}
-          </button>
-          <button type="button" className={BIG} onClick={() => setSheet("photo")}>
-            <Camera size={24} className="text-accent-ink" /> Send a photo
-          </button>
-          <button type="button" className={BIG} onClick={() => setSheet("extra")}>
-            <PlusCircle size={24} className="text-accent-ink" /> Report extra work
-          </button>
-          <button type="button" className={BIG} onClick={() => setSheet("ask")}>
-            <HandPalm size={24} className="text-accent-ink" /> Make a request
-          </button>
-        </div>
-      )}
-      {job && sheet === "time" && <TimeSheet site={job} me={me} day={day} onClose={close} />}
-      {job && sheet === "weekend" && <WeekendSheet site={job} me={me} day={day} onClose={close} />}
-      {job && sheet === "claims" && <OvertimeClaimsSheet site={job} me={me} day={day} onClose={close} />}
-      {job && sheet === "week" && <SiteWeekSheet site={job} me={me} day={day} onClose={close} />}
-      {job && sheet === "month" && <SiteMonthSheet site={job} me={me} day={day} onClose={close} />}
-      {job && sheet === "notes" && <InstructionsSheet site={job} me={me} day={day} onClose={close} />}
-      {job && sheet === "crew" && <CrewRequestsSheet site={job} me={me} day={day} onClose={close} />}
-      {job && sheet === "cannot" && <CannotWorkSheet site={job} day={day} onClose={close} />}
-      {job && sheet === "scaffolds" && <ScaffoldSheet site={job} me={me} day={day} onClose={close} />}
-      {job && sheet === "subs" && <SubInvoiceSheet site={job} me={me} day={day} onClose={close} />}
-      {job && sheet === "photo" && <PhotoSheet site={job} me={me} lang="en" onClose={close} />}
-      {job && sheet === "extra" && <ExtraSheet site={job} me={me} lang="en" onClose={close} />}
-      {job && sheet === "ask" && <AskSheet site={job} me={me} lang="en" day={day} onClose={close} />}
-      {sheet === "general" && <AskSheet site={null} me={me} lang="en" day={day} onClose={close} />}
-      {sheet === "expense" && <ExpenseSheet me={me} day={day} siteId={null} sites={jobs} onClose={close} />}
-      {sheet === "driving" && <DrivingSheet me={me} day={day} onClose={close} />}
-      {sheet === "damage" && <DamageSheet me={me} onClose={close} />}
-      {sheet === "licence" && <LicenceSheet me={me} day={day} onClose={close} />}
-      {sheet === "profile" && <ProfileSheet me={me} lang="en" day={day} onClose={close} />}
-    </div>
-  );
-}
 
 /** The people on a job: its site list plus anyone planned there on the given days. */
 function crewOf(db: ReturnType<typeof useData.getState>["db"], siteId: string, days: string[]) {
@@ -548,7 +336,7 @@ function DayCrew({ site, date, me, day }: { site: Project; date: string; me: Per
  * Timesheet, for a Saturday, a Sunday or a bank holiday that has been. Pick the day, tick who
  * worked (the job's crew, and anyone else in the firm), and type the hours at each rate.
  */
-function WeekendSheet({ site, me, day, onClose }: { site: Project; me: Person; day: string; onClose: () => void }) {
+export function WeekendSheet({ site, me, day, onClose }: { site: Project; me: Person; day: string; onClose: () => void }) {
   const db = useData((s) => s.db);
   const access = useAccess();
   const canMark = access.may("markTime");
@@ -680,7 +468,7 @@ function WeekendSheet({ site, me, day, onClose }: { site: Project; me: Person; d
 }
 
 /** Next week on one job, day by day: who is down, and a button to ask for someone. Nothing here changes the plan. */
-function SiteWeekSheet({ site, me, day, onClose }: { site: Project; me: Person; day: string; onClose: () => void }) {
+export function SiteWeekSheet({ site, me, day, onClose }: { site: Project; me: Person; day: string; onClose: () => void }) {
   const db = useData((s) => s.db);
   // Monday to Friday, and the Saturday or Sunday after them when anyone is down for it (17 Nov).
   const week = [...nextWorkWeek(day), ...fullWeek(nextWorkWeek(day)[0]!).slice(5).filter((d) => db.plan.some((p) => p.projectId === site.id && p.date === d))];
@@ -714,7 +502,7 @@ function SiteWeekSheet({ site, me, day, onClose }: { site: Project; me: Person; 
  * A month on one job: a number per working day (who attended for days gone, who is planned for
  * days to come). Tap a day to see who, and to ask for someone on a day still to come.
  */
-function SiteMonthSheet({ site, me, day, onClose }: { site: Project; me: Person; day: string; onClose: () => void }) {
+export function SiteMonthSheet({ site, me, day, onClose }: { site: Project; me: Person; day: string; onClose: () => void }) {
   const db = useData((s) => s.db);
   const [ym, setYm] = useState(day.slice(0, 7));
   const [picked, setPicked] = useState<string | null>(null);
@@ -787,7 +575,7 @@ function SiteMonthSheet({ site, me, day, onClose }: { site: Project; me: Person;
 }
 
 /** Site instructions for a day: what the site manager wants the crew to know, shown on their phones that day. */
-function InstructionsSheet({ site, me, day, onClose }: { site: Project; me: Person; day: string; onClose: () => void }) {
+export function InstructionsSheet({ site, me, day, onClose }: { site: Project; me: Person; day: string; onClose: () => void }) {
   const db = useData((s) => s.db);
   const next = rollingWorkdays(day, 1)[0]!;
   const [date, setDate] = useState(day);
@@ -917,7 +705,7 @@ export function CrewRequestsSheet({ site, me, day, onClose }: { site: Project | 
 // ── From Compliance and Invoicing (merged 19 Nov) ─────────────────────────────
 
 /** The crew of a job planned on it today or in the next two weeks whose needed ticket has run out on one of those days. */
-function cannotWork(db: Db, siteId: string, day: string) {
+export function cannotWork(db: Db, siteId: string, day: string) {
   const until = addDays(day, 14);
   const days = [...new Set(db.plan.filter((e) => e.projectId === siteId && e.date >= day && e.date <= until).map((e) => e.date))].sort();
   return crewOf(db, siteId, days)
@@ -931,11 +719,11 @@ function cannotWork(db: Db, siteId: string, day: string) {
     .filter((x): x is NonNullable<typeof x> => !!x);
 }
 
-const scaffoldsDue = (db: Db, siteId: string, day: string) => db.scaffolds.filter((s) => s.projectId === siteId && standing(s) && (scaffoldDue(s) < day || scaffoldUnsafe(s))).length;
+export const scaffoldsDue = (db: Db, siteId: string, day: string) => db.scaffolds.filter((s) => s.projectId === siteId && standing(s) && (scaffoldDue(s) < day || scaffoldUnsafe(s))).length;
 
-const subsWaiting = (db: Db, siteId: string) => db.supplierInvoices.filter((s) => partyOf(s) === "subcontractor" && sitesOf(s).includes(siteId) && purchaseStage(s) === "approve");
+export const subsWaiting = (db: Db, siteId: string) => db.supplierInvoices.filter((s) => partyOf(s) === "subcontractor" && sitesOf(s).includes(siteId) && purchaseStage(s) === "approve");
 
-function CannotWorkSheet({ site, day, onClose }: { site: Project; day: string; onClose: () => void }) {
+export function CannotWorkSheet({ site, day, onClose }: { site: Project; day: string; onClose: () => void }) {
   const db = useData((s) => s.db);
   const rows = cannotWork(db, site.id, day);
   return (
@@ -968,7 +756,7 @@ function CannotWorkSheet({ site, day, onClose }: { site: Project; day: string; o
 }
 
 /** The job's scaffold register on the phone: each one standing, its last inspection, and a new one recorded on the spot. */
-function ScaffoldSheet({ site, me, day, onClose }: { site: Project; me: Person; day: string; onClose: () => void }) {
+export function ScaffoldSheet({ site, me, day, onClose }: { site: Project; me: Person; day: string; onClose: () => void }) {
   const db = useData((s) => s.db);
   const access = useAccess();
   const canInspect = access.may("recordInspections");
@@ -1037,7 +825,7 @@ function ScaffoldSheet({ site, me, day, onClose }: { site: Project; me: Person; 
 }
 
 /** Subcontractor invoices for this job waiting for approval: the site manager approves what was done, or sends it back. */
-function SubInvoiceSheet({ site, me, day, onClose }: { site: Project; me: Person; day: string; onClose: () => void }) {
+export function SubInvoiceSheet({ site, me, day, onClose }: { site: Project; me: Person; day: string; onClose: () => void }) {
   const db = useData((s) => s.db);
   const region = usePrefs((s) => s.brand.region);
   const [box, setBox] = useState<{ what: "approve" | "back"; s: SupplierInvoice } | null>(null);

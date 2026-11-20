@@ -6,29 +6,30 @@
  * invite, the first time a one-time code (shown on the phone in the demo), then their own password,
  * then fingerprint if they want it. English first; other languages per firm come later.
  */
-import { CalendarBlank, CaretRight, Certificate, Clock, Fingerprint, HandPalm, Phone, Receipt, SunHorizon, Truck, Wrench } from "@phosphor-icons/react";
+import { ArrowLeft, CalendarBlank, CalendarDots, CalendarPlus, Camera, CaretRight, Certificate, Clock, Fingerprint, HandPalm, IdentificationCard, Invoice, Ladder, Megaphone, Phone, PlusCircle, Receipt, SunHorizon, Tray, Truck, UserMinus, Wrench } from "@phosphor-icons/react";
 import { useCallback, useEffect, useState } from "react";
 import { useAccess } from "@/data/access";
 import { actAs, decideExpense, nowStamp, enterPhoneCode, sendPhoneCode, setPhoneBiometrics, setPhonePassword, signOutPhone, tryPhonePassword } from "@/data/actions";
 import { useData, useDay, usePrefs } from "@/data/store";
 import type { Db, Expense, Person, Project } from "@/data/types";
-import { bookingFor, ticketBlocks } from "@/lib/compliance";
+import { bookingFor, stateOf, ticketBlocks, vehicleBlocks } from "@/lib/compliance";
+import { money2, REGION } from "@/lib/money";
 import { addDays } from "@/lib/dates";
 import { dShort, plural, when } from "@/lib/format";
-import { money2 } from "@/lib/money";
 import { CODE_MINUTES, codesLeft, hashPassword, isLocked, maskPhone, MIN_PASSWORD, onPhoneApp, passwordProblem, personByPhone, sessionOpen, SESSION_DAYS } from "@/lib/phone-auth";
 import { crewRequests } from "@/lib/requests";
-import { dayInstruction, managerJobs, siteOn, workingDays } from "@/lib/roster";
+import { dayInstruction, dayRoster, managerJobs, siteOn, workingDays } from "@/lib/roster";
 import { requestLeave } from "@/data/actions";
 import { Badge, Button, cx, DeclineNote, Dialog, Field, PageBody, PageHead, Switch } from "@/ui";
 import { toast } from "@/ui/toast";
 import { CheckLine } from "./fleet-sheets";
 import { OvertimeClaimsSheet, HoursSheet } from "./hours";
-import { CrewRequestsSheet, TimeSheet } from "./ManagerPhone";
+import { cannotWork, CannotWorkSheet, CrewRequestsSheet, InstructionsSheet, ScaffoldSheet, scaffoldsDue, SiteMonthSheet, SiteWeekSheet, SubInvoiceSheet, subsWaiting, TimeSheet, WeekendSheet } from "./ManagerPhone";
 import { MyCerts, RepairSheet } from "./one-sheets";
 import { OfficeFeed } from "./OfficeFeed";
 import { PhoneFrame } from "./PhoneFrame";
-import { AskSheet, DrivingSheet, ExpenseSheet, longDate, ManagerCard, MyClaims, ProfileButton } from "./sheets";
+import { AskSheet, DrivingSheet, ExpenseSheet, ExtraSheet, longDate, ManagerCard, MyClaims, PhotoSheet, ProfileButton } from "./sheets";
+import { LicenceSheet } from "./fleet-sheets";
 import { WeekSheet } from "./SiteView";
 
 /** The Site phone screen for the main offering: the office picks whose phone to look at; someone on site sees their own. */
@@ -38,6 +39,7 @@ export function PhoneAppView() {
   const role = usePrefs((s) => s.role);
   const access = useAccess();
   const operativeId = usePrefs((s) => s.operativeId);
+  const setOperative = usePrefs((s) => s.setOperative);
   const everyone = db.people.filter(onPhoneApp).sort((a, b) => a.name.localeCompare(b.name));
   const own = role === "operative" ? operativeId : role === "site" ? access.personId : null;
   const [pick, setPick] = useState(operativeId);
@@ -52,7 +54,7 @@ export function PhoneAppView() {
           {office && (
             <label className="flex min-h-11 items-center gap-2 text-[0.93rem]">
               <span className="text-muted">Phone of</span>
-              <select aria-label="Whose phone to look at" className="field w-auto max-w-[17rem]" value={me.id} onChange={(e) => setPick(e.target.value)}>
+              <select aria-label="Whose phone to look at" className="field w-auto max-w-[17rem]" value={me.id} onChange={(e) => { setPick(e.target.value); if (everyone.find((p) => p.id === e.target.value)?.kind === "Operative") setOperative(e.target.value); }}>
                 {everyone.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name}, {p.kind === "Operative" ? p.trade : "Site manager"}
@@ -295,7 +297,7 @@ function Unlock({ me, onUnlock, onPassword }: { me: Person; onUnlock: () => void
 
 // ── Home screens ──────────────────────────────────────────────────────────────
 
-type Sheet = "week" | "hours" | "holidays" | "receipt" | "repair" | "tickets" | "ask" | "driving" | "me" | "manager" | null;
+type Sheet = "week" | "hours" | "holidays" | "receipt" | "repair" | "tickets" | "ask" | "driving" | "licence" | "photo" | "extra" | "me" | "manager" | null;
 
 const TILE = "press grid min-h-24 content-center justify-items-center gap-1.5 rounded-xl border border-line-strong bg-surface px-2 py-3 text-center text-[1rem] font-medium hover:border-accent hover:text-accent-ink";
 
@@ -322,6 +324,28 @@ function Header({ me, day, onMe }: { me: Person; day: string; onMe: () => void }
   );
 }
 
+/** A van out of date (Compliance and Fleet): the driver is told not to drive it. */
+function VanNotice({ me, day }: { me: Person; day: string }) {
+  const db = useData((s) => s.db);
+  const region = usePrefs((s) => s.brand.region);
+  if (!useAccess().apps.on("fleet")) return null;
+  const van = db.vehicles.find((v) => v.active && v.driverId === me.id);
+  if (!van) return null;
+  const gone = vehicleBlocks(van, day);
+  const due = (["tax", "test", "insurance"] as const).filter((k) => stateOf(van.compliance[k].expiryDate, day) === "due");
+  if (gone.length === 0 && due.length === 0) return null;
+  const R = REGION[region];
+  const label = (k: "tax" | "test" | "insurance") => (k === "tax" ? R.roadTax : k === "test" ? R.vehicleTest : "Insurance");
+  return (
+    <div className={cx("rounded-lg px-3 py-3", gone.length ? "bg-bad-soft text-bad" : "bg-warn-soft text-warn")} role="status">
+      <p className="font-medium">
+        Your van, {van.reg}: {gone.length ? `${gone.map(label).join(", ")} ran out` : due.map((k) => `${label(k)} due by ${dShort(van.compliance[k].expiryDate)}`).join(", ")}
+      </p>
+      {gone.length > 0 && <p className="mt-0.5">Do not drive it. Ring the office.</p>}
+    </div>
+  );
+}
+
 function CannotWork({ me, day }: { me: Person; day: string }) {
   const db = useData((s) => s.db);
   const blocks = ticketBlocks(me, day);
@@ -331,21 +355,24 @@ function CannotWork({ me, day }: { me: Person; day: string }) {
     <div className="rounded-lg bg-bad-soft px-3 py-3 text-bad" role="status">
       <p className="font-medium">{blocks.map((b) => (b.expires ? `${b.ticket} ran out ${dShort(b.expires)}` : `${b.ticket} missing`)).join(", ")}</p>
       <p className="mt-0.5">You cannot work on site until it is renewed. Send a photo of the new card from My tickets.</p>
-      {booked && <p className="mt-0.5">Booked on a course: {dShort(booked.date)}</p>}
+      {booked && <p className="mt-0.5">Booked on the course on {dShort(booked.date)}</p>}
     </div>
   );
 }
 
 /** The tiles both homes share. Operatives also get My week and My hours (Oisin, 20 Nov). */
-function Tiles({ me, operative, open }: { me: Person; operative: boolean; open: (s: Sheet) => void }) {
+function Tiles({ me, operative, open, onSite }: { me: Person; operative: boolean; open: (s: Sheet) => void; /** With Projects on, an operative on a site today also sends photos and extra work from it. */ onSite?: boolean }) {
   const db = useData((s) => s.db);
-  const fleetOn = useAccess().apps.on("fleet");
+  const apps = useAccess().apps;
+  const fleetOn = apps.on("fleet");
+  const projectsOn = apps.on("projects");
   const day = useDay();
   const waiting = (n: number) => n > 0 && <Badge tone="accent">{n}</Badge>;
   const leave = db.holidays.filter((h) => h.personId === me.id && h.status === "Requested").length;
   const receipts = db.expenses.filter((x) => x.personId === me.id && x.status !== "Declined" && !x.paidAt).length;
   const repairs = db.repairs.filter((r) => r.personId === me.id && r.status !== "Fixed").length;
   const claims = db.overtimeClaims.filter((c) => c.personId === me.id && c.status === "Waiting").length;
+  const general = db.requests.filter((r) => r.projectId === null && r.requestedById === me.id && r.status === "Open").length;
   return (
     <>
       <div className="grid grid-cols-2 gap-2.5">
@@ -375,6 +402,21 @@ function Tiles({ me, operative, open }: { me: Person; operative: boolean; open: 
         <button type="button" className={TILE} onClick={() => open("tickets")}>
           <Certificate size={28} className="text-accent-ink" aria-hidden="true" /> My tickets
         </button>
+        {operative && projectsOn && onSite && (
+          <button type="button" className={TILE} onClick={() => open("photo")}>
+            <Camera size={28} className="text-accent-ink" aria-hidden="true" /> Send a photo
+          </button>
+        )}
+        {operative && projectsOn && onSite && (
+          <button type="button" className={TILE} onClick={() => open("extra")}>
+            <PlusCircle size={28} className="text-accent-ink" aria-hidden="true" /> Report extra work
+          </button>
+        )}
+        {fleetOn && (
+          <button type="button" className={TILE} onClick={() => open("licence")}>
+            <IdentificationCard size={28} className="text-accent-ink" aria-hidden="true" /> Send a licence
+          </button>
+        )}
       </div>
       {fleetOn && (
         <button type="button" className={cx(TILE, "grid-flow-col justify-start gap-3 text-left")} onClick={() => open("driving")}>
@@ -387,6 +429,7 @@ function Tiles({ me, operative, open }: { me: Person; operative: boolean; open: 
       )}
       <button type="button" className="press flex min-h-12 items-center justify-center gap-2 rounded-lg border border-line-strong bg-surface font-medium" onClick={() => open("ask")}>
         <HandPalm size={20} aria-hidden="true" /> Something else
+        {general > 0 && <Badge tone="accent">{general} waiting</Badge>}
       </button>
     </>
   );
@@ -406,25 +449,47 @@ function OperativeHome({ me, day }: { me: Person; day: string }) {
       <Header me={me} day={day} onMe={() => setSheet("me")} />
       <div className="grid gap-3 px-4 py-4">
         <CannotWork me={me} day={day} />
-        <section className="rounded-lg border border-line bg-surface px-3 py-3" aria-label="Today">
+        <VanNotice me={me} day={day} />
+        <section className="grid gap-2" aria-label="Today">
           {site ? (
             <>
-              <p className="text-[0.93rem] text-muted">Today you are at</p>
-              <p className="font-medium">
-                {site.code} {site.name}
-              </p>
-              {manager && (
-                <button type="button" className="press mt-1 inline-flex min-h-9 items-center gap-1.5 text-accent-ink underline decoration-line-strong underline-offset-2" onClick={() => setSheet("manager")}>
-                  <Phone size={16} aria-hidden="true" /> {manager.name}, site manager
-                </button>
+              <div className="rounded-lg border border-line bg-surface px-3 py-3">
+                <p className="text-[0.93rem] text-muted">Today you are at</p>
+                <p className="font-medium">
+                  {site.code} {site.name}
+                </p>
+                {manager && (
+                  <div className="mt-1.5 flex items-center gap-2">
+                    <button type="button" aria-label={`Site manager: ${manager.name}`} className="press min-w-0 flex-1 rounded text-left text-accent-ink underline decoration-line-strong underline-offset-2" onClick={() => setSheet("manager")}>
+                      {manager.name}, site manager
+                    </button>
+                    <a href={`tel:${manager.phone.replace(/\s/g, "")}`} className="press inline-flex min-h-10 items-center gap-1.5 rounded-md bg-accent-soft px-3 font-medium text-accent-ink">
+                      <Phone size={16} aria-hidden="true" /> Call
+                    </a>
+                  </div>
+                )}
+              </div>
+              {note && (
+                <div className="rounded-lg border-l-4 border-accent bg-surface px-3 py-3" aria-label="Today's instructions">
+                  <p className="font-medium">Today's instructions</p>
+                  <p className="mt-1 leading-relaxed">{note.text}</p>
+                  <p className="mt-1.5 text-[0.87rem] text-muted">
+                    {note.by}, {note.at.slice(11, 16)}
+                  </p>
+                </div>
               )}
-              {note && <p className="mt-2 border-t border-line pt-2 text-[0.93rem]">{note.text}</p>}
+              {site.siteInstructions && (
+                <div className="rounded-lg bg-surface px-3 py-3">
+                  <p className="font-medium">Site instructions</p>
+                  <p className="mt-1 leading-relaxed">{site.siteInstructions}</p>
+                </div>
+              )}
             </>
           ) : (
-            <p className="text-muted">You are not down for a site today. Your site manager will tell you where to go.</p>
+            <p className="rounded-lg border border-line bg-surface px-3 py-3 text-muted">You are not down for a site today. Your site manager will tell you where to go.</p>
           )}
         </section>
-        <Tiles me={me} operative open={setSheet} />
+        <Tiles me={me} operative open={setSheet} onSite={!!site} />
       </div>
       <Sheets me={me} day={day} site={site} sites={mine} sheet={sheet} close={close} toManager />
       {sheet === "manager" && site && manager && <ManagerCard manager={manager} site={site} lang="en" onClose={close} />}
@@ -439,10 +504,11 @@ function ManagerHome({ me, day }: { me: Person; day: string }) {
   const [sheet, setSheet] = useState<Sheet>(null);
   const [approve, setApprove] = useState<ManagerSheet>(null);
   const [siteOpen, setSiteOpen] = useState<Project | null>(null);
-  const [timesheet, setTimesheet] = useState<Project | null>(null);
   const sites = managerJobs(db.projects, me.id, db.siteAccess).filter((p) => p.status === "Live");
   const ids = new Set(sites.map((s) => s.id));
   const w = waitingFor(db, me, ids);
+  // A site opens as a screen of its own on the phone, as an app does (with Projects on it carries the whole job).
+  if (siteOpen) return <JobScreen site={siteOpen} me={me} day={day} onBack={() => setSiteOpen(null)} />;
   return (
     <div className="min-h-full w-full bg-canvas">
       <Header me={me} day={day} onMe={() => setSheet("me")} />
@@ -461,7 +527,9 @@ function ManagerHome({ me, day }: { me: Person; day: string }) {
                     <button type="button" className="press flex min-h-14 w-full items-center gap-2 rounded-lg border border-line-strong bg-surface px-3 py-2 text-left" onClick={() => setSiteOpen(s)}>
                       <span className="min-w-0 flex-1">
                         <span className="font-medium">{s.code}</span> {s.name}
-                        <span className="block text-[0.87rem] text-muted">{st.planned === 0 ? "Nobody planned" : `${plural(st.planned, "person", "people")} planned`}</span>
+                        <span className="block text-[0.87rem] text-muted">{peopleLine(st)}</span>
+                        {s.siteManagerId !== me.id && <span className="block text-[0.87rem] text-muted">Run by {db.people.find((x) => x.id === s.siteManagerId)?.name}. Given to you by the office</span>}
+                        <SiteBadges db={db} me={me} siteId={s.id} day={day} />
                       </span>
                       <Badge tone={st.state === "sent" ? "ok" : st.state === "todo" ? "warn" : "neutral"}>{st.state === "sent" ? "Sent" : st.state === "todo" ? "Timesheet to do" : "Nothing to mark"}</Badge>
                       <CaretRight size={16} className="text-muted" aria-hidden="true" />
@@ -493,12 +561,25 @@ function ManagerHome({ me, day }: { me: Person; day: string }) {
         <Tiles me={me} operative={false} open={setSheet} />
       </div>
       <Sheets me={me} day={day} site={null} sites={sites} sheet={sheet} close={() => setSheet(null)} />
-      {siteOpen && <SiteSheet site={siteOpen} me={me} day={day} onTimesheet={() => { setTimesheet(siteOpen); setSiteOpen(null); }} onClose={() => setSiteOpen(null)} open={(k) => { setSiteOpen(null); setApprove(k); }} />}
-      {timesheet && <TimeSheet site={timesheet} me={me} day={day} app onClose={() => setTimesheet(null)} />}
       {approve === "overtime" && <OvertimeClaimsSheet site={sites} me={me} day={day} onClose={() => setApprove(null)} />}
       {approve === "crew" && <CrewRequestsSheet site={sites} me={me} day={day} onClose={() => setApprove(null)} />}
       {approve === "receipts" && <ReceiptsToApprove sites={sites} me={me} day={day} onClose={() => setApprove(null)} />}
     </div>
+  );
+}
+
+/** On a site's card: who cannot work, and what waits for him there. */
+function SiteBadges({ db, me, siteId, day }: { db: Db; me: Person; siteId: string; day: string }) {
+  const w = waitingFor(db, me, new Set([siteId]));
+  const blocked = cannotWork(db, siteId, day).length;
+  if (!blocked && !w.overtime && !w.receipts && !w.crew) return null;
+  return (
+    <span className="mt-1 flex flex-wrap gap-1.5">
+      {blocked > 0 && <Badge tone="bad">{plural(blocked, "person", "people")} cannot work</Badge>}
+      {w.crew > 0 && <Badge tone="warn">{plural(w.crew, "request")} from the crew</Badge>}
+      {w.overtime > 0 && <Badge tone="accent">{plural(w.overtime, "overtime claim")}</Badge>}
+      {w.receipts > 0 && <Badge tone="accent">{plural(w.receipts, "receipt")}</Badge>}
+    </span>
   );
 }
 
@@ -516,45 +597,99 @@ function receiptsFor(db: Db, me: Person, ids: Set<string>): Expense[] {
   return db.expenses.filter((x) => x.status === "Waiting" && x.personId !== me.id && x.projectId !== null && ids.has(x.projectId));
 }
 
-/** A site's day: how many are planned, and whether today's time is sent. */
+/** A site's day: who is on it (the timesheet once anyone is marked, else the plan, as everywhere), and whether today's time is sent. */
 export function siteToday(db: Db, siteId: string, day: string) {
-  const planned = new Set(db.plan.filter((p) => p.projectId === siteId && p.date === day).map((p) => p.personId));
+  const r = dayRoster(db.attendance, db.plan, siteId, day, day);
   const marks = db.attendance.filter((a) => a.projectId === siteId && a.date === day && a.status !== "restday");
-  for (const a of marks) planned.add(a.personId);
-  const state: "sent" | "todo" | "none" = planned.size === 0 ? "none" : marks.length > 0 && marks.every((a) => a.sent) ? "sent" : "todo";
-  return { planned: planned.size, state };
+  const state: "sent" | "todo" | "none" = r.rows.length === 0 ? "none" : marks.length > 0 && marks.every((a) => a.sent) ? "sent" : "todo";
+  return { planned: r.rows.length, onSite: r.from === "timesheet", state };
 }
 
-function SiteSheet({ site, me, day, onTimesheet, onClose, open }: { site: Project; me: Person; day: string; onTimesheet: () => void; onClose: () => void; open: (k: ManagerSheet) => void }) {
+/** "6 people on site today" once marked, else "6 people down for today". */
+const peopleLine = (st: { planned: number; onSite: boolean }) => (st.planned === 0 ? "Nobody planned today" : `${plural(st.planned, "person", "people")} ${st.onSite ? "on site today" : "down for today"}`);
+
+type JobSheet = "time" | "overtime" | "receipts" | "crew" | "weekend" | "week" | "month" | "notes" | "cannot" | "scaffolds" | "subs" | "photo" | "extra" | "ask" | null;
+
+/**
+ * One site on a site manager's phone. Always: the timesheet and what waits for him on it. With
+ * the Projects app on (Oisin, 20 Nov: the two phones become this app too), the whole job as his
+ * phone had it: overtime time stamps, week and month ahead, instructions, who cannot work,
+ * scaffold inspections, subcontractor invoices, photos, extra work and requests.
+ */
+function JobScreen({ site, me, day, onBack }: { site: Project; me: Person; day: string; onBack: () => void }) {
   const db = useData((s) => s.db);
-  const ids = new Set([site.id]);
-  const w = waitingFor(db, me, ids);
+  const projects = useAccess().apps.on("projects");
+  const [sheet, setSheet] = useState<JobSheet>(null);
+  const close = () => setSheet(null);
+  const w = waitingFor(db, me, new Set([site.id]));
   const st = siteToday(db, site.id, day);
+  const note = dayInstruction(db.dayInstructions, site.id, day);
+  const blocked = cannotWork(db, site.id, day).length;
+  const row = (k: JobSheet, label: string, Icon: typeof Clock, extra?: React.ReactNode, sub?: string) => (
+    <button key={k} type="button" className="press flex min-h-14 items-center gap-3 rounded-lg border border-line-strong bg-surface px-3 py-2 text-left hover:border-accent" onClick={() => setSheet(k)}>
+      <Icon size={22} className="shrink-0 text-accent-ink" aria-hidden="true" />
+      <span className="min-w-0 flex-1 font-medium">
+        {label}
+        {sub && <span className="block text-[0.87rem] font-normal text-muted">{sub}</span>}
+      </span>
+      {extra}
+    </button>
+  );
+  const count = (n: number, tone: "accent" | "warn" | "bad" = "accent") => (n > 0 ? <Badge tone={tone}>{n}</Badge> : null);
   return (
-    <Dialog open onClose={onClose} title={`${site.code} ${site.name}`}>
-      <div className="grid gap-2">
-        <p className="text-muted">
-          {site.location}. {st.planned === 0 ? "Nobody planned today." : `${plural(st.planned, "person", "people")} planned today.`}
+    <div className="min-h-full w-full bg-canvas">
+      <div className="bg-accent-strong px-4 py-3 text-white">
+        <button type="button" onClick={onBack} className="press -ml-1 mb-1 inline-flex min-h-9 items-center gap-1 rounded px-1 text-[0.93rem] opacity-90 hover:opacity-100">
+          <ArrowLeft size={16} aria-hidden="true" /> All my sites
+        </button>
+        <p className="font-display text-[1.35rem] leading-tight font-semibold">
+          {site.code} {site.name}
         </p>
-        <button type="button" className="press flex min-h-14 items-center gap-2 rounded-lg border border-accent bg-accent-soft px-3 text-left font-medium text-accent-ink" onClick={onTimesheet}>
+        <p className="text-[0.93rem] opacity-90">
+          {site.location}. {peopleLine(st)}
+        </p>
+      </div>
+      <div className="grid gap-2 px-4 py-4">
+        <button type="button" className="press flex min-h-14 items-center gap-3 rounded-lg border border-accent bg-accent-soft px-3 text-left font-medium text-accent-ink" onClick={() => setSheet("time")}>
           <Clock size={22} aria-hidden="true" />
           <span className="flex-1">Timesheet</span>
           <span className="text-[0.87rem] font-normal">{st.state === "sent" ? "Sent today" : st.state === "todo" ? "To do today" : ""}</span>
         </button>
-        {(
-          [
-            ["overtime", "Overtime claims", w.overtime],
-            ["receipts", "Reimbursements", w.receipts],
-            ["crew", "Crew requests", w.crew],
-          ] as const
-        ).map(([k, label, n]) => (
-          <button key={k} type="button" className="press flex min-h-12 items-center gap-2 rounded-lg border border-line-strong bg-surface px-3 text-left" onClick={() => open(k)}>
-            <span className="flex-1">{label}</span>
-            {n > 0 ? <Badge tone="accent">{n}</Badge> : <span className="text-[0.87rem] text-muted">None</span>}
-          </button>
-        ))}
+        {projects && row("weekend", "Overtime time stamp", CalendarPlus, undefined, "Saturday, Sunday or a bank holiday")}
+        <h3 className="mt-2 text-[0.93rem] font-medium text-muted">Waiting for you</h3>
+        {row("overtime", "Overtime claims", Clock, count(w.overtime))}
+        {row("receipts", "Reimbursements", Receipt, count(w.receipts))}
+        {row("crew", "Crew requests", Tray, count(w.crew, "warn"))}
+        {projects && row("subs", "Subcontractor invoices", Invoice, count(subsWaiting(db, site.id).length))}
+        {projects && (
+          <>
+            <h3 className="mt-2 text-[0.93rem] font-medium text-muted">The job</h3>
+            {row("week", "Week ahead", CalendarBlank)}
+            {row("month", "Month ahead", CalendarDots)}
+            {row("notes", "Site instructions", Megaphone, undefined, note ? "Up for today" : "Nothing up for today")}
+            {row("cannot", "Who cannot work", UserMinus, count(blocked, "bad"))}
+            {row("scaffolds", "Scaffold inspections", Ladder, count(scaffoldsDue(db, site.id, day), "warn"))}
+            {row("photo", "Send a photo", Camera)}
+            {row("extra", "Report extra work", PlusCircle)}
+            {row("ask", "Make a request", HandPalm, undefined, "For this site. It goes to the office")}
+          </>
+        )}
       </div>
-    </Dialog>
+      {sheet === "time" && <TimeSheet site={site} me={me} day={day} app onClose={close} />}
+      {sheet === "overtime" && <OvertimeClaimsSheet site={site} me={me} day={day} onClose={close} />}
+      {sheet === "receipts" && <ReceiptsToApprove sites={[site]} me={me} day={day} onClose={close} />}
+      {sheet === "crew" && <CrewRequestsSheet site={site} me={me} day={day} onClose={close} />}
+      {sheet === "weekend" && <WeekendSheet site={site} me={me} day={day} onClose={close} />}
+      {sheet === "week" && <SiteWeekSheet site={site} me={me} day={day} onClose={close} />}
+      {sheet === "month" && <SiteMonthSheet site={site} me={me} day={day} onClose={close} />}
+      {sheet === "notes" && <InstructionsSheet site={site} me={me} day={day} onClose={close} />}
+      {sheet === "cannot" && <CannotWorkSheet site={site} day={day} onClose={close} />}
+      {sheet === "scaffolds" && <ScaffoldSheet site={site} me={me} day={day} onClose={close} />}
+      {sheet === "subs" && <SubInvoiceSheet site={site} me={me} day={day} onClose={close} />}
+      {sheet === "photo" && <PhotoSheet site={site} me={me} lang="en" onClose={close} />}
+      {sheet === "extra" && <ExtraSheet site={site} me={me} lang="en" onClose={close} />}
+      {sheet === "ask" && <AskSheet site={site} me={me} lang="en" day={day} onClose={close} />}
+    </div>
   );
 }
 
@@ -700,6 +835,9 @@ function Sheets({ me, day, site, sites, sheet, close, toManager }: { me: Person;
       )}
       {sheet === "ask" && <AskSheet site={toManager ? site : null} me={me} lang="en" day={day} toManager={toManager && !!site} onClose={close} />}
       {sheet === "driving" && <DrivingSheet me={me} day={day} onClose={close} />}
+      {sheet === "licence" && <LicenceSheet me={me} day={day} onClose={close} />}
+      {sheet === "photo" && site && <PhotoSheet site={site} me={me} lang="en" onClose={close} />}
+      {sheet === "extra" && site && <ExtraSheet site={site} me={me} lang="en" onClose={close} />}
       {sheet === "me" && <MeSheet me={me} onClose={close} />}
     </>
   );

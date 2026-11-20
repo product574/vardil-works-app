@@ -1,7 +1,7 @@
 import os, re, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from shots import run, BASE, phone_of, show_phone
+from shots import run, BASE, phone_of, show_phone, pick_phone, pick_phone_id, unlock
 
 # 18 Nov (decisions 118 onwards): Who is where per site with a Day box and arrows; Fleet brought
 # across from the Secure-All build as a department of its own (overview by base, garage, driver
@@ -173,29 +173,29 @@ def steps(page, ctx):
     check("Damage reported: three new reports from the phones", main.locator("tbody tr").count() == 3)
 
     # ── 9. The phones: Report damage, Send a licence, and what the office receives
-    go(page, "/site")
-    page.get_by_label("Operative to view the phone as").select_option("p-128"); page.wait_for_timeout(300)
+    go(page, "/site"); unlock(page)
+    pick_phone_id(page, "p-128"); page.wait_for_timeout(300)
     if page.get_by_role("tablist", name="Language shown").count(): page.get_by_role("tablist", name="Language shown").get_by_role("tab", name="English").click()
     phone = phone_of(page, "operative")
     checked = data(page, "!!db.vehicleChecks.find(c => c.vehicleId === 'v-8' && c.at.slice(0, 10) === day)")
     check("Phone: the Driving check button says whether today's check is done", ("221-WW-3316: done at" if checked else "221-WW-3316: not done yet today") in phone.get_by_role("button", name=re.compile("^Driving check")).inner_text())
-    phone.get_by_role("button", name="Report damage").click(); r = dlg()
-    check("Report damage: their own van, with the camera or a file", "221-WW-3316" in r.inner_text() and r.locator("input[capture]").count() == 1)
-    r.get_by_label("Where are you?").fill("Builders' merchants, Naas"); r.get_by_label("What happened?").fill("Tail lift scraped on a bollard.")
-    r.get_by_role("button", name="Add a sample picture (demo)").click(); r.get_by_role("button", name="Send to the office").click(); page.wait_for_timeout(400)
-    rep = data(page, "db.damageReports[0]")
-    check("Report damage: it reaches Fleet, Damage reported, from the operative", rep["driverId"] == "p-128" and rep["vehicleId"] == "v-8" and rep["status"] == "New" and len(rep["photos"]) == 1)
+    # The phone app (20 Nov): Report damage became Report a repair, a vehicle or plant from a list.
+    phone.get_by_role("button", name=re.compile("^Report a repair")).click(); r = dlg()
+    check("Report a repair: their own van picked, with the camera or a file", r.get_by_role("tab", name="Vehicle").get_attribute("aria-selected") == "true" and "221-WW-3316" in r.get_by_label("Which vehicle?").evaluate("s => s.options[s.selectedIndex].text") and r.locator("input[capture]").count() == 1)
+    r.get_by_label("Where is it?").fill("Builders' merchants, Naas"); r.get_by_label("What is wrong?").fill("Tail lift scraped on a bollard.")
+    r.get_by_role("button", name="Send to the office").click(); page.wait_for_timeout(400)
+    rep = data(page, "db.repairs[0]")
+    check("Report a repair: it reaches the office, from the operative", rep["personId"] == "p-128" and rep["item"]["refId"] == "v-8" and rep["status"] == "Reported")
     feed = page.get_by_role("region", name="What the office receives")
-    check("What the office receives: the report is there at once, and under Needs a look", feed.get_by_role("group", name="Needs a look").get_by_text("Tail lift scraped on a bollard.", exact=False).count() == 1)
-    phone.get_by_role("button", name="Send a licence").click(); l = dlg()
+    check("What the office receives: the repair is there at once, and under Needs a look", feed.get_by_role("group", name="Needs a look").get_by_text("Tail lift scraped on a bollard.", exact=False).count() == 1)
+    phone.get_by_role("button", name=re.compile("^Send a licence")).click(); l = dlg()
     l.get_by_role("button", name="Driver CPC").click(); l.get_by_role("button", name="Use a sample licence (demo)").click()
     check("Send a licence: the sample fills the date it runs to", l.get_by_label("Runs to").input_value() > day)
     l.get_by_role("button", name="Send to the office").click(); page.wait_for_timeout(400)
     check("Send a licence: on the record at once, flagged to check", data(page, "!!db.people.find(p => p.id === 'p-128').licences.cpc.fromPhoneAt"))
     check("What the office receives: the new CPC is listed", feed.get_by_text("New Driver CPC sent, Seán Dunphy").count() == 1)
     show_phone(page, "manager")
-    mp = page.get_by_label("Site manager's phone").or_(page.locator("main")).first
-    check("The site manager's phone has Report damage and Send a licence too", page.get_by_role("button", name="Report damage").count() >= 1 and page.get_by_role("button", name="Send a licence").count() >= 1)
+    check("The site manager's phone has Report a repair and Send a licence too", phone_of(page, "manager").get_by_role("button", name=re.compile("^Report a repair")).count() == 1 and phone_of(page, "manager").get_by_role("button", name=re.compile("^Send a licence")).count() == 1)
 
     # ── 10. Search
     page.get_by_placeholder(re.compile("Search")).first.fill("222 ce"); page.wait_for_timeout(300)

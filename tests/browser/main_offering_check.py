@@ -139,7 +139,7 @@ with sync_playwright() as p:
     pg.goto(B+"/vardil"); pg.get_by_role("button", name="Open as managing director").click(); pg.wait_for_timeout(500)
     ok("everything package: Invoicing back", nav.get_by_text("Invoicing").count()>0)
     pg.goto(B+"/site"); pg.wait_for_timeout(500)
-    ok("everything: two phones again", pg.get_by_label("Site manager's phone").count()==1)
+    ok("everything: still the one phone app", pg.get_by_label("Phone app", exact=True).count()==1 and pg.get_by_label("Site manager's phone").count()==0)
     ok("no page errors", not errs); print(errs[:5])
     b.close()
 print(sum(c for _,c in res),"/",len(res))

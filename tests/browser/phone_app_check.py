@@ -143,6 +143,32 @@ with sync_playwright() as p:
     ok("number changed by the office", dlg.get_by_text("089 400 1234").count() > 0)
     pg.screenshot(path=S + "8-person.png")
 
+    # With every app on (Projects too), the same app: the site opens the whole job.
+    pg.keyboard.press("Escape"); pg.wait_for_timeout(200)
+    pg.get_by_role("button", name="Back to Vardil HQ").click(); pg.wait_for_url("**/vardil")
+    pg.goto(B + "/vardil/features"); pg.get_by_role("button", name="Use everything").click(); pg.wait_for_timeout(200)
+    pg.goto(B + "/vardil"); pg.get_by_role("button", name="Open as managing director").click(); pg.wait_for_timeout(600)
+    pg.goto(B + "/site"); pg.wait_for_timeout(500)
+    ok("everything: one phone app, not two phones", phone.count() == 1 and pg.get_by_label("Site manager's phone").count() == 0)
+    # Another site manager: the first was signed out everywhere above.
+    opt = [o for o in pick.locator("option").all_inner_texts() if o.endswith("Site manager") and not o.startswith(mgr)][0]
+    pick.select_option(label=opt); pg.wait_for_timeout(300)
+    if phone.get_by_role("button", name="Unlock with fingerprint").count(): phone.get_by_role("button", name="Unlock with fingerprint").click(); pg.wait_for_timeout(200)
+    phone.get_by_role("region", name="My sites today").get_by_role("button").first.click(); pg.wait_for_timeout(300)
+    ok("everything: the site opens the whole job", all(phone.get_by_role("button", name=re.compile("^" + n)).count() > 0 for n in ["Timesheet", "Overtime time stamp", "Week ahead", "Month ahead", "Site instructions", "Who cannot work", "Scaffold inspections", "Subcontractor invoices", "Send a photo", "Report extra work", "Make a request"]))
+    pg.screenshot(path=S + "8b-job.png")
+    phone.get_by_role("button", name=re.compile("^Week ahead")).click(); pg.wait_for_timeout(300)
+    ok("everything: week ahead opens on the phone", pg.get_by_role("dialog").count() > 0)
+    pg.keyboard.press("Escape"); pg.wait_for_timeout(200)
+    phone.get_by_role("button", name=re.compile("All my sites")).click(); pg.wait_for_timeout(200)
+    ok("everything: back to all my sites", phone.get_by_role("heading", name="My sites today").count() == 1)
+    ops = [o for o in pick.locator("option").all_inner_texts() if not o.endswith("Site manager")]
+    pick.select_option(label=ops[0]); pg.wait_for_timeout(300)
+    if phone.get_by_role("button", name="Unlock with fingerprint").count(): phone.get_by_role("button", name="Unlock with fingerprint").click(); pg.wait_for_timeout(200)
+    if "Today you are at" in phone.inner_text():
+        ok("everything: operative sends photos and extra work too", phone.get_by_role("button", name=re.compile("^Send a photo")).count() == 1 and phone.get_by_role("button", name=re.compile("^Report extra work")).count() == 1)
+    ok("everything: Send a licence with Fleet", phone.get_by_role("button", name=re.compile("^Send a licence")).count() == 1)
+
     # A phone-sized window.
     pg.set_viewport_size({"width": 390, "height": 844}); pg.goto(B + "/site"); pg.wait_for_timeout(500)
     if phone.get_by_role("button", name="Unlock with fingerprint").count(): phone.get_by_role("button", name="Unlock with fingerprint").click(); pg.wait_for_timeout(200)

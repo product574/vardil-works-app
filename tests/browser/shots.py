@@ -68,14 +68,48 @@ def open_last_week(page):
 
 
 def phone_of(page, who="operative"):
-    """One of the two phones on the Site phone screen. From 1280 wide both are side by side,
-    each in its own frame (merged 19 Nov), so a check names the one it means."""
-    return page.get_by_label("Site manager's phone" if who == "manager" else "Operative's phone", exact=True)
+    """The phone on the Site phone screen. Since 20 Nov it is one phone app whose home screen
+    follows the role (decision 211); `show_phone` or `pick_phone` chooses whose it is."""
+    return page.get_by_label("Phone app", exact=True)
+
+
+def unlock(page):
+    """Open the app past the fingerprint screen, when the person uses fingerprint."""
+    b = page.get_by_label("Phone app", exact=True).get_by_role("button", name="Unlock with fingerprint")
+    if b.count():
+        b.click(); page.wait_for_timeout(200)
+
+
+def pick_phone(page, name):
+    """Look at a named person's phone (the office's "Phone of" box), and open it."""
+    sel = page.get_by_label("Whose phone to look at")
+    if sel.count():
+        opts = [o for o in sel.locator("option").all_inner_texts() if o.startswith(name + ",")]
+        if opts and sel.evaluate("s => s.options[s.selectedIndex].text") != opts[0]:
+            sel.select_option(label=opts[0]); page.wait_for_timeout(300)
+    unlock(page)
 
 
 def show_phone(page, who):
-    """Narrower than 1280 there is room for one phone and a "Phone of" switch picks it; wider,
-    both are shown and there is nothing to press."""
-    tab = page.get_by_role("tablist", name="Phone of").get_by_role("tab", name="Site manager" if who == "manager" else "Operative")
-    if tab.count() and tab.is_visible():
-        tab.click(); page.wait_for_timeout(300)
+    """Look at an operative's phone (the one the demo's operative signs in as) or a site
+    manager's (the first in the list), unless one of that kind is already shown."""
+    sel = page.get_by_label("Whose phone to look at")
+    if sel.count():
+        cur = sel.evaluate("s => s.options[s.selectedIndex].text")
+        if cur.endswith("Site manager") != (who == "manager"):
+            opts = sel.locator("option").all_inner_texts()
+            if who == "manager":
+                want = [o for o in opts if o.endswith("Site manager")][0]
+            else:
+                op = page.evaluate("(() => { const p = JSON.parse(localStorage.getItem('cod.prefs')).state.operativeId; const d = JSON.parse(localStorage.getItem('cod.data')).state.db; return d.people.find(x => x.id === p)?.name; })()")
+                want = ([o for o in opts if o.startswith(str(op) + ",")] or [o for o in opts if not o.endswith("Site manager")])[0]
+            sel.select_option(label=want); page.wait_for_timeout(300)
+    unlock(page)
+
+
+def pick_phone_id(page, person_id):
+    """Look at a person's phone by their id, and open it."""
+    sel = page.get_by_label("Whose phone to look at")
+    if sel.count():
+        sel.select_option(person_id); page.wait_for_timeout(300)
+    unlock(page)

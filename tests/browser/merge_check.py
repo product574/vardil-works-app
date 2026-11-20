@@ -2,7 +2,7 @@ import os, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import re
-from shots import run, BASE, OUT, phone_of
+from shots import run, BASE, OUT, phone_of, pick_phone, pick_phone_id, unlock
 
 # The two copies merged, 19 Nov 2026: the other copy (step-2-team-chat: Email, Team chat, the
 # phones, Admin, Fleet from Secure-All, Profitability) brought together with this one
@@ -88,43 +88,42 @@ def steps(page, ctx):
     admin_links = [t.split("\n")[0].strip() for t in side().get_by_role("link").all_inner_texts()]
     check("Admin: the other copy's screens are all there", all(n in admin_links for n in ["Requests", "Roles and access", "Site access", "Company holidays", "Billing", "Connections", "Automations", "Activity log"]), admin_links)
 
-    # ── 5. The site phone: both phones side by side, each phone-sized, scrolling inside itself
-    go(page, "/site")
-    op, mp = phone_of(page, "operative"), phone_of(page, "manager")
-    ob, mb = op.bounding_box(), mp.bounding_box()
-    check("Site phone: two phones side by side, an operative's then a site manager's", ob and mb and ob["x"] < mb["x"] and abs(ob["y"] - mb["y"]) < 5, (ob, mb))
-    check("Site phone: each is phone-sized", 360 <= ob["width"] <= 440 and 500 <= ob["height"] <= 860 and 360 <= mb["width"] <= 440, (ob, mb))
+    # ── 5. The site phone: one phone app since 20 Nov, phone-sized, scrolling inside itself
+    go(page, "/site"); unlock(page)
+    op = mp = phone_of(page, "operative")
+    ob = mb = op.bounding_box()
+    check("Site phone: one phone app, whoever's phone is picked", op.count() == 1 and page.get_by_label("Whose phone to look at").count() == 1)
+    check("Site phone: it is phone-sized", 360 <= ob["width"] <= 440 and 500 <= ob["height"] <= 860, ob)
     scroller = op.locator(":scope > div").nth(1)
     check("Site phone: the operative's phone scrolls inside itself", page.evaluate("(el) => el.scrollHeight > el.clientHeight && getComputedStyle(el).overflowY === 'auto'", scroller.element_handle()))
     feed = page.get_by_role("region", name="What the office receives")
     check("Site phone: what the office receives sits beside the phones", feed.count() == 1 and feed.bounding_box()["x"] > mb["x"] + mb["width"] - 1, feed.bounding_box() if feed.count() else None)
-    check("Site phone: no Phone of switch when both fit", page.get_by_role("tablist", name="Phone of").is_hidden())
 
     # Operative: the red card on top, tickets in the profile, sheets on the phone
-    pick(page.get_by_label("Operative to view the phone as"), r"^Tomás Breslin"); page.wait_for_timeout(300)
+    pick(page.get_by_label("Whose phone to look at"), r"^Tomás Breslin"); unlock(page); page.wait_for_timeout(300)
     first = op.locator("[role=status]").first
     check("Operative: someone who cannot work sees the red card at the top of the front page", "Safe Pass" in first.inner_text() and "cannot work on site" in first.inner_text(), first.inner_text()[:200])
-    check("Operative: no My tickets button on the front page; it is in the profile", op.get_by_role("button", name="My tickets").count() == 0)
-    op.get_by_role("button", name="My profile").click(); page.wait_for_timeout(300)
+    check("Operative: My tickets is a tile of its own on the front page", op.get_by_role("button", name=re.compile("^My tickets")).count() == 1)
+    op.get_by_role("button", name=re.compile("^My tickets")).click(); page.wait_for_timeout(300)
     sheet = op.locator("dialog[open]")
     ob = op.bounding_box()
-    check("Operative: the profile opens as a sheet on the phone, not over the page", sheet.count() == 1 and inside(sheet.bounding_box(), ob), (sheet.count(), sheet.bounding_box() if sheet.count() else None, ob))
-    check("Operative: My tickets is in the profile, with the Safe Pass that ran out", "Safe Pass" in sheet.get_by_role("list", name="My tickets").inner_text() and sheet.get_by_role("button", name="Send a photo of the new card").count() >= 1)
+    check("Operative: the sheet opens on the phone, not over the page", sheet.count() == 1 and inside(sheet.bounding_box(), ob), (sheet.count(), sheet.bounding_box() if sheet.count() else None, ob))
+    check("Operative: My tickets has the Safe Pass that ran out, with Send a new one", "Safe Pass" in sheet.get_by_role("list", name="My certificates").inner_text() and sheet.get_by_role("button", name=re.compile("Send a new one")).count() >= 1)
     page.screenshot(path=f"{OUT}/950-phones-profile.png")
-    check("Operative: the sheet holds only its own phone; the page and the other phone stay usable", page.evaluate("!document.querySelector('dialog:modal')") and mp.locator("dialog[open]").count() == 0)
+    check("Operative: the sheet holds only its own phone; the page stays usable", page.evaluate("!document.querySelector('dialog:modal')"))
     page.keyboard.press("Escape"); page.wait_for_timeout(250)
     check("Operative: Escape closes the sheet", op.locator("dialog[open]").count() == 0)
 
     # Site manager: who cannot work, scaffold inspections, subcontractor invoices, Do not drive
-    pick(page.get_by_label("Site manager to view the phone as"), r"^Darragh Lenihan"); page.wait_for_timeout(300)
-    mp.get_by_role("list", name="My jobs").get_by_role("button", name=re.compile("^C722")).click(); page.wait_for_timeout(300)
+    pick(page.get_by_label("Whose phone to look at"), r"^Darragh Lenihan"); unlock(page); page.wait_for_timeout(300)
+    mp.get_by_role("region", name="My sites today").get_by_role("button", name=re.compile("^C722")).click(); page.wait_for_timeout(300)
     mp.get_by_role("button", name=re.compile("^Who cannot work")).click(); page.wait_for_timeout(300)
     who = mp.get_by_role("list", name="Who cannot work on C722")
     check("Site manager: Who cannot work names Tomás Breslin, today, with his course", who.count() == 1 and "Tomás Breslin" in who.inner_text() and "Cannot work today" in who.inner_text() and "Booked on the" in who.inner_text(), who.inner_text() if who.count() else "")
     page.keyboard.press("Escape"); page.wait_for_timeout(250)
 
-    pick(page.get_by_label("Site manager to view the phone as"), r"^Eoin Brosnan"); page.wait_for_timeout(300)
-    mp.get_by_role("list", name="My jobs").get_by_role("button", name=re.compile("^C719")).click(); page.wait_for_timeout(300)
+    pick(page.get_by_label("Whose phone to look at"), r"^Eoin Brosnan"); unlock(page); page.wait_for_timeout(300)
+    mp.get_by_role("region", name="My sites today").get_by_role("button", name=re.compile("^C719")).click(); page.wait_for_timeout(300)
     mp.get_by_role("button", name=re.compile("^Scaffold inspections")).click(); page.wait_for_timeout(300)
     scf = mp.get_by_role("list", name="Scaffolds on C719")
     s2 = scf.locator("li", has_text="S2")
@@ -135,11 +134,11 @@ def steps(page, ctx):
     check("Site manager: an inspection saved on the phone is in his name, today", got == [True, "Eoin Brosnan", "Safe to use"], got)
     page.keyboard.press("Escape"); page.wait_for_timeout(250)
     check("Site manager: Escape closes the sheet even after the button pressed has gone", mp.locator("dialog[open]").count() == 0)
-    mp.get_by_role("button", name="All my jobs").click(); page.wait_for_timeout(250)
+    mp.get_by_role("button", name="All my sites").click(); page.wait_for_timeout(250)
 
     waiting = data(page, "(() => { const s = db.supplierInvoices.find(s => s.party === 'subcontractor' && s.askedBy && s.readStatus !== 'confirmed' && !s.sentBack); const p = db.projects.find(p => p.id === s.allocations[0].projectId); return { id: s.id, no: s.invoiceNo, sub: s.supplier, code: p.code, mgr: db.people.find(x => x.id === p.siteManagerId).name } })()")
-    pick(page.get_by_label("Site manager to view the phone as"), "^" + re.escape(waiting["mgr"])); page.wait_for_timeout(300)
-    mp.get_by_role("list", name="My jobs").get_by_role("button", name=re.compile("^" + waiting["code"])).click(); page.wait_for_timeout(300)
+    pick(page.get_by_label("Whose phone to look at"), "^" + re.escape(waiting["mgr"])); unlock(page); page.wait_for_timeout(300)
+    mp.get_by_role("region", name="My sites today").get_by_role("button", name=re.compile("^" + waiting["code"])).click(); page.wait_for_timeout(300)
     mp.get_by_role("button", name=re.compile("^Subcontractor invoices")).click(); page.wait_for_timeout(300)
     subs = mp.get_by_role("list", name=f"Subcontractor invoices for {waiting['code']}")
     row = subs.locator("li", has_text=waiting["no"])
@@ -151,7 +150,7 @@ def steps(page, ctx):
     check("Site manager: approved in his name and into job costs", after == ["confirmed", waiting["mgr"]], after)
     page.keyboard.press("Escape"); page.wait_for_timeout(250)
 
-    pick(page.get_by_label("Site manager to view the phone as"), r"^Shane Culloty"); page.wait_for_timeout(300)
+    pick(page.get_by_label("Whose phone to look at"), r"^Shane Culloty"); unlock(page); page.wait_for_timeout(300)
     mp.get_by_role("button", name=re.compile("^Driving check")).click(); page.wait_for_timeout(300)
     # His own van is chosen for him; anyone without one picks it.
     if mp.locator("dialog[open]").get_by_label("Vehicle").count():
@@ -192,11 +191,11 @@ def steps(page, ctx):
 
     # ── 7. Phone width: no frame, one phone at a time with the switch
     page.set_viewport_size({"width": 390, "height": 844}); page.wait_for_timeout(300)
-    go(page, "/site")
+    go(page, "/site"); unlock(page)
     check("Phone width: no frame; the phone fills the screen", page.locator("main .border-bezel").count() == 0 and phone_of(page, "operative").bounding_box()["width"] >= 340)
-    check("Phone width: one phone at a time, with the Phone of switch", page.get_by_role("tablist", name="Phone of").is_visible() and phone_of(page, "manager").is_hidden())
+    check("Phone width: one phone, with whose phone it is to pick", page.get_by_label("Whose phone to look at").is_visible())
     check("Phone width: nothing scrolls sideways", not page.evaluate("document.documentElement.scrollWidth > document.documentElement.clientWidth"))
-    phone_of(page, "operative").get_by_role("button", name="My profile").click(); page.wait_for_timeout(300)
+    phone_of(page, "operative").get_by_role("button", name="Me", exact=True).click(); page.wait_for_timeout(300)
     check("Phone width: a sheet is an ordinary dialog over the screen", page.locator("dialog[open]").count() == 1 and page.locator("dialog[open]").evaluate("(d) => d.matches(':modal')"))
     page.screenshot(path=f"{OUT}/952-phone-width.png")
     page.keyboard.press("Escape")

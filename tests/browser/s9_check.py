@@ -1,7 +1,7 @@
 import os, re, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from shots import run, BASE, OUT, open_last_week, phone_of, show_phone
+from shots import run, BASE, OUT, open_last_week, phone_of, show_phone, pick_phone, pick_phone_id, unlock
 
 # Round nine, 17 Nov (decisions 100 to 105): overtime at both rates on one day, the Weekend time
 # stamp for Saturdays, Sundays and bank holidays, bank holidays in Admin, weekend work on the week
@@ -253,9 +253,9 @@ def steps(page, ctx):
     check("Month ahead: a bank holiday is marked on its day", bh["date"][:7] != day[:7] or "Bank holiday" in grid.locator(f"thead th[data-day='{bh['date']}']").inner_text())
 
     # ── 7. The phones
-    go(page, "/site")
+    go(page, "/site"); unlock(page)
     show_phone(page, "manager")
-    page.get_by_label("Site manager to view the phone as").select_option(label="Eoin Brosnan"); page.wait_for_timeout(300)
+    pick_phone(page, "Eoin Brosnan"); page.wait_for_timeout(300)
     phone = phone_of(page, "manager")
     phone.get_by_role("button", name=re.compile("^C724")).click(); page.wait_for_timeout(250)
     check("Site manager's phone: a Weekend time stamp button in the job", phone.get_by_role("button", name=re.compile("^Overtime time stamp")).count() == 1)
@@ -269,11 +269,11 @@ def steps(page, ctx):
     d.get_by_label("Hours at double time").fill("3.5"); d.get_by_role("button", name="Save time stamp").click(); page.wait_for_timeout(400)
     got = stamps("C724", last_sun)
     check("Site manager's phone: the stamp is saved in his name", got == [["Orla Prunty", 0, 3.5]] and data(page, f"db.attendance.find(a => a.date === '{last_sun}' && a.projectId === '{pid('C724')}').savedBy") == "Eoin Brosnan" and "1 time stamp saved for C724" in toast(page), (got, toast(page)))
-    phone.get_by_role("button", name="Timesheet", exact=True).click(); page.wait_for_timeout(300)
+    phone.get_by_role("button", name=re.compile("^Timesheet")).click(); page.wait_for_timeout(300)
     d = dlg()
     li = d.get_by_role("list", name="People on site today").locator("> li").first
     name = li.locator("p").first.inner_text().split("\n")[0]
-    li.get_by_role("tab", name="Full").click(); page.wait_for_timeout(200)
+    li.get_by_role("tab", name="Overtime").click(); page.wait_for_timeout(200)
     li.get_by_label(f"{name} hours at time and a half").fill("2"); li.get_by_label(f"{name} hours at double time").fill("1"); page.wait_for_timeout(200)
     check("Site manager's phone: today's overtime is typed at each rate", data(page, f"(() => {{ const a = db.attendance.find(a => a.projectId === '{pid('C724')}' && a.date === day && db.people.find(p => p.id === a.personId).name === '{name}'); return [a.status, a.overtimeHours, a.doubleHours] }})()") == ["full", 2, 1] and "An early start, at 6am or 7am, is not overtime" in d.inner_text())
     page.screenshot(path=f"{OUT}/917-phone-timesheet.png")
@@ -282,10 +282,10 @@ def steps(page, ctx):
     check("Site manager's phone: the week ahead shows the Saturday someone is down for", dlg().locator("li", has_text="Sat").count() >= 1 and "Seán Dunphy" in dlg().inner_text())
     page.keyboard.press("Escape"); page.wait_for_timeout(200)
     show_phone(page, "operative")
-    page.get_by_label("Operative to view the phone as").select_option(data(page, "db.people.find(p => p.name === 'Orla Prunty').id")); page.wait_for_timeout(300)
+    pick_phone_id(page, data(page, "db.people.find(p => p.name === 'Orla Prunty').id")); page.wait_for_timeout(300)
     phone = phone_of(page, "operative")
     if phone.get_by_role("tab", name="English").count(): phone.get_by_role("tab", name="English").click(); page.wait_for_timeout(200)
-    phone.get_by_role("button", name="My week").click(); page.wait_for_timeout(300)
+    phone.get_by_role("button", name=re.compile("^My week")).click(); page.wait_for_timeout(300)
     d = dlg()
     mine = d.get_by_role("list", name="This week").locator("> li")
     check("Operative's phone: My week shows the Saturday they are down for, after the five working days", mine.count() == 6 and mine.last.inner_text().startswith("Sat") and "C724" in mine.last.inner_text(), mine.all_inner_texts()[-2:])

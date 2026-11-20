@@ -1,7 +1,7 @@
 import os, re, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from shots import run, BASE, OUT, FIX, phone_of, show_phone
+from shots import run, BASE, OUT, FIX, phone_of, show_phone, pick_phone, pick_phone_id, unlock
 
 # Oisin's round seven, 17 Nov (decisions 89 to 94): overtime at time and a half or double time,
 # carried through; an optional note with every no; an email put under a label leaves the Inbox,
@@ -100,15 +100,17 @@ def steps(page, ctx):
     check("Payroll: fits the page", page.evaluate(SCROLLS) == 0)
 
     # On the site manager's phone
-    go(page, "/site")
+    go(page, "/site"); unlock(page)
     show_phone(page, "manager")
-    page.get_by_label("Site manager to view the phone as").select_option(label="Eoin Brosnan"); page.wait_for_timeout(300)
-    page.get_by_role("list", name="My jobs").get_by_role("button").first.click(); page.wait_for_timeout(250)
-    phone_of(page, "manager").get_by_role("button", name="Timesheet", exact=True).click(); page.wait_for_timeout(250)
+    pick_phone(page, "Eoin Brosnan"); page.wait_for_timeout(300)
+    page.get_by_label("Phone app", exact=True).get_by_role("region", name="My sites today").get_by_role("button").first.click(); page.wait_for_timeout(250)
+    phone_of(page, "manager").get_by_role("button", name=re.compile("^Timesheet")).click(); page.wait_for_timeout(250)
     d = dlg()
     people = d.get_by_role("list", name="People on site today").locator("> li")
     who = data(page, "db.people.find(p => p.id === db.attendance.find(a => a.projectId==='pr-C719' && a.date===day && a.status==='full' && !a.sent).personId).name")
     li = people.filter(has_text=who)
+    # In the phone app overtime is a fourth choice, which opens the two boxes (20 Nov).
+    li.get_by_role("tab", name="Overtime").click(); page.wait_for_timeout(200)
     check("Phone timesheet: overtime is two boxes of hours, one at each rate, with no rate to pick", li.get_by_label(f"{who} hours at time and a half").count() == 1 and li.get_by_label(f"{who} hours at double time").count() == 1 and li.get_by_role("tablist", name=f"{who} overtime rate").count() == 0)
     type_in(li.get_by_label(f"{who} hours at time and a half"), "2"); type_in(li.get_by_label(f"{who} hours at double time"), "1")
     a = data(page, f"db.attendance.find(a => a.projectId==='pr-C719' && a.date===day && db.people.find(p=>p.id===a.personId).name==={who!r})")
@@ -144,10 +146,10 @@ def steps(page, ctx):
     tbl = main.locator("table")
     check("People, Holidays: the Declined list says why each was declined, or that no note was left", "Why it was declined" in tbl.locator("thead").inner_text() and "Scaffold strike that day" in tbl.locator("tr", has_text="Paudie Lyne").inner_text() and "No note left" in tbl.locator("tr", has_text="Sinéad Colgan").inner_text() and "Short notice, and Ardmullen needs the full crew that week" in tbl.locator("tr", has_text="João Teixeira").inner_text(), tbl.inner_text()[:300])
     # The person reads it on their phone.
-    go(page, "/site")
+    go(page, "/site"); unlock(page)
     show_phone(page, "operative")
-    page.get_by_label("Operative to view the phone as").select_option(label=[o for o in page.get_by_label("Operative to view the phone as").locator("option").all_inner_texts() if o.startswith("Paudie Lyne")][0]); page.wait_for_timeout(300)
-    phone_of(page, "operative").get_by_role("button", name="My profile").click(); page.wait_for_timeout(250)
+    pick_phone(page, "Paudie Lyne"); page.wait_for_timeout(300)
+    phone_of(page, "operative").get_by_role("button", name=re.compile("^Holidays")).click(); page.wait_for_timeout(250)
     mine = dlg().get_by_role("list", name="My holidays").inner_text()
     check("Phone: the operative sees the no and the note under his holidays", "Declined" in mine and "Note: Scaffold strike that day, everyone is needed" in mine, mine)
     page.screenshot(path=f"{OUT}/704-phone-decline-note.png")
@@ -175,17 +177,17 @@ def steps(page, ctx):
     page.get_by_role("tab", name=re.compile("^(Done|Dealt with|Closed)")).click(); page.wait_for_timeout(300)
     check("Projects, Requests: the site sees why it was turned down", "Note: Use the tower already on site" in main.locator("tr", has_text="20 m articulated boom lift").inner_text(), main.locator("tr", has_text="20 m articulated boom lift").inner_text())
     owner = data(page, "db.people.find(p => p.id === db.expenses.find(x => x.status === 'Declined').personId)")
-    go(page, "/site")
+    go(page, "/site"); unlock(page)
     if owner["kind"] == "Operative":
         show_phone(page, "operative")
-        page.get_by_label("Operative to view the phone as").select_option(label=[o for o in page.get_by_label("Operative to view the phone as").locator("option").all_inner_texts() if o.startswith(owner["name"])][0])
+        pick_phone(page, owner["name"])
     else:
         show_phone(page, "manager")
-        page.get_by_label("Site manager to view the phone as").select_option(label=owner["name"])
+        pick_phone(page, owner["name"])
     page.wait_for_timeout(300)
     # Someone whose own language is not English gets a language switch; put it on English.
     if page.get_by_role("tab", name="English").count(): page.get_by_role("tab", name="English").click(); page.wait_for_timeout(250)
-    phone_of(page, "operative" if owner["kind"] == "Operative" else "manager").get_by_role("button", name="My profile").click(); page.wait_for_timeout(250)
+    phone_of(page, "operative" if owner["kind"] == "Operative" else "manager").get_by_role("button", name="Me", exact=True).click(); page.wait_for_timeout(250)
     claims = dlg().get_by_role("list", name="My reimbursements").inner_text()
     check("Phone: whoever claimed sees the no and the note", "Declined" in claims and "Note: No receipt with the claim" in claims, claims)
     page.keyboard.press("Escape"); page.wait_for_timeout(200)
@@ -351,8 +353,8 @@ def steps(page, ctx):
     chat = data(page, "db.chatChannels.find(c => c.projectId==='pr-C720').memberIds")
     check("Group chat: the new site manager joins and the one before leaves", "p-sm1" in chat and "p-sm2" not in chat, chat)
     as_role(page, "Site manager")
-    go(page, "/site")
-    jobs = page.get_by_role("list", name="My jobs").get_by_role("button")
+    go(page, "/site"); unlock(page)
+    jobs = page.get_by_label("Phone app", exact=True).get_by_role("region", name="My sites today").get_by_role("button")
     check("Phone: the site is one of Eoin's own jobs now", [t.split("\n")[0] for t in jobs.all_inner_texts()] == ["C719 St Finian's Church", "C720 Ardmullen House", "C724 Derrybawn Bridge"] and "Run by" not in jobs.nth(1).inner_text(), jobs.all_inner_texts())
     go(page, "/people/timesheet?site=pr-C720", "table")
     check("Timesheet: he marks its time", "C720" in main.inner_text() and page.locator("tbody tr").count() >= 4)
@@ -360,10 +362,10 @@ def steps(page, ctx):
     sec = main.locator("section", has_text="From your crew")
     check("Requests: its crew's requests come to him", sec.get_by_role("button", name=re.compile("^Forward to management: Dust sheets")).count() == 1)
     as_role(page, "Managing director")
-    go(page, "/site")
+    go(page, "/site"); unlock(page)
     show_phone(page, "operative")
     op = data(page, "(() => { const a = db.assignments.find(a => a.projectId==='pr-C720' && db.people.find(p => p.id===a.personId).kind==='Operative'); return db.people.find(p => p.id===a.personId).name })()")
-    page.get_by_label("Operative to view the phone as").select_option(label=[o for o in page.get_by_label("Operative to view the phone as").locator("option").all_inner_texts() if o.startswith(op)][0]); page.wait_for_timeout(300)
+    pick_phone(page, op); page.wait_for_timeout(300)
     check("Phone: the crew see the new site manager", "Eoin Brosnan" in phone_of(page, "operative").inner_text(), phone_of(page, "operative").inner_text()[:200])
     go(page, "/admin/sites", "table")
     grid = page.get_by_role("table", name="Sites each site manager can open")

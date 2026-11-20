@@ -3,7 +3,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 FIX = os.path.join(HERE, "fixtures") + os.sep
 sys.path.insert(0, HERE)
 import re
-from shots import run, BASE, OUT, phone_of, show_phone
+from shots import run, BASE, OUT, phone_of, show_phone, pick_phone, pick_phone_id, unlock
 
 # Compliance, 18 Nov 2026, after the HVAC compliance demo: every expiry in one place (people,
 # vans and licences, machinery and scaffolds, company papers, subcontractors), training courses,
@@ -225,32 +225,34 @@ def steps(page, ctx):
     check("Portal: once sent, the flag goes and the office sees it came through the portal", "Out of date or missing" not in papers.inner_text() and data(page, "db.activity[0].what") == "A subcontractor sent a paper through the portal" and data(page, "db.activity[0].who") == "Fiachra Naughton")
 
     # ── Site phone: Tomás sends a photo of his new card; the office accepts it
-    go(page, "/site")
-    pick(page.get_by_label("Operative to view the phone as"), r"^Tomás Breslin")
+    go(page, "/site"); unlock(page)
+    pick(page.get_by_label("Whose phone to look at"), r"^Tomás Breslin"); unlock(page)
     page.wait_for_timeout(250)
     phone = phone_of(page, "operative")
     check("Site phone: Tomás is told his Safe Pass ran out and he cannot work, and when his course is", "Safe Pass ran out" in phone.inner_text() and "cannot work on site" in phone.inner_text() and "Booked on the course" in phone.inner_text(), phone.inner_text()[:300])
-    # Merged 19 Nov: his tickets are in his profile, with the red card on the front page.
-    phone.get_by_role("button", name="My profile").click(); page.wait_for_timeout(250)
-    tickets = dlg().get_by_role("list", name="My tickets")
-    check("Site phone: My tickets, in his profile, lists his tickets with their dates", "Safe Pass" in tickets.inner_text() and "Manual handling" in tickets.inner_text())
-    tickets.locator("li", has_text="Safe Pass").get_by_role("button", name="Send a photo of the new card").click(); page.wait_for_timeout(250)
+    # The phone app (20 Nov): My tickets is a tile of its own; a new card goes to Admin, Certificates to check.
+    phone.get_by_role("button", name=re.compile("^My tickets")).click(); page.wait_for_timeout(250)
+    tickets = dlg().get_by_role("list", name="My certificates")
+    check("Site phone: My tickets lists his tickets with their dates", "Safe Pass" in tickets.inner_text() and "Manual handling" in tickets.inner_text())
+    tickets.locator("li", has_text="Safe Pass").get_by_role("button", name=re.compile("Send a new one")).click(); page.wait_for_timeout(250)
     dlg().get_by_label("Choose a card from this device").set_input_files(FIX + "card.png"); page.wait_for_timeout(600)
-    dlg().get_by_role("button", name="Send").click(); page.wait_for_timeout(300)
-    check("Site phone: the card is sent to the office, in his name", data(page, "!!db.people.find(p => p.id === 'p-124').certs.find(c => c.name === 'Safe Pass').sentPhoto") is True and data(page, "db.activity[0].who") == "Tomás Breslin")
+    dlg().get_by_role("button", name="Send to the office").click(); page.wait_for_timeout(300)
+    check("Site phone: the card is sent to the office, in his name", data(page, "db.certSubmissions[0].personId") == "p-124" and data(page, "db.certSubmissions[0].name") == "Safe Pass" and data(page, "db.activity[0].who") == "Tomás Breslin")
     page.screenshot(path=f"{OUT}/406-phone.png", full_page=True)
-    dlg().get_by_role("button", name="Close").first.click(); page.wait_for_timeout(200)
-    pick(page.get_by_label("Operative to view the phone as"), r"^Seán Dunphy")
+    page.keyboard.press("Escape"); page.wait_for_timeout(200)
+    pick(page.get_by_label("Whose phone to look at"), r"^Seán Dunphy"); unlock(page)
     page.wait_for_timeout(250)
     check("Site phone: Seán is told his tipper's CVRT is due", "221-WW-3316" in phone_of(page, "operative").inner_text() and "CVRT due" in phone_of(page, "operative").inner_text())
-    go(page, "/compliance/personnel", "table")
-    sent = page.get_by_role("table", name="Cards sent from the site phone")
-    check("Personnel: the card from the phone waits to be checked", sent.locator("tbody tr", has_text="Tomás Breslin").count() == 1)
-    sent.get_by_role("button", name="Check card").click(); page.wait_for_timeout(200)
+    go(page, "/admin")
+    sent = page.get_by_role("table", name="Certificates to check")
+    check("Admin: the card from the phone waits to be checked", sent.locator("tbody tr", has_text="Tomás Breslin").count() == 1)
+    sent.locator("tbody tr", has_text="Tomás Breslin").get_by_role("button", name="Check").click(); page.wait_for_timeout(200)
     check("Check card: the photo is shown with the date to read off it", dlg().locator("img").count() == 1)
-    dlg().get_by_role("button", name="Accept the card").click(); page.wait_for_timeout(300)
-    tp = data(page, "(() => { const c = db.people.find(p => p.id === 'p-124').certs.find(c => c.name === 'Safe Pass'); return [c.expires > day, !!c.proof, !!c.sentPhoto] })()")
-    check("Check card: accepted, the Safe Pass is renewed with the card attached", tp == [True, True, False], tp)
+    dlg().get_by_label("Runs out on").fill(data(page, "(() => { const d = new Date(day + 'T12:00:00Z'); d.setUTCFullYear(d.getUTCFullYear() + 4); return d.toISOString().slice(0, 10) })()"))
+    dlg().get_by_role("button", name="Accept").click(); page.wait_for_timeout(300)
+    tp = data(page, "(() => { const c = db.people.find(p => p.id === 'p-124').certs.find(c => c.name === 'Safe Pass'); return [c.expires > day, !!c.proof] })()")
+    check("Check card: accepted, the Safe Pass is renewed with the card attached", tp == [True, True], tp)
+    go(page, "/compliance/personnel", "table")
     check("Personnel: Tomás is no longer named as unable to work", "Tomás Breslin" not in (main.locator("[role=status]").inner_text() if main.locator("[role=status]").count() else ""))
 
     # ── Planning and the timesheet
@@ -290,7 +292,7 @@ def steps(page, ctx):
     reg.locator("tr", has_text="Chimney stack scaffold").get_by_role("button", name="Taken down").click(); page.wait_for_timeout(250)
     check("Project: taken down, it leaves the register and is listed below it", reg.locator("tr", has_text="Chimney stack scaffold").count() == 0 and "Taken down: S3" in main.inner_text())
     go(page, "/admin/activity")
-    check("Activity log: courses, inspections, papers and the phone card are recorded", all(w in main.inner_text() for w in ["Marked a course done", "Inspected a scaffold", "Renewed a company paper", "Accepted a new ticket sent from the phone", "Checked a driving licence"]))
+    check("Activity log: courses, inspections, papers and the phone card are recorded", all(w in main.inner_text() for w in ["Marked a course done", "Inspected a scaffold", "Renewed a company paper", "Accepted a certificate sent from the phone", "Checked a driving licence"]))
 
     # ── Who sees what
     as_role(page, "Site manager")

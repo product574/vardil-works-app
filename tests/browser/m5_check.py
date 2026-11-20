@@ -4,7 +4,7 @@ FIX = os.path.join(HERE, "fixtures") + os.sep
 REPO = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, HERE)
 import sys, re
-from shots import run, BASE, OUT, phone_of, show_phone
+from shots import run, BASE, OUT, phone_of, show_phone, pick_phone, pick_phone_id, unlock
 results = []
 def check(name, cond, detail=""):
     results.append((name, bool(cond), str(detail)))
@@ -140,55 +140,38 @@ def steps(page, ctx):
     as_role(page, "Client"); page.wait_for_timeout(300)
     check("Portal: signed in as the client there is no picker, no staff note and no other department", "/portal" in page.url and main.get_by_label("Client to view the portal as").count() == 0 and "This is exactly what" not in main.inner_text() and page.locator("nav[aria-label=Departments] a").count() <= 1, page.url)
 
-    # ── Site phone view
+    # ── Site phone view: the phone app (20 Nov), English first, big tiles
     as_role(page, "Managing director")
-    go(page, "/site")
+    go(page, "/site"); unlock(page)
     phone = phone_of(page, "operative")
-    # 16 Nov: the phone opens in English, with the operative's own language one tap away.
-    check("Site phone: opens in English first, own language one tap away", phone.get_by_role("button", name="Send a photo").count() == 1 and page.get_by_role("tab", name="English").get_attribute("aria-selected") == "true" and page.get_by_role("tablist", name="Language shown").get_by_role("tab").nth(0).inner_text().strip() == "English", page.get_by_role("tab").all_inner_texts())
-    main.get_by_label("Operative to view the phone as").select_option(label="Marek Wiśniewski, Polski"); page.wait_for_timeout(300)
-    if phone.get_by_role("button", name="Wyślij zdjęcie").count() == 0:
-        page.get_by_role("tab", name="Polski").click(); page.wait_for_timeout(250)
+    pick_phone(page, "Marek Wiśniewski"); page.wait_for_timeout(300)
     w = phone.bounding_box()["width"]
-    check("Site phone: drawn at phone width, one screen with four large buttons", w <= 390 and phone.get_by_role("button", name="Wyślij zdjęcie").count() == 1 and phone.get_by_role("button", name="Zgłoś dodatkową pracę").count() == 1 and phone.get_by_role("button", name="Złóż prośbę").count() == 1 and phone.get_by_role("button", name="Mój tydzień").count() == 1 and min(b.bounding_box()["height"] for b in phone.get_by_role("button").all()[-4:]) >= 56, w)
-    check("Site phone: a Polish stonemason sees his site and the instructions in Polish", "C719 St Finian's Church" in phone.inner_text() and "Nabożeństwa w niedzielę" in phone.inner_text() and "Przetłumaczone dla Ciebie" in phone.inner_text() and phone.locator("[lang]").first.get_attribute("lang") == "pl")
-    check("Site phone: the site manager can be rung with one tap", phone.locator("a[href^='tel:']").count() == 1 and "Zadzwoń" in phone.inner_text())
-    phone.get_by_role("button", name="Pokaż oryginał po angielsku").click(); page.wait_for_timeout(200)
-    check("Site phone: the English original is one tap away", "Services on Sunday at 10:30" in phone.inner_text() and phone.get_by_role("button", name="Pokaż w moim języku").count() == 1)
+    check("Site phone: drawn at phone width, in English, with big tiles", w <= 400 and page.get_by_role("tab", name="Polski").count() == 0 and all(phone.get_by_role("button", name=re.compile("^" + n)).count() == 1 for n in ["Send a photo", "Report extra work", "Something else", "My week"]) and min(phone.get_by_role("button", name=re.compile("^" + n)).bounding_box()["height"] for n in ["Send a photo", "My week"]) >= 56, w)
+    check("Site phone: a Polish stonemason sees his site and the instructions", "C719 St Finian's Church" in phone.inner_text() and "Services on Sunday" in phone.inner_text())
+    check("Site phone: the site manager can be rung with one tap", phone.locator("a[href^='tel:']").count() == 1)
     page.screenshot(path=f"{OUT}/162-site-pl.png")
-    phone.get_by_role("button", name="Wyślij zdjęcie").click(); d = dlg()
-    check("Site phone: a photo needs a picture and a caption", d.get_by_role("button", name="Wyślij").is_disabled() and d.get_by_role("button", name="Take a photo", exact=True).count() == 1)
+    phone.get_by_role("button", name=re.compile("^Send a photo")).click(); d = dlg()
+    check("Site phone: a photo needs a picture and a caption", d.get_by_role("button", name="Send").is_disabled() and d.get_by_role("button", name="Take a photo", exact=True).count() == 1)
     d.get_by_label("Choose a photo from this device").set_input_files(FIX + "site-photo.jpg"); page.wait_for_timeout(700)
-    d.get_by_label("Co pokazuje zdjęcie?").fill("Wieża, strona zachodnia"); d.get_by_role("button", name="Wyślij").click(); page.wait_for_timeout(400)
-    ph = data(page, "(() => { const f = db.files.find(f => f.caption==='Wieża, strona zachodnia'); return [f.projectId, f.addedBy, !!f.dataUrl, db.activity[0].who] })()")
+    d.get_by_label("What does the photo show?").fill("West side of the tower"); d.get_by_role("button", name="Send").click(); page.wait_for_timeout(400)
+    ph = data(page, "(() => { const f = db.files.find(f => f.caption==='West side of the tower'); return [f.projectId, f.addedBy, !!f.dataUrl, db.activity[0].who] })()")
     check("Site phone: the photo lands in the project's photos under the operative's name", ph == ["pr-C719", "Marek Wiśniewski", True, "Marek Wiśniewski"], ph)
-    phone.get_by_role("button", name="Zgłoś dodatkową pracę").click(); d = dlg()
-    d.get_by_label(re.compile("^Po odkryciu znaleziono zgniłe drewno")).check()
-    d.get_by_label("Coś do dodania (opcjonalnie)").fill("Belka nad zakrystią"); d.get_by_role("button", name="Wyślij").click(); page.wait_for_timeout(400)
-    v = data(page, "(() => { const v = db.variations[0]; const a = db.approvals.find(a => a.variationId===v.id); return [v.projectId, v.description, v.original, v.originalLanguage, v.status, db.people.find(p=>p.id===v.raisedById).name, a.status, db.projects.find(p=>p.id===v.projectId).invoiceHold] })()")
-    check("Site phone: an extra reaches the office in English with the Polish original kept, as a draft for approval", v == ["pr-C719", "Rotten timber found once opened up", "Po odkryciu znaleziono zgniłe drewno. Belka nad zakrystią", "pl", "Draft", "Marek Wiśniewski", "Pending", True], v)
-    phone.get_by_role("button", name="Złóż prośbę").click(); d = dlg()
-    check("Site phone: a request needs a description", d.get_by_role("button", name="Wyślij").is_disabled())
-    d.get_by_label("Opisz").fill("Dwa wiadra do zaprawy"); d.get_by_role("button", name="Wyślij").click(); page.wait_for_timeout(300)
+    phone.get_by_role("button", name=re.compile("^Report extra work")).click(); d = dlg()
+    d.get_by_label(re.compile("^Rotten timber found once opened up")).check()
+    d.get_by_label("Anything to add (optional)").fill("Beam over the vestry"); d.get_by_role("button", name="Send").click(); page.wait_for_timeout(400)
+    v = data(page, "(() => { const v = db.variations[0]; const a = db.approvals.find(a => a.variationId===v.id); return [v.projectId, v.description, v.status, db.people.find(p=>p.id===v.raisedById).name, a.status, db.projects.find(p=>p.id===v.projectId).invoiceHold] })()")
+    check("Site phone: an extra reaches the office as a draft for approval", v == ["pr-C719", "Rotten timber found once opened up", "Draft", "Marek Wiśniewski", "Pending", True], v)
+    phone.get_by_role("button", name="Something else").click(); d = dlg()
+    check("Site phone: a request needs a description", d.get_by_role("button", name="Send").is_disabled())
+    d.get_by_label("Describe it").fill("Two buckets for mortar"); d.get_by_role("button", name="Send").click(); page.wait_for_timeout(300)
     rq = data(page, "[db.requests[0].projectId, db.requests[0].kind, db.requests[0].requestedBy, db.requests[0].status, db.requests[0].heldBy]")
-    # 17 Nov (Oisin): an operative's request goes to the site manager first, not straight to the office.
-    check("Site phone: a request goes to the site manager first", rq == ["pr-C719", "own_plant", "Marek Wiśniewski", "Open", "site"] and "kierownika budowy" in page.locator("[aria-live=polite]").last.inner_text(), rq)
-    phone.get_by_role("button", name="Mój tydzień").click(); d = dlg()
+    check("Site phone: a request goes to the site manager first", rq == ["pr-C719", "own_plant", "Marek Wiśniewski", "Open", "site"] and "site manager" in page.locator("[aria-live=polite]").last.inner_text(), rq)
+    phone.get_by_role("button", name=re.compile("^My week")).click(); d = dlg()
     check("Site phone: My week lists five days with the site for each", d.locator("li").count() == 5 and d.locator("li", has_text="C719").count() == 5, d.inner_text())
     d.get_by_role("button", name="Close").click()
-    page.get_by_role("tab", name="English").click(); page.wait_for_timeout(250)
-    check("Site phone: a toggle shows the same screen in English for whoever is demonstrating", phone.get_by_role("button", name="Send a photo").count() == 1 and "Services on Sunday" in phone.inner_text())
-    main.get_by_label("Operative to view the phone as").select_option(label="Mindaugas Petrauskas, Lietuvių"); page.wait_for_timeout(300)
-    check("Site phone: a Lithuanian roofer gets Lithuanian", "Muziejus lankytojams atviras" in phone.inner_text() and phone.get_by_role("button", name="Siųsti nuotrauką").count() == 1)
-    main.get_by_label("Operative to view the phone as").select_option(label="Ionuț Marin, Română"); page.wait_for_timeout(300)
-    check("Site phone: a Romanian mason gets Romanian", phone.get_by_role("button", name="Trimite o fotografie").count() == 1 and ("Instanța are ședințe" in phone.inner_text() or "O singură bandă" in phone.inner_text()))
-    main.get_by_label("Operative to view the phone as").select_option(label="Thiago Barbosa, Português"); page.wait_for_timeout(300)
-    check("Site phone: a Portuguese plasterer gets Portuguese", "A casa está habitada" in phone.inner_text())
-    main.get_by_label("Operative to view the phone as").select_option(label="Kevin Shortall, English"); page.wait_for_timeout(300)
-    check("Site phone: an English speaker gets English and no language toggle", page.get_by_role("tab", name="English").count() == 0 and phone.get_by_role("button", name="Send a photo").count() == 1)
     page.screenshot(path=f"{OUT}/163-site-en.png")
-    as_role(page, "Operative")
-    check("Site phone: signed in as an operative there is only the phone view, with no picker", "/site" in page.url and main.get_by_label("Operative to view the phone as").count() == 0 and phone_of(page, "operative").count() == 1, page.url)
+    as_role(page, "Operative"); unlock(page)
+    check("Site phone: signed in as an operative there is only the phone view, with no picker", "/site" in page.url and main.get_by_label("Whose phone to look at").count() == 0 and phone_of(page, "operative").count() == 1, page.url)
     as_role(page, "Managing director")
 
     # ── Settings: branding, region, about
@@ -244,7 +227,7 @@ def steps(page, ctx):
     for path in ["/inbox", "/inbox?mail=mail-1", "/portal", "/site", "/settings", "/settings/region", "/settings/about"]:
         go(page, path)
         check(f"Phone width: page itself does not scroll sideways on {path}", not page.evaluate("document.documentElement.scrollWidth > document.documentElement.clientWidth"))
-    go(page, "/site"); page.screenshot(path=f"{OUT}/167-site-on-phone.png")
+    go(page, "/site"); unlock(page); page.screenshot(path=f"{OUT}/167-site-on-phone.png")
 
 errs = []
 try:
