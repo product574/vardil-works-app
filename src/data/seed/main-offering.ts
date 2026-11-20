@@ -3,7 +3,8 @@
  * certificates sent from it, waiting for the office. No random numbers, so nothing else moves.
  */
 import { addDays } from "@/lib/dates";
-import type { CertSubmission, Db, RepairReport } from "../types";
+import { onPhoneApp } from "@/lib/phone-auth";
+import type { CertSubmission, Db, PhoneAccount, RepairReport } from "../types";
 import { at, workdays } from "./util";
 
 export function seedRepairs(db: Db, today: string): RepairReport[] {
@@ -27,4 +28,35 @@ export function seedCertSubmissions(db: Db, today: string): CertSubmission[] {
   const c = p?.certs.find((x) => x.name === "Manual handling") ?? p?.certs[0];
   if (!p || !c) return [];
   return [{ id: "cs-1", personId: p.id, kind: "ticket", certId: c.id, name: c.name, expires: addDays(today, 3 * 365), photo: { name: `${c.name}, ${p.name}.jpg`, dataUrl: "" }, sentAt: at(today, "07:30"), status: "Waiting" }];
+}
+
+/**
+ * The phone app's sign-ins (20 Nov): everyone on it was invited three weeks ago and has set it
+ * up, with a password nobody knows ("seed": reset it with a code), and most are signed in. Two
+ * are not, so the office has something to do: the last operative alphabetically has not been
+ * invited, and the one before has an invite but has not set up.
+ */
+export function seedPhoneAccounts(db: Db, today: string): PhoneAccount[] {
+  const on = db.people.filter(onPhoneApp).sort((a, b) => a.name.localeCompare(b.name));
+  const ops = on.filter((p) => p.kind === "Operative");
+  const notInvited = ops[ops.length - 1]?.id;
+  const notSetUp = ops[ops.length - 2]?.id;
+  const invited = at(workdays(today, -15), "16:30");
+  return on
+    .filter((p) => p.id !== notInvited)
+    .map((p, i): PhoneAccount => {
+      if (p.id === notSetUp) return { personId: p.id, invitedAt: at(workdays(today, -1), "11:05"), invitedBy: "Aidan King", codesSent: [], failed: 0 };
+      return {
+        personId: p.id,
+        invitedAt: invited,
+        invitedBy: "Aidan King",
+        passwordHash: "seed",
+        setUpAt: at(workdays(today, -14), "07:40"),
+        codesSent: [],
+        failed: 0,
+        signedInUntil: at(addDays(today, 20), "07:30"),
+        lastSignIn: at(addDays(today, -10), "07:30"),
+        biometrics: i % 3 !== 0,
+      };
+    });
 }

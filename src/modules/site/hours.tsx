@@ -222,23 +222,27 @@ function ClaimSheet({ me, day, date: start, onClose }: { me: Person; day: string
  * hours split by the day's rule, to change and approve or to decline with an optional note.
  * Approving adds the hours to that day on the timesheet.
  */
-export function OvertimeClaimsSheet({ site, me, day, onClose }: { site: Project; me: Person; day: string; onClose: () => void }) {
+export function OvertimeClaimsSheet({ site, me, day, onClose }: { site: Project | Project[]; me: Person; day: string; onClose: () => void }) {
   const db = useData((s) => s.db);
   const access = useAccess();
   const office = access.may("checkPayroll") || access.may("exportPayroll");
-  const all = db.overtimeClaims.filter((c) => c.projectId === site.id);
+  // One job, or every job a site manager runs (the phone app's approvals, 20 Nov).
+  const sites = Array.isArray(site) ? site : [site];
+  const ids = new Set(sites.map((x) => x.id));
+  const label = sites.length === 1 ? sites[0]!.code : "your sites";
+  const all = db.overtimeClaims.filter((c) => ids.has(c.projectId));
   const waiting = all.filter((c) => c.status === "Waiting").sort((a, b) => a.date.localeCompare(b.date));
   const answered = all.filter((c) => c.status !== "Waiting" && c.date >= addDays(day, -14)).sort((a, b) => (b.decidedAt ?? "").localeCompare(a.decidedAt ?? ""));
   const name = (id: string) => db.people.find((p) => p.id === id)?.name ?? "";
   return (
-    <Dialog open onClose={onClose} title={`Overtime claims, ${site.code}`}>
+    <Dialog open onClose={onClose} title={`Overtime claims, ${label}`}>
       <div className="grid gap-4">
         {waiting.length === 0 ? (
-          <p className="text-muted">No overtime claims are waiting on {site.code}. When someone on the crew claims extra hours from their phone, it lands here.</p>
+          <p className="text-muted">No overtime claims are waiting on {label}. When someone on the crew claims extra hours from their phone, it lands here.</p>
         ) : (
           <ul className="grid gap-3" aria-label="Overtime claims to answer">
             {waiting.map((c) => (
-              <ClaimCard key={c.id} c={c} name={name(c.personId)} me={me} day={day} locked={weekExported(db.payrollExports, c.date) && !office} />
+              <ClaimCard key={c.id} c={c} name={sites.length > 1 ? `${name(c.personId)} (${sites.find((x) => x.id === c.projectId)?.code})` : name(c.personId)} me={me} day={day} locked={weekExported(db.payrollExports, c.date) && !office} />
             ))}
           </ul>
         )}

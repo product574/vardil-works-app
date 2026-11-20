@@ -283,6 +283,33 @@ export type SubscriptionInvoice = {
 /** Money someone wants to spend that needs the managing director's yes or no (Admin > Requests). */
 /** Money someone paid out of their own pocket for the firm, claimed back from the site phone (Oisin, 17 Nov). */
 export type ExpenseKind = "Fuel" | "Materials" | "Parking and tolls" | "Tools and PPE" | "Other";
+/**
+ * A worker's sign-in to the phone app (Oisin, 20 Nov). The number is the one on the employee
+ * register; the office sends the invite; the first time, a one-time code by text, then they set
+ * their own password. In the demo the code is shown on the phone instead of texted, and the
+ * hash is made in the browser. REAL BUILD: the code, the hash and the session live on the server.
+ */
+export type PhoneAccount = {
+  personId: ID;
+  invitedAt?: Stamp;
+  invitedBy?: string;
+  /** SHA-256 of the person's id and password. "seed" in the sample data: set, but unknown. */
+  passwordHash?: string;
+  setUpAt?: Stamp;
+  /** The one-time code last sent, what it is for, and whether it has been typed in right. */
+  code?: { code: string; sentAt: Stamp; purpose: "setup" | "reset"; ok?: boolean };
+  /** When codes were sent, for the limit of 3 an hour. */
+  codesSent: Stamp[];
+  /** Wrong passwords or codes in a row. */
+  failed: number;
+  lockedUntil?: Stamp;
+  /** Signed in on their phone until this time (30 days from signing in). */
+  signedInUntil?: Stamp;
+  lastSignIn?: Stamp;
+  /** Fingerprint or Face ID opens the app. */
+  biometrics?: boolean;
+};
+
 export type Expense = {
   id: ID;
   personId: ID;
@@ -1048,6 +1075,8 @@ export type Db = {
   vehicleChecks: VehicleCheck[];
   /** Reimbursements claimed from the site phone, newest first. */
   expenses: Expense[];
+  /** Sign-ins to the phone app, one per person invited (20 Nov). */
+  phoneAccounts: PhoneAccount[];
   /** Site instructions for one day, put up by the site manager. One per project and day. */
   dayInstructions: DayInstruction[];
   assignments: Assignment[];

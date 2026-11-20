@@ -23,13 +23,14 @@ import { driverSiteOn, dropOutcome } from "@/lib/roster";
 import { money2, r2 } from "@/lib/money";
 import { quoteTotal } from "@/lib/quotes";
 import { attendanceShort, type DayMark, restDayMark } from "@/lib/week";
+import { addMinutes, checkCode, type CodeCheck, codesLeft, isLocked, LOCK_MINUTES, MAX_TRIES, phoneDigits, SESSION_DAYS, triesLeft } from "@/lib/phone-auth";
 import { levelOf, levelValue, signedInPersonId } from "./access";
 import { PERMISSIONS } from "./permissions";
 import { ROLES } from "./roles";
 import { costingFor, linesFor, WORK, type WorkKind } from "./seed/commercial";
 import { rng } from "./seed/util";
 import { getDay, useData, usePrefs } from "./store";
-import type { AccessKey, AccessRow, Allocation, Attendance, Cert, Client, Course, Db, Expense, DepartmentKey, Enquiry, ID, LevelKey, PermKey, Person, PhotoStage, Language, Mail, MailAttachment, MailIntent, Proof, RequestKind, RoleKey, FileCategory, FileKind, FleetDocCategory, InvoiceLine, InvoiceQuery, Project, SalesInvoice, Scaffold, SendRoute, SubPaper, Variation, Vehicle, Base, BaseKind, ComplianceItem, Day, Garage, InvoiceStatus, LicenceKey, RepairCategory, RepairInvoice, RepairLine, Todo, RepairReport, RepairStatus, CertSubmission, RosterSend } from "./types";
+import type { PhoneAccount, AccessKey, AccessRow, Allocation, Attendance, Cert, Client, Course, Db, Expense, DepartmentKey, Enquiry, ID, LevelKey, PermKey, Person, PhotoStage, Language, Mail, MailAttachment, MailIntent, Proof, RequestKind, RoleKey, FileCategory, FileKind, FleetDocCategory, InvoiceLine, InvoiceQuery, Project, SalesInvoice, Scaffold, SendRoute, SubPaper, Variation, Vehicle, Base, BaseKind, ComplianceItem, Day, Garage, InvoiceStatus, LicenceKey, RepairCategory, RepairInvoice, RepairLine, Todo, RepairReport, RepairStatus, CertSubmission, RosterSend } from "./types";
 
 const mutate = (fn: (db: Db) => void) => useData.getState().mutate(fn);
 
@@ -1277,6 +1278,9 @@ export function setEmployeeActive(personId: ID, active: boolean) {
       db.assignments = db.assignments.filter((a) => a.personId !== personId);
       db.plan = db.plan.filter((x) => !(x.personId === personId && x.date > day));
       dropSiteAccess(db, personId);
+      // Taken off the register: signed out of the phone app at once (20 Nov).
+      const acc = db.phoneAccounts.find((a) => a.personId === personId);
+      if (acc) delete acc.signedInUntil;
     }
     log(db, active ? "Restored an employee" : "Archived an employee", p.name, "people");
   });
@@ -3183,6 +3187,167 @@ export function markExpensePaid(id: ID) {
     x.paidBy = actorName(db);
     log(db, "Marked a reimbursement paid", `${db.people.find((p) => p.id === x.personId)?.name}, ${x.amount.toFixed(2)}`, "admin");
   });
+}
+
+// ── The phone app's sign-in (20 Nov) ─────────────────────────────────────────
+
+function phoneAccount(db: Db, personId: ID): PhoneAccount {
+  let acc = db.phoneAccounts.find((a) => a.personId === personId);
+  if (!acc) {
+    acc = { personId, codesSent: [], failed: 0 };
+    db.phoneAccounts.push(acc);
+  }
+  return acc;
+}
+
+/** The office's Send invite: a text with the app's link goes to the number on the register. */
+export function invitePhone(personId: ID) {
+  mutate((db) => {
+    const p = db.people.find((x) => x.id === personId);
+    if (!p) return;
+    const acc = phoneAccount(db, personId);
+    acc.invitedAt = nowStamp();
+    acc.invitedBy = actorName(db);
+    log(db, "Sent a phone app invite", `${p.name}, ${p.phone}`, "people");
+  });
+}
+
+/**
+ * A one-time code for setting up or resetting the password. Returns the code (the demo shows it
+ * on the phone; REAL BUILD: texted from the server and never sent to the page), or null when 3
+ * have gone in the last hour.
+ */
+export function sendPhoneCode(personId: ID, purpose: "setup" | "reset"): string | null {
+  const now = nowStamp();
+  let code: string | null = null;
+  mutate((db) => {
+    const acc = phoneAccount(db, personId);
+    if (codesLeft(acc, now) === 0) return;
+    code = String(Math.floor(100000 + Math.random() * 900000));
+    acc.code = { code, sentAt: now, purpose };
+    acc.codesSent = [...acc.codesSent.filter((s) => s > addMinutes(now, -60)), now];
+  });
+  return code;
+}
+
+/** Check a typed code. Wrong ones count towards the lock, like wrong passwords. */
+export function enterPhoneCode(personId: ID, typed: string): CodeCheck | "locked" {
+  const now = nowStamp();
+  let result: CodeCheck | "locked" = "none";
+  mutate((db) => {
+    const acc = phoneAccount(db, personId);
+    if (isLocked(acc, now)) {
+      result = "locked";
+      return;
+    }
+    result = checkCode(acc, typed, now);
+    if (result === "ok" && acc.code) acc.code.ok = true;
+    if (result === "wrong") failTry(acc, now);
+  });
+  return result;
+}
+
+function failTry(acc: PhoneAccount, now: string) {
+  acc.failed += 1;
+  if (acc.failed >= MAX_TRIES) {
+    acc.lockedUntil = addMinutes(now, LOCK_MINUTES);
+    acc.failed = 0;
+  }
+}
+
+/** Set the password after a code has been typed in right, and sign in for 30 days. */
+export function setPhonePassword(personId: ID, hash: string): boolean {
+  const now = nowStamp();
+  let done = false;
+  mutate((db) => {
+    const acc = phoneAccount(db, personId);
+    if (!acc.code?.ok) return;
+    const first = !acc.passwordHash;
+    acc.passwordHash = hash;
+    if (first) acc.setUpAt = now;
+    delete acc.code;
+    acc.failed = 0;
+    delete acc.lockedUntil;
+    acc.signedInUntil = addMinutes(now, SESSION_DAYS * 24 * 60);
+    acc.lastSignIn = now;
+    done = true;
+    log(db, first ? "Set up the phone app" : "Reset their phone app password", db.people.find((p) => p.id === personId)?.name ?? "", "people", db.people.find((p) => p.id === personId)?.name);
+  });
+  return done;
+}
+
+export type PasswordTry = { ok: true } | { ok: false; locked: boolean; left: number; until?: string };
+
+/** Sign in with a password. Five wrong in a row lock it for 15 minutes. */
+export function tryPhonePassword(personId: ID, hash: string): PasswordTry {
+  const now = nowStamp();
+  let out: PasswordTry = { ok: false, locked: false, left: 0 };
+  mutate((db) => {
+    const acc = phoneAccount(db, personId);
+    if (isLocked(acc, now)) {
+      out = { ok: false, locked: true, left: 0, until: acc.lockedUntil };
+      return;
+    }
+    // The sample data's accounts have a password nobody knows ("seed"): reset it with a code.
+    if (acc.passwordHash && acc.passwordHash === hash) {
+      acc.failed = 0;
+      acc.signedInUntil = addMinutes(now, SESSION_DAYS * 24 * 60);
+      acc.lastSignIn = now;
+      out = { ok: true };
+      return;
+    }
+    failTry(acc, now);
+    out = isLocked(acc, now) ? { ok: false, locked: true, left: 0, until: acc.lockedUntil } : { ok: false, locked: false, left: triesLeft(acc) };
+  });
+  return out;
+}
+
+export function setPhoneBiometrics(personId: ID, on: boolean) {
+  mutate((db) => {
+    phoneAccount(db, personId).biometrics = on;
+  });
+}
+
+/** Sign out on the phone itself. */
+export function signOutPhone(personId: ID) {
+  mutate((db) => {
+    const acc = db.phoneAccounts.find((a) => a.personId === personId);
+    if (acc) delete acc.signedInUntil;
+  });
+}
+
+/** The office's Sign out everywhere, for a lost or stolen phone. */
+export function signOutEverywhere(personId: ID) {
+  mutate((db) => {
+    const acc = db.phoneAccounts.find((a) => a.personId === personId);
+    if (!acc) return;
+    delete acc.signedInUntil;
+    log(db, "Signed someone out of the phone app", db.people.find((p) => p.id === personId)?.name ?? "", "people");
+  });
+}
+
+/** Only the office changes a number (Oisin, 20 Nov). The phone app is signed out, and the new number signs in. */
+export function setPersonPhone(personId: ID, phone: string): string | null {
+  let problem: string | null = null;
+  mutate((db) => {
+    const p = db.people.find((x) => x.id === personId);
+    if (!p) return;
+    const digits = phoneDigits(phone);
+    if (digits.length < 7) {
+      problem = "That number is too short.";
+      return;
+    }
+    if (db.people.some((x) => x.id !== personId && x.active && phoneDigits(x.phone) === digits)) {
+      problem = "Someone else on the register has that number.";
+      return;
+    }
+    const old = p.phone;
+    p.phone = phone.trim();
+    const acc = db.phoneAccounts.find((a) => a.personId === personId);
+    if (acc) delete acc.signedInUntil;
+    log(db, "Changed a phone number", `${p.name}, ${old} to ${p.phone}`, "people");
+  });
+  return problem;
 }
 
 /** Undo Mark paid, for a slip. */

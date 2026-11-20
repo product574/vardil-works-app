@@ -13,7 +13,7 @@ import { stateOf } from "@/lib/compliance";
 import { addDays } from "@/lib/dates";
 import { dFull, dShort, plural } from "@/lib/format";
 import { shrinkImage } from "@/lib/image";
-import { Badge, Button, cx, Dialog, Field } from "@/ui";
+import { Badge, Button, cx, Dialog, Field, Segmented } from "@/ui";
 import { PickFile } from "@/ui/files";
 import { toast } from "@/ui/toast";
 import { AddButtons, fromPhone, type PhoneFile, Thumbs, toFileIn } from "./fleet-sheets";
@@ -30,6 +30,7 @@ export function RepairSheet({ me, onClose }: { me: Person; onClose: () => void }
   const plant = [...db.plant].sort((a, b) => a.assetRef.localeCompare(b.assetRef));
   const vehicles = db.vehicles.filter((v) => v.active).sort((a, b) => a.reg.localeCompare(b.reg));
   const mine = vehicles.find((v) => v.driverId === me.id);
+  const [group, setGroup] = useState<"vehicle" | "plant">(mine ? "vehicle" : "plant");
   const [pick, setPick] = useState(mine ? `vehicle:${mine.id}` : "");
   const [other, setOther] = useState("");
   const [where, setWhere] = useState("");
@@ -79,29 +80,32 @@ export function RepairSheet({ me, onClose }: { me: Person; onClose: () => void }
       }
     >
       <div className="grid gap-3" lang="en">
-        <Field label="What needs repairing?">
+        {/* Vehicle or plant first, then the item from that list (Oisin, 20 Nov). */}
+        <Segmented
+          label="Vehicle or plant"
+          value={group}
+          onChange={(g) => {
+            setGroup(g);
+            setPick(g === "vehicle" && mine ? `vehicle:${mine.id}` : "");
+          }}
+          options={[{ value: "vehicle", label: "Vehicle" }, { value: "plant", label: "Plant" }]}
+        />
+        <Field label={group === "vehicle" ? "Which vehicle?" : "Which plant?"}>
           {(id) => (
             <select id={id} className="field h-11" value={pick} onChange={(e) => setPick(e.target.value)}>
-              <option value="">Choose it</option>
-              {vehicles.length > 0 && (
-                <optgroup label="Vehicles">
-                  {vehicles.map((v) => (
+              <option value="">{group === "vehicle" ? "Choose the vehicle" : "Choose the plant"}</option>
+              {group === "vehicle"
+                ? vehicles.map((v) => (
                     <option key={v.id} value={`vehicle:${v.id}`}>
                       {v.reg}, {v.make} {v.model}
                     </option>
-                  ))}
-                </optgroup>
-              )}
-              {plant.length > 0 && (
-                <optgroup label="Plant and equipment">
-                  {plant.map((p) => (
+                  ))
+                : plant.map((p) => (
                     <option key={p.id} value={`plant:${p.id}`}>
                       {p.assetRef} {p.name}
                     </option>
                   ))}
-                </optgroup>
-              )}
-              <option value="other:">Something else</option>
+              <option value="other:">Not on the list</option>
             </select>
           )}
         </Field>

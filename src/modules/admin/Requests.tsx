@@ -423,7 +423,7 @@ export function RequestsBody({ embedded }: { embedded?: boolean }) {
         )}
 
         {q.toPay.length > 0 && (
-          <Section title={`Reimbursements to pay (${q.toPay.length})`} aside="Approved. Mark each one paid once the money has gone">
+          <Section title={`Ready to be paid (${q.toPay.length})`} aside="Reimbursements approved by a site manager or here. Mark each one paid once the money has gone">
             <Panel className="overflow-x-auto">
               <table className="tbl" aria-label="Reimbursements to pay">
                 <thead>

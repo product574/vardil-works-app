@@ -27,8 +27,8 @@ describe("sample data", () => {
     for (const [table, rows] of Object.entries(db)) {
       // The firm's connections (19 Nov) are settings, not a table of records.
       if (!Array.isArray(rows)) continue;
-      // Bank holidays are known by their date: there is one a day at most.
-      const ids = (rows as { id?: string; date?: string }[]).map((r) => r.id ?? r.date);
+      // Bank holidays are known by their date: there is one a day at most. Phone app sign-ins by their person (20 Nov).
+      const ids = (rows as { id?: string; date?: string; personId?: string }[]).map((r) => r.id ?? r.date ?? r.personId);
       expect(ids.every(Boolean), table).toBe(true);
       expect(new Set(ids).size, table).toBe(ids.length);
     }

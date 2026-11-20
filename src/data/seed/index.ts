@@ -11,7 +11,7 @@
  *
  * All names, firms, addresses, phone numbers and figures are invented.
  */
-import { seedCertSubmissions, seedRepairs } from "./main-offering";
+import { seedCertSubmissions, seedPhoneAccounts, seedRepairs } from "./main-offering";
 import { DEFAULT_BRAND } from "@/config/brand";
 import { REGION } from "@/lib/money";
 import { ROLES } from "../roles";
@@ -131,6 +131,7 @@ function buildIrishSeed(realToday: string, opts: { emailDomain?: string; vatPct?
     bankHolidays: builtInBankHolidays(day, "IE"),
     vehicleChecks: seedVehicleChecks(day, fleet.vehicles),
     expenses: seedExpenses(day),
+    phoneAccounts: [],
     overtimeClaims: [],
     dayInstructions: seedDayInstructions(day),
     attendanceChanges: [],
@@ -171,6 +172,7 @@ function buildIrishSeed(realToday: string, opts: { emailDomain?: string; vatPct?
   db.payrollChecks = seedPayrollChecks(db.payrollExports);
   db.repairs = seedRepairs(db, day);
   db.certSubmissions = seedCertSubmissions(db, day);
+  db.phoneAccounts = seedPhoneAccounts(db, day);
   db.activity = seedActivity(db, day);
   return { day, db };
 }

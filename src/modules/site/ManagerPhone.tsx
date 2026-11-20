@@ -13,7 +13,7 @@ import { personWeek, planClashes } from "@/lib/availability";
 import { bankHolidayOn, isBankHoliday, restDayKindOf, restDaysBetween } from "@/lib/bank-holidays";
 import { addDays, datesBetween, isWeekend, MONTHS, rollingWorkdays, weekStartOf } from "@/lib/dates";
 import { dShort, dWeekday, plural, when } from "@/lib/format";
-import { DOUBLE_WITHOUT_HALF, doubleOf, doubleWithoutHalf, EARLY_START_NOTE, REST_DAY_RULE, restDayProblem } from "@/lib/overtime";
+import { DOUBLE_WITHOUT_HALF, doubleOf, doubleWithoutHalf, EARLY_START_NOTE, overtimeTotal, REST_DAY_RULE, restDayProblem } from "@/lib/overtime";
 import { weekExported } from "@/lib/payroll";
 import { crewRequests } from "@/lib/requests";
 import { dayInstruction, dayRoster, managerJobs, whereabouts } from "@/lib/roster";
@@ -251,7 +251,7 @@ function crewOf(db: ReturnType<typeof useData.getState>["db"], siteId: string, d
  * an earlier day, is changed here with a short reason, kept as a correction as in the office.
  * Once a week has gone to payroll only the office changes it.
  */
-function TimeSheet({ site, me, day, onClose }: { site: Project; me: Person; day: string; onClose: () => void }) {
+export function TimeSheet({ site, me, day, onClose, app }: { site: Project; me: Person; day: string; onClose: () => void; /** The phone app (20 Nov, Oisin's pick A): days as buttons, and Overtime as a fourth choice that opens the hours. */ app?: boolean }) {
   const db = useData((s) => s.db);
   const access = useAccess();
   const canMark = access.may("markTime");
@@ -263,6 +263,8 @@ function TimeSheet({ site, me, day, onClose }: { site: Project; me: Person; day:
   const [date, setDate] = useState(day);
   const [fix, setFix] = useState<Person | null>(null);
   const [adding, setAdding] = useState("");
+  // In the app, who has Overtime picked with no hours typed yet.
+  const [ot, setOt] = useState<Set<string>>(new Set());
   const isToday = date === day;
   const holiday = isBankHoliday(db.bankHolidays, date);
   const locked = weekExported(db.payrollExports, date) && !office;
@@ -301,6 +303,23 @@ function TimeSheet({ site, me, day, onClose }: { site: Project; me: Person; day:
         }
       >
         <div className="mb-3 grid gap-2">
+          {app ? (
+            <div role="group" aria-label="Day" className="grid grid-cols-5 gap-1.5">
+              {[...(days.length > 0 ? days : [day])].reverse().map((d) => (
+                <button
+                  key={d}
+                  type="button"
+                  aria-pressed={d === date}
+                  aria-label={d === day ? `Today, ${dWeekday(d)}` : dWeekday(d)}
+                  className={cx("press min-h-11 rounded-md border px-1 text-[0.87rem] leading-tight", d === date ? "border-accent bg-accent-soft font-medium text-accent-ink" : "border-line-strong")}
+                  onClick={() => setDate(d)}
+                >
+                  {new Date(`${d}T12:00:00Z`).toLocaleDateString("en-IE", { weekday: "short", timeZone: "UTC" })}
+                  <span className="block text-[0.8rem] text-muted">{d === day ? "Today" : new Date(`${d}T12:00:00Z`).toLocaleDateString("en-IE", { day: "numeric", month: "short", timeZone: "UTC" })}</span>
+                </button>
+              ))}
+            </div>
+          ) : (
           <Field label="Day" hint="Today, and back to the Monday of last week.">
             {(id) => (
               <select id={id} className="field h-11" value={date} onChange={(e) => setDate(e.target.value)}>
@@ -313,6 +332,7 @@ function TimeSheet({ site, me, day, onClose }: { site: Project; me: Person; day:
               </select>
             )}
           </Field>
+          )}
           {canMark && !locked && (
             <div className="flex items-center gap-2">
               <select aria-label="Add someone to this site" className="field h-11 min-w-0 flex-1" value={adding} onChange={(e) => setAdding(e.target.value)}>
@@ -345,7 +365,7 @@ function TimeSheet({ site, me, day, onClose }: { site: Project; me: Person; day:
         <ul className="divide-y divide-line" aria-label={isToday ? "People on site today" : `People on site ${dWeekday(date)}`}>
           {people.map((p) => {
             const a = entry(p.id);
-            const value = !a ? "out" : a.status === "half" ? "half" : "full";
+            const value = !a ? "out" : a.status === "half" ? "half" : app && (overtimeTotal(a) > 0 || ot.has(p.id)) ? "ot" : "full";
             // A Safe Pass or trade ticket run out (Compliance): they cannot be marked on site that day.
             const stops = !a ? ticketBlocks(p, date) : [];
             const live = isToday && !a?.sent && canMark && !holiday && stops.length === 0;
@@ -375,11 +395,25 @@ function TimeSheet({ site, me, day, onClose }: { site: Project; me: Person; day:
                     <Segmented
                       label={`${p.name} today`}
                       value={value}
-                      onChange={(v) => actAs(me.id, () => markAttendance(site.id, p.id, day, v === "out" ? null : { status: v, overtimeHours: v === "full" ? (a?.overtimeHours ?? 0) : 0, doubleHours: v === "full" && a ? doubleOf(a) : 0 }))}
-                      options={[{ value: "full", label: "Full" }, { value: "half", label: "Half" }, { value: "out", label: "Not in" }]}
+                      onChange={(v) => {
+                        if (app) {
+                          setOt((was) => {
+                            const next = new Set(was);
+                            if (v === "ot") next.add(p.id);
+                            else next.delete(p.id);
+                            return next;
+                          });
+                          // Full on its own means no overtime; Overtime keeps any hours already typed.
+                          const keep = v === "ot" && a?.status === "full";
+                          actAs(me.id, () => markAttendance(site.id, p.id, day, v === "out" ? null : v === "half" ? { status: "half", overtimeHours: 0, doubleHours: 0 } : { status: "full", overtimeHours: keep ? a.overtimeHours : 0, doubleHours: keep ? doubleOf(a) : 0 }));
+                          return;
+                        }
+                        actAs(me.id, () => markAttendance(site.id, p.id, day, v === "out" ? null : { status: v as "full" | "half", overtimeHours: v === "full" ? (a?.overtimeHours ?? 0) : 0, doubleHours: v === "full" && a ? doubleOf(a) : 0 }));
+                      }}
+                      options={app ? [{ value: "full", label: "Full" }, { value: "ot", label: "Overtime" }, { value: "half", label: "Half" }, { value: "out", label: "Not in" }] : [{ value: "full", label: "Full" }, { value: "half", label: "Half" }, { value: "out", label: "Not in" }]}
                     />
                     {/* Overtime on a full day, typed at each rate: a day can have both (17 Nov). */}
-                    {a?.status === "full" && (
+                    {a?.status === "full" && (!app || value === "ot") && (
                       <div className="flex w-full flex-wrap items-center gap-x-3 gap-y-1.5 text-[0.93rem]">
                         <span className="text-muted">Hours over:</span>
                         <label className="flex items-center gap-1.5">
@@ -829,12 +863,15 @@ function InstructionsSheet({ site, me, day, onClose }: { site: Project; me: Pers
 }
 
 /** What the crew has asked for on their phones: pass each to management as his own request, or mark it dealt with. */
-function CrewRequestsSheet({ site, me, day, onClose }: { site: Project; me: Person; day: string; onClose: () => void }) {
+export function CrewRequestsSheet({ site, me, day, onClose }: { site: Project | Project[]; me: Person; day: string; onClose: () => void }) {
   const db = useData((s) => s.db);
-  const list = crewRequests(db.requests, [site.id]);
-  const earlier = db.requests.filter((r) => r.projectId === site.id && (r.raisedBy || (r.heldBy === "site" && r.status === "Done"))).slice(0, 4);
+  // One job, or every job a site manager runs (the phone app's approvals, 20 Nov).
+  const sites = Array.isArray(site) ? site : [site];
+  const ids = new Set(sites.map((x) => x.id));
+  const list = crewRequests(db.requests, ids);
+  const earlier = db.requests.filter((r) => r.projectId !== null && ids.has(r.projectId) && (r.raisedBy || (r.heldBy === "site" && r.status === "Done"))).slice(0, 4);
   return (
-    <Dialog open onClose={onClose} title={`Requests from the crew, ${site.code}`}>
+    <Dialog open onClose={onClose} title={`Requests from the crew, ${sites.length === 1 ? sites[0]!.code : "your sites"}`}>
       <div className="grid gap-4">
         {list.length === 0 ? (
           <p className="text-muted">Nothing is waiting. What the crew asks for on their phones comes here first.</p>
@@ -847,6 +884,7 @@ function CrewRequestsSheet({ site, me, day, onClose }: { site: Project; me: Pers
                   {r.quantity > 1 && <span className="font-normal text-muted"> x {r.quantity}</span>}
                 </p>
                 <p className="text-[0.93rem] text-muted">
+                  {sites.length > 1 && `${sites.find((x) => x.id === r.projectId)?.code}. `}
                   {KIND[r.kind]}. Asked by {r.requestedBy}, {when(r.createdAt, day)}. Needed {dShort(r.neededFrom)} to {dShort(r.neededTo)}.
                 </p>
                 <CrewRequestButtons id={r.id} what={r.description} big as={me.id} />

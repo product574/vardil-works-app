@@ -1,7 +1,8 @@
 import { type FormEvent, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { exceptionCount, levelOf, useAccess } from "@/data/access";
-import { addEmployee, addHoliday, decideHoliday, setEmployeeActive, setSageNo } from "@/data/actions";
+import { addEmployee, addHoliday, decideHoliday, invitePhone, nowStamp, setEmployeeActive, setPersonPhone, setSageNo, signOutEverywhere } from "@/data/actions";
+import { onPhoneApp, PHONE_STATE_LABEL, type PhoneState, phoneState } from "@/lib/phone-auth";
 import { blocksText, ticketBlocks } from "@/lib/compliance";
 import { ROLES } from "@/data/roles";
 import { useData, useDay, usePrefs } from "@/data/store";
@@ -79,6 +80,7 @@ export function EmployeeRegister() {
                   <th>Category</th>
                   {seeRates && <th className="num">Hourly rate</th>}
                   <th>Phone</th>
+                  <th>Phone app</th>
                   <th>Language</th>
                   <th>On site at</th>
                   <th>Training tickets</th>
@@ -93,6 +95,7 @@ export function EmployeeRegister() {
                     <td>{p.category ?? <span className="text-muted">-</span>}</td>
                     {seeRates && <td className="num">{p.hourlyRate ? money2(p.hourlyRate, region) : "-"}</td>}
                     <td className="whitespace-nowrap">{p.phone}</td>
+                    <td className="whitespace-nowrap">{p.active && onPhoneApp(p) ? <PhoneStateBadge state={phoneState(db.phoneAccounts.find((a) => a.personId === p.id), nowStamp())} /> : <span className="text-muted">-</span>}</td>
                     <td>{LANGUAGE_NAME[p.language]}</td>
                     <td>{sitesOf(db, p.id) || <span className="text-muted">-</span>}</td>
                     <td>{p.active ? ticketSummary(p, day) : <span className="text-muted">Left {dShort(p.archivedAt)}</span>}</td>
@@ -149,8 +152,13 @@ function PersonDialog({ person, onClose }: { person: Person; onClose: () => void
           <Fact label="Category">{person.category ?? "-"}</Fact>
           {may("seeRates") && <Fact label="Hourly rate">{person.hourlyRate ? `${money2(person.hourlyRate, region)} from ${dFull(person.rateAsOf)}` : "Salaried"}</Fact>}
           <Fact label="Phone">
-            <Tel number={person.phone} />
+            <PhoneNumber person={person} canEdit={may("manageStaff")} />
           </Fact>
+          {person.active && onPhoneApp(person) && (
+            <Fact label="Phone app">
+              <PhoneAppFact person={person} canEdit={may("manageStaff")} />
+            </Fact>
+          )}
           <Fact label="Email">
             <Mail address={person.email} />
           </Fact>
@@ -216,6 +224,95 @@ function PersonDialog({ person, onClose }: { person: Person; onClose: () => void
 }
 
 /** The employee number from Sage Payroll, which links this person's hours to their pay (Oldstone call, 16 Nov). */
+const PHONE_TONE: Record<PhoneState, Tone> = { "not-invited": "neutral", invited: "warn", "set-up": "accent", "signed-in": "ok" };
+
+function PhoneStateBadge({ state }: { state: PhoneState }) {
+  return <Badge tone={PHONE_TONE[state]}>{PHONE_STATE_LABEL[state]}</Badge>;
+}
+
+/**
+ * The phone app from the office's side (Oisin, 20 Nov): Send invite texts the app's link to the
+ * number on the register; Sign out everywhere is for a lost or stolen phone.
+ */
+function PhoneAppFact({ person, canEdit }: { person: Person; canEdit: boolean }) {
+  const db = useData((s) => s.db);
+  const acc = db.phoneAccounts.find((a) => a.personId === person.id);
+  const state = phoneState(acc, nowStamp());
+  return (
+    <span className="grid gap-1.5">
+      <span className="flex flex-wrap items-center gap-2">
+        <PhoneStateBadge state={state} />
+        {acc?.lastSignIn && <span className="text-[0.87rem] text-muted">Last signed in {dShort(acc.lastSignIn.slice(0, 10))}</span>}
+        {!acc?.lastSignIn && acc?.invitedAt && <span className="text-[0.87rem] text-muted">Invited {dShort(acc.invitedAt.slice(0, 10))} by {acc.invitedBy}</span>}
+      </span>
+      {canEdit && (
+        <span className="flex flex-wrap gap-2">
+          {state !== "signed-in" && state !== "set-up" && (
+            <Button
+              size="sm"
+              variant={state === "not-invited" ? "primary" : "outline"}
+              onClick={() => {
+                invitePhone(person.id);
+                toast(`Invite texted to ${person.phone}. ${person.name.split(" ")[0]} signs in with that number`);
+              }}
+            >
+              {state === "not-invited" ? "Send invite" : "Send invite again"}
+            </Button>
+          )}
+          {state === "signed-in" && (
+            <Button
+              size="sm"
+              onClick={() => {
+                signOutEverywhere(person.id);
+                toast(`${person.name} is signed out of the phone app. They sign in again with their password`);
+              }}
+            >
+              Sign out everywhere
+            </Button>
+          )}
+        </span>
+      )}
+    </span>
+  );
+}
+
+/** Only the office changes a number (Oisin, 20 Nov). Changing it signs the phone app out. */
+function PhoneNumber({ person, canEdit }: { person: Person; canEdit: boolean }) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(person.phone);
+  const [error, setError] = useState("");
+  if (!editing)
+    return (
+      <span className="flex flex-wrap items-center gap-2">
+        <Tel number={person.phone} />
+        {canEdit && person.active && (
+          <Button size="sm" variant="ghost" onClick={() => { setValue(person.phone); setError(""); setEditing(true); }}>
+            Change number
+          </Button>
+        )}
+      </span>
+    );
+  return (
+    <form
+      className="grid gap-1.5"
+      onSubmit={(e) => {
+        e.preventDefault();
+        const problem = setPersonPhone(person.id, value);
+        if (problem) return setError(problem);
+        toast(`Number changed for ${person.name}. Their phone app is signed out until they sign in with the new number`);
+        setEditing(false);
+      }}
+    >
+      <input aria-label={`New mobile number for ${person.name}`} className="field h-9" inputMode="tel" value={value} onChange={(e) => setValue(e.target.value)} />
+      {error && <span role="alert" className="text-[0.87rem] text-bad">{error}</span>}
+      <span className="flex gap-2">
+        <Button size="sm" onClick={() => setEditing(false)}>Cancel</Button>
+        <Button size="sm" variant="primary" type="submit">Save number</Button>
+      </span>
+    </form>
+  );
+}
+
 function SageNo({ person, canEdit }: { person: Person; canEdit: boolean }) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(person.sageNo ?? "");

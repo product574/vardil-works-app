@@ -454,7 +454,7 @@ const EXPENSE_KINDS: ExpenseKind[] = ["Fuel", "Materials", "Parking and tolls", 
  * Claim back money paid out of your own pocket for the firm (Oisin, 17 Nov): what for, how much,
  * which site, and a photo of the receipt. It waits for the director in Admin, Requests.
  */
-export function ExpenseSheet({ me, day, siteId, sites, onClose }: { me: Person; day: string; siteId: string | null; sites: Project[]; onClose: () => void }) {
+export function ExpenseSheet({ me, day, siteId, sites, onClose, toSiteManager }: { me: Person; day: string; siteId: string | null; sites: Project[]; onClose: () => void; /** The phone app (20 Nov): a claim for a site goes to its site manager first. */ toSiteManager?: boolean }) {
   const region = usePrefs((s) => s.brand.region);
   const [kind, setKind] = useState<ExpenseKind>("Fuel");
   const [amount, setAmount] = useState(0);
@@ -480,7 +480,7 @@ export function ExpenseSheet({ me, day, siteId, sites, onClose }: { me: Person; 
             disabled={!ready}
             onClick={() => {
               actAs(me.id, () => claimExpense({ personId: me.id, kind, what: what.trim(), amount, date, projectId: projectId || null, ...(receipt ? { receipt } : {}) }));
-              toast(`Claim for ${amount.toFixed(2)} sent to the office${receipt ? "" : ". Hand in the paper receipt"}`);
+              toast(`Claim for ${amount.toFixed(2)} sent to ${toSiteManager && projectId ? "your site manager" : "the office"}${receipt ? "" : ". Hand in the paper receipt"}`);
               onClose();
             }}
           >
