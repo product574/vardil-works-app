@@ -358,7 +358,13 @@ Admin: our announcements, and their apps with the ones they could add.
    Preview. Client apps, announcements and app requests are kept there; the tables are made the
    first time they are used. Ask AI uses the same binding, so if it is set up already there is
    nothing to do.
-5. Optional plain variables, then redeploy: `STAFF_DOMAINS` (the server's list of staff email
+5. On any Pages project other than Aodhan's `vardil-construction-demo` (such as
+   `vardil-works-construction`), set the plain variable `ACCESS_AUD` to the AUD tag of the
+   Access application that covers the whole site (Zero Trust > Access controls > Applications >
+   the application > Additional settings > AUD tag), for Production and Preview. The server only
+   believes sign-ins from the applications it is told about, and its built-in list is Aodhan's
+   two, so without this every client save and Ask AI question is refused.
+6. Optional plain variables, then redeploy: `STAFF_DOMAINS` (the server's list of staff email
    domains, comma separated, default vardil.com) and `VITE_STAFF_DOMAINS` (the page's own list,
    used only to decide whether to fetch the staff files). Keep the two the same.
 
