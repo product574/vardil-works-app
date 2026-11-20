@@ -9,6 +9,7 @@
 import type { Db, Quote, SubPrice, Tender, TenderCheck, TenderFile } from "../types";
 import { quoteTotal } from "@/lib/quotes";
 import { at, workdays } from "./util";
+import { WORK } from "./commercial";
 
 /** Trades each kind of work needs from outside, beyond our own crews. Scaffolding on all of them. */
 const TRADES: Record<string, string[]> = {
@@ -47,7 +48,9 @@ export function seedTenders(db: Db, today: string) {
     const n = Number(q.id.replace(/\D/g, "")) || 1;
     const received = e?.receivedAt.slice(0, 10) ?? workdays(returnBy, -15);
     const who = e?.loggedBy ?? "Colm Henebry";
-    const visit = workdays(received, 3);
+    // Nothing in the sample is dated after today: a fresh enquiry's site visit and requests are today at the latest.
+    const cap = (d: string) => (d > today ? today : d);
+    const visit = cap(workdays(received, 3));
     const workingsDay = sent ? workdays(sent, -1) : workdays(today, -1);
     const f = (i: number, kind: TenderFile["kind"], name: string, sizeKb: number, day: string, by: string, more: Partial<TenderFile> = {}): TenderFile => ({ id: `tf-${q.id}-${i}`, kind, name, sizeKb, addedAt: at(day, "10:15"), addedBy: by, ...more });
     const files: TenderFile[] = [
@@ -63,7 +66,9 @@ export function seedTenders(db: Db, today: string) {
 
     // Each trade's price is shared from the subcontract figure in the costing; ours is the lowest
     // and picked. On the draft, one price has not come back yet and nothing is picked.
-    const trades = TRADES[q.kind ?? ""] ?? ["Scaffolding"];
+    // A quote keeps its kind of work by title ("Roof re-slating"); find its key in the rate books.
+    const key = Object.entries(WORK).find(([, w]) => w.title === q.kind)?.[0] ?? "";
+    const trades = TRADES[key] ?? ["Scaffolding"];
     const total = q.costing.subcontract;
     // The picked prices add up to the costing's subcontract figure exactly: the last trade takes the rest.
     const first = trades.length === 2 ? Math.round(total * 0.6) : total;
@@ -71,7 +76,7 @@ export function seedTenders(db: Db, today: string) {
     trades.forEach((trade, t) => {
       const ours = db.subcontractors.find((s) => s.trade === trade);
       const mine = t === 0 ? first : Math.round((total - first) * 100) / 100;
-      const asked = workdays(visit, 1);
+      const asked = cap(workdays(visit, 1));
       const back = workdays(asked, 4 + t);
       const names = [ours?.name ?? `${trade} contractor`, ...(OTHERS[trade] ?? [])];
       names.forEach((name, k) => {

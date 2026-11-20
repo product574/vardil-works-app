@@ -5,3 +5,4 @@ export { SubcontractorInvoices, SupplierInvoices, ToApprove, ToPay } from "./Pur
 export { ClientQueries } from "./Queries";
 export { AccountsExport } from "./SageExport";
 export { EmailTemplatePage, InvoiceDesignPage } from "./Templates";
+export { PaymentClaims } from "./Claims";

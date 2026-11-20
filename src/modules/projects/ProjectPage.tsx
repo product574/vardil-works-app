@@ -25,8 +25,9 @@ import { CrewRequestButtons } from "./CrewRequestButtons";
 import { HoldBadge, Progress, ProjectBadge, Tabs } from "@/ui/status";
 import { toast } from "@/ui/toast";
 import { FilesTab } from "./ProjectFiles";
+import { ProgrammeChart, SiteWeekAhead } from "./ProjectPlan";
 
-type Tab = "overview" | "scope" | "photos" | "files" | "plant" | "requests" | "extras" | "costs" | "history";
+type Tab = "overview" | "files" | "programme" | "week" | "variations" | "photos" | "plant" | "requests" | "costs";
 export const REQUEST_LABEL: Record<RequestKind, string> = { personnel: "Personnel", own_plant: "Own plant", hired_plant: "Hired plant", other: "Something else" };
 
 export function ProjectPage() {
@@ -53,18 +54,22 @@ export function ProjectPage() {
   const pct = scopePercent(tasks);
   const openExtras = db.variations.filter((v) => v.projectId === p.id && v.status === "Draft").length;
   const openRequests = db.requests.filter((r) => r.projectId === p.id && r.status === "Open").length;
+  // The nine sections of a project (20 Nov, the Oldstone template). Old addresses still land:
+  // Scope is part of Programme, Extras is Variations, History is at the foot of the Overview.
   const tabs: { value: Tab; label: string; count?: number }[] = [
     { value: "overview", label: "Overview" },
-    { value: "scope", label: "Scope" },
-    { value: "photos", label: "Photos" },
     { value: "files", label: "Files", count: db.files.filter((f) => f.projectId === p.id).length },
+    { value: "programme", label: "Programme" },
+    { value: "week", label: "Week ahead" },
+    { value: "variations", label: "Variations", count: openExtras },
+    { value: "photos", label: "Photos" },
     { value: "plant", label: "Plant" },
-    { value: "requests", label: "Requests", count: openRequests },
-    { value: "extras", label: "Extras", count: openExtras },
+    { value: "requests", label: "Site requests", count: openRequests },
     ...(access.seeMargins ? [{ value: "costs" as Tab, label: "Costs" }] : []),
-    { value: "history", label: "History" },
   ];
-  const tab = tabs.find((t) => t.value === params.get("tab"))?.value ?? "overview";
+  const OLD: Record<string, Tab> = { scope: "programme", extras: "variations", history: "overview" };
+  const asked = params.get("tab") ?? "";
+  const tab = tabs.find((t) => t.value === (OLD[asked] ?? asked))?.value ?? "overview";
 
   return (
     <>
@@ -72,8 +77,8 @@ export function ProjectPage() {
         title={`${p.code} ${p.name}`}
         note={
           <>
-            <Link to="/projects" className="text-accent-ink underline-offset-2 hover:underline">
-              All projects
+            <Link to={p.status === "Not started" ? "/projects/not-started" : p.status === "Live" ? "/projects" : "/projects/completed"} className="text-accent-ink underline-offset-2 hover:underline">
+              {p.status === "Not started" ? "Not started" : p.status === "Live" ? "Live projects" : "Completed"}
             </Link>
             {" / "}
             {client?.name}. {p.location}, {co(p.county)}. {p.heritage}.
@@ -95,15 +100,27 @@ export function ProjectPage() {
         <Tabs label="Project sections" value={tab} onChange={(v) => setParams(v === "overview" ? {} : { tab: v }, { replace: true })} tabs={tabs} />
       </PageHead>
       <PageBody className="max-w-6xl">
-        {tab === "overview" && <OverviewTab p={p} db={db} />}
-        {tab === "scope" && <ScopeTab p={p} db={db} />}
-        {tab === "photos" && <PhotosTab p={p} db={db} />}
+        {tab === "overview" && (
+          <div className="grid gap-6">
+            <OverviewTab p={p} db={db} />
+            <Section title="History">
+              <HistoryTab p={p} />
+            </Section>
+          </div>
+        )}
         {tab === "files" && <FilesTab p={p} db={db} />}
+        {tab === "programme" && (
+          <div className="grid gap-6">
+            <ProgrammeChart p={p} db={db} />
+            <ScopeTab p={p} db={db} />
+          </div>
+        )}
+        {tab === "week" && <SiteWeekAhead p={p} db={db} />}
+        {tab === "variations" && <ExtrasTab p={p} db={db} />}
+        {tab === "photos" && <PhotosTab p={p} db={db} />}
         {tab === "plant" && <PlantTab p={p} db={db} />}
         {tab === "requests" && <RequestsTab p={p} db={db} />}
-        {tab === "extras" && <ExtrasTab p={p} db={db} />}
         {tab === "costs" && access.seeMargins && <CostsTab p={p} db={db} pct={pct} />}
-        {tab === "history" && <HistoryTab p={p} />}
       </PageBody>
     </>
   );

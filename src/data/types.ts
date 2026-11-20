@@ -677,6 +677,7 @@ export type FileCategory =
   | "Photos and videos"
   | "Invoices"
   | "Handover"
+  | "Programme"
   | "Unclassified";
 export type PhotoStage = "Before" | "During" | "After";
 

@@ -545,7 +545,7 @@ function AppBar({ apps, besideAsk }: { apps: App[]; besideAsk: boolean }) {
   const homeOf = useAppHome();
   return (
     <nav aria-label="Apps" className={cx("pointer-events-none fixed inset-x-0 bottom-3 z-30 flex justify-center px-2", besideAsk && "md:right-[27rem]")}>
-      <ul className="pointer-events-auto flex max-w-full gap-1 overflow-x-auto rounded-[14px] border border-line bg-surface p-1.5 shadow-dock">
+      <ul className="pointer-events-auto flex max-w-full gap-0.5 overflow-x-auto rounded-[14px] border border-line bg-surface p-1 shadow-dock sm:gap-1 sm:p-1.5">
         {apps.map((a) => {
           const active = a.key === current;
           const Icon = a.icon;
@@ -554,7 +554,7 @@ function AppBar({ apps, besideAsk }: { apps: App[]; besideAsk: boolean }) {
               <NavLink
                 to={homeOf(a)}
                 aria-current={active ? "page" : undefined}
-                className={cx("press flex h-14 w-[5.6rem] flex-col items-center justify-center gap-0.5 rounded-lg text-[0.93rem] leading-tight", active ? "bg-accent-strong font-medium text-white" : "text-muted hover:bg-accent-soft hover:text-accent-ink")}
+                className={cx("press flex h-14 w-[4.15rem] flex-col items-center justify-center gap-0.5 rounded-lg text-[0.87rem] leading-tight sm:w-[5.6rem] sm:text-[0.93rem]", active ? "bg-accent-strong font-medium text-white" : "text-muted hover:bg-accent-soft hover:text-accent-ink")}
               >
                 <Icon size={22} weight={active ? "fill" : "regular"} />
                 <span className="whitespace-nowrap">{a.label}</span>

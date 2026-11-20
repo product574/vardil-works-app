@@ -12,6 +12,7 @@ import { plantBlocks, renewedTo, ticketBlocks } from "@/lib/compliance";
 import { bankHolidayOn, closureDays, isBankHoliday, isRestDay } from "@/lib/bank-holidays";
 import { addDays, dayOfWeek, isWeekend } from "@/lib/dates";
 import { billingEmail, grossOf, linesNet, nextAccountsNo, routeWords } from "@/lib/invoices";
+import { TENDER_CHECKS } from "@/lib/tenders";
 import { approveStep, chainOf, CHAIN_WORDS, nextFileNo, partyOf, purchaseStage, receiptEmail, remittanceEmail, startsOnSite } from "@/lib/purchases";
 import { REGION } from "@/lib/money";
 import { normaliseReg } from "@/lib/fleet";
@@ -30,7 +31,7 @@ import { ROLES } from "./roles";
 import { costingFor, linesFor, WORK, type WorkKind } from "./seed/commercial";
 import { rng } from "./seed/util";
 import { getDay, useData, usePrefs } from "./store";
-import type { PhoneAccount, AccessKey, AccessRow, Allocation, Attendance, Cert, Client, Course, Db, Expense, DepartmentKey, Enquiry, ID, LevelKey, PermKey, Person, PhotoStage, Language, Mail, MailAttachment, MailIntent, Proof, RequestKind, RoleKey, FileCategory, FileKind, FleetDocCategory, InvoiceLine, InvoiceQuery, Project, SalesInvoice, Scaffold, SendRoute, SubPaper, Variation, Vehicle, Base, BaseKind, ComplianceItem, Day, Garage, InvoiceStatus, LicenceKey, RepairCategory, RepairInvoice, RepairLine, Todo, RepairReport, RepairStatus, CertSubmission, RosterSend, PayChain } from "./types";
+import type { PhoneAccount, AccessKey, AccessRow, Allocation, Attendance, Cert, Client, Course, Db, Expense, DepartmentKey, Enquiry, ID, LevelKey, PermKey, Person, PhotoStage, Language, Mail, MailAttachment, MailIntent, Proof, RequestKind, RoleKey, FileCategory, FileKind, FleetDocCategory, InvoiceLine, InvoiceQuery, Project, SalesInvoice, Scaffold, SendRoute, SubPaper, Variation, Vehicle, Base, BaseKind, ComplianceItem, Day, Garage, InvoiceStatus, LicenceKey, RepairCategory, RepairInvoice, RepairLine, Todo, RepairReport, RepairStatus, CertSubmission, RosterSend, PayChain, TenderCheck, TenderFileKind } from "./types";
 
 const mutate = (fn: (db: Db) => void) => useData.getState().mutate(fn);
 
@@ -582,7 +583,7 @@ export function draftQuoteFromEnquiry(enquiryId: ID) {
     const id = newId("q");
     const lines = linesFor(r, kind, r.int(18, 95) * 1000, id);
     ref = `Q-${n}`;
-    db.quotes.unshift({ id, ref, enquiryId: e.id, clientId: e.clientId, title: `${e.location}: ${e.description.split(".")[0]}`, status: "Awaiting approval", lines, costing: costingFor(kind, quoteTotal(lines), r.int(19, 29)), validDays: 60, drafted: true, kind: WORK[kind].title });
+    db.quotes.unshift({ id, ref, enquiryId: e.id, clientId: e.clientId, title: `${e.location}: ${e.description.split(".")[0]}`, status: "Awaiting approval", lines, costing: costingFor(kind, quoteTotal(lines), r.int(19, 29)), validDays: 60, drafted: true, kind: WORK[kind].title, tender: { returnBy: addDays(getDay(), 14), files: [], subPrices: [], checks: {} } });
     e.quoteId = id;
     db.approvals.unshift({ id: newId("ap"), kind: "quote", title: `Quote ${ref}: ${e.location}`, rationale: "Drafted from the enquiry and priced from your rates for this kind of work.", createdAt: nowStamp(), status: "Pending", quoteId: id });
     log(db, "Drafted a quote from an enquiry", `${ref} ${e.location}`, "sales", "Assistant");
@@ -663,6 +664,109 @@ export function sendQuote(quoteId: ID) {
     if (e) e.status = "Quoted";
     for (const a of db.approvals) if (a.quoteId === q.id && a.status === "Pending") { a.status = "Approved"; a.resolvedBy = actorName(db); a.resolvedAt = nowStamp(); }
     log(db, "Sent a quote", `${q.ref} ${q.title}`, "sales");
+  });
+}
+
+// ── Tenders (20 Nov, the Oldstone template) ───────────────────────────────────
+// A tender is a quote with its own sections: the documents that came with it, site photos,
+// subcontractors' prices, our workings and the Buildsoft estimate, and the checks before it goes.
+
+/** The tender part of a quote, made on first use (a quote drafted from an enquiry has none yet). */
+function tenderOf(q: Db["quotes"][number]): NonNullable<Db["quotes"][number]["tender"]> {
+  q.tender ??= { returnBy: addDays(getDay(), 14), files: [], subPrices: [], checks: {} };
+  return q.tender;
+}
+
+/** When the tender must be back with the client. */
+export function setTenderReturn(quoteId: ID, day: string) {
+  mutate((db) => {
+    const q = db.quotes.find((x) => x.id === quoteId);
+    if (!q || !/^\d{4}-\d{2}-\d{2}$/.test(day)) return;
+    tenderOf(q).returnBy = day;
+    log(db, "Set a tender's return date", `${q.ref}: ${day}`, "sales");
+  });
+}
+
+/** A document, site photo or workings file kept with the tender. Pictures come shrunk, as photos everywhere. */
+export function addTenderFile(quoteId: ID, f: { kind: TenderFileKind; name: string; sizeKb: number; caption?: string; dataUrl?: string }) {
+  mutate((db) => {
+    const q = db.quotes.find((x) => x.id === quoteId);
+    if (!q || !f.name.trim()) return;
+    tenderOf(q).files.push({ id: newId("tf"), kind: f.kind, name: f.name.trim(), sizeKb: f.sizeKb, addedAt: nowStamp(), addedBy: actorName(db), ...(f.caption?.trim() ? { caption: f.caption.trim() } : {}), ...(f.dataUrl ? { dataUrl: f.dataUrl } : {}), tone: tenderOf(q).files.length % 6 });
+    log(db, f.kind === "Site photo" ? "Added a site photo to a tender" : "Added a file to a tender", `${q.ref}: ${f.name.trim()}`, "sales");
+  });
+}
+
+export function removeTenderFile(quoteId: ID, fileId: ID) {
+  mutate((db) => {
+    const q = db.quotes.find((x) => x.id === quoteId);
+    const f = q?.tender?.files.find((x) => x.id === fileId);
+    if (!q || !f) return;
+    q.tender!.files = q.tender!.files.filter((x) => x.id !== fileId);
+    log(db, "Took a file off a tender", `${q.ref}: ${f.name}`, "sales");
+  });
+}
+
+/** Ask a subcontractor to price one trade on the tender. */
+export function askSubPrice(quoteId: ID, a: { trade: string; name: string; subcontractorId?: ID }) {
+  mutate((db) => {
+    const q = db.quotes.find((x) => x.id === quoteId);
+    if (!q || !a.trade.trim() || !a.name.trim()) return;
+    tenderOf(q).subPrices.push({ id: newId("sp"), trade: a.trade.trim(), name: a.name.trim(), askedAt: getDay(), ...(a.subcontractorId ? { subcontractorId: a.subcontractorId } : {}) });
+    log(db, "Asked a subcontractor to price a tender", `${q.ref}: ${a.name.trim()}, ${a.trade.trim()}`, "sales");
+  });
+}
+
+/** The figure a subcontractor came back with, before VAT. */
+export function recordSubPrice(quoteId: ID, id: ID, price: number, note?: string) {
+  mutate((db) => {
+    const q = db.quotes.find((x) => x.id === quoteId);
+    const sp = q?.tender?.subPrices.find((x) => x.id === id);
+    if (!q || !sp || !(price > 0)) return;
+    sp.price = r2(price);
+    sp.receivedAt = getDay();
+    if (note?.trim()) sp.note = note.trim();
+    if (sp.picked) q.costing.subcontract = pickedTotal(q);
+    log(db, "Recorded a subcontractor's price", `${q.ref}: ${sp.name}, ${sp.trade}`, "sales");
+  });
+}
+
+const pickedTotal = (q: Db["quotes"][number]) => r2((q.tender?.subPrices ?? []).filter((x) => x.picked && x.price != null).reduce((t, x) => t + x.price!, 0));
+
+/**
+ * Use this subcontractor's price for its trade: the others for that trade are let go, and the
+ * subcontract line of the tender's costing becomes the total of the prices picked.
+ */
+export function pickSubPrice(quoteId: ID, id: ID) {
+  mutate((db) => {
+    const q = db.quotes.find((x) => x.id === quoteId);
+    const sp = q?.tender?.subPrices.find((x) => x.id === id);
+    if (!q || !sp || sp.price == null) return;
+    for (const x of q.tender!.subPrices) if (x.trade === sp.trade) x.picked = x.id === id;
+    q.costing.subcontract = pickedTotal(q);
+    log(db, "Picked a subcontractor's price for a tender", `${q.ref}: ${sp.name} for ${sp.trade}`, "sales");
+  });
+}
+
+/** Tick, or untick, one of the checks before the tender goes. */
+export function setTenderCheck(quoteId: ID, key: TenderCheck, on: boolean) {
+  mutate((db) => {
+    const q = db.quotes.find((x) => x.id === quoteId);
+    if (!q) return;
+    const t = tenderOf(q);
+    if (on) t.checks[key] = { by: actorName(db), at: nowStamp() };
+    else delete t.checks[key];
+    log(db, on ? "Ticked a check on a tender" : "Took a tender check back", `${q.ref}: ${TENDER_CHECKS.find((c) => c.key === key)?.label ?? key}`, "sales");
+  });
+}
+
+/** The total from the Buildsoft estimate, to check against the priced items. */
+export function setBuildsoftTotal(quoteId: ID, total: number) {
+  mutate((db) => {
+    const q = db.quotes.find((x) => x.id === quoteId);
+    if (!q || !(total >= 0)) return;
+    tenderOf(q).buildsoftTotal = r2(total);
+    log(db, "Entered the Buildsoft total on a tender", q.ref, "sales");
   });
 }
 

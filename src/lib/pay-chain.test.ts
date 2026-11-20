@@ -11,7 +11,7 @@ const accounts = { personId: "p-acc", handles: true, approvesAll: false, approve
 const names = (id: string) => ({ "p-sm": "Eoin Brosnan" })[id];
 
 describe("Jimmy's chain: site manager, then managing director", () => {
-  it("is the default when nothing is set", () => expect(chainOf([{ id: "supplier", amount: 500 }])).toBe("site-md"));
+  it("is the default when nothing is set", () => expect(chainOf([{ id: "supplier" }])).toBe("site-md"));
   it("starts on site", () => expect(startsOnSite("site-md")).toBe(true));
   it("lets the site manager of the job do his step, not finish it", () => {
     expect(approvalBy(inv({ siteStep: true }), sm, 500, [site], "site-md")).toBe("site");

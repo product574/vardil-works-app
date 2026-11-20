@@ -1,15 +1,17 @@
 import { useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useAccess } from "@/data/access";
 import { X } from "@phosphor-icons/react";
-import { acceptQuote, addCostRow, addQuoteLine, chaseQuote, type CostGroup, declineQuote, removeCostRow, removeQuoteLine, sendQuote, setCostField, setCostLump, setQuoteLineField } from "@/data/actions";
+import { acceptQuote, addCostRow, addQuoteLine, type CostGroup, removeCostRow, removeQuoteLine, setCostField, setCostLump, setQuoteLineField } from "@/data/actions";
 import { useData, useDay, usePrefs } from "@/data/store";
-import { addDays } from "@/lib/dates";
-import { dFull, when } from "@/lib/format";
 import { gross, money2, pct1, REGION } from "@/lib/money";
 import { costBreakdown, lineValue, marginFlag, marginPct, quoteTotal } from "@/lib/quotes";
 import { Button, cx, Dialog, Empty, Field, NumInput, PageBody, PageHead, Panel, Section, Segmented } from "@/ui";
-import { QuoteBadge } from "@/ui/status";
+import { QuoteBadge, Tabs } from "@/ui/status";
+import { dFull } from "@/lib/format";
+import { DOC_KINDS, returnTone, returnWords, subsState } from "@/lib/tenders";
+import { BuildsoftPanel, TenderCompleted, TenderFiles, TenderOverview, TenderSubcontractors, WorkingsFiles } from "./TenderSections";
+import { Badge } from "@/ui";
 import { toast } from "@/ui/toast";
 
 export function QuotePage() {
@@ -21,6 +23,7 @@ export function QuotePage() {
   const { seeValues, seeMargins, may } = useAccess();
   const canPrice = may("priceQuotes");
   const [view, setView] = useState<"costing" | "client">("costing");
+  const [params, setParams] = useSearchParams();
   const [accepting, setAccepting] = useState(false);
   const [po, setPo] = useState("");
 
@@ -29,7 +32,7 @@ export function QuotePage() {
     return (
       <PageBody>
         <Empty title={`There is no quote ${ref}`}>
-          It may have been cleared by a demo reset. <Link to="/sales" className="text-accent-ink underline">Back to the pipeline</Link>
+          It may have been cleared by a demo reset. <Link to="/sales/tenders" className="text-accent-ink underline">Back to the tenders</Link>
         </Empty>
       </PageBody>
     );
@@ -44,6 +47,19 @@ export function QuotePage() {
   const editable = canPrice && (q.status === "Draft" || q.status === "Awaiting approval" || q.status === "Queried");
   const out = q.status === "Sent" || q.status === "Opened" || q.status === "Queried";
   const vat = REGION[region].vatPct;
+  // The tender's own sections (20 Nov, the Oldstone template), each an address of its own.
+  type Tab = "overview" | "documents" | "subcontractors" | "photos" | "workings" | "completed";
+  const files = q.tender?.files ?? [];
+  const subs = subsState(q.tender?.subPrices ?? []);
+  const tabs: { value: Tab; label: string; count?: number }[] = [
+    { value: "overview", label: "Overview" },
+    { value: "documents", label: "Tender documents", count: files.filter((f) => DOC_KINDS.includes(f.kind)).length },
+    { value: "subcontractors", label: "Subcontractors", count: subs.missing.length },
+    { value: "photos", label: "Photos", count: files.filter((f) => f.kind === "Site photo").length },
+    { value: "workings", label: "Workings and Buildsoft" },
+    { value: "completed", label: "Tender completed" },
+  ];
+  const tab = tabs.find((t) => t.value === params.get("tab"))?.value ?? "overview";
 
   return (
     <>
@@ -51,8 +67,8 @@ export function QuotePage() {
         title={`${q.ref} ${q.title}`}
         note={
           <>
-            <Link to="/sales" className="text-accent-ink underline-offset-2 hover:underline">
-              Pipeline
+            <Link to="/sales/tenders" className="text-accent-ink underline-offset-2 hover:underline">
+              Tenders
             </Link>
             {" / "}
             {client?.name}, attention {client?.contactName}
@@ -60,20 +76,9 @@ export function QuotePage() {
         }
         actions={
           <>
+            <Badge tone={returnTone(q, day)}>{returnWords(q, day)}</Badge>
             <QuoteBadge status={q.status} />
-            {seeValues && <Segmented label="Quote view" value={view} onChange={setView} options={[{ value: "costing", label: "Costing" }, { value: "client", label: "Client copy" }]} />}
-            {editable && (
-              <Button
-                variant="primary"
-                onClick={() => {
-                  sendQuote(q.id);
-                  toast(`${q.ref} marked as sent to ${client?.contactName}`);
-                }}
-              >
-                {q.status === "Queried" ? "Send revised quote" : q.status === "Awaiting approval" ? "Approve and send" : "Send to client"}
-              </Button>
-            )}
-            {out && !editable && canPrice && (
+            {out && canPrice && (
               <Button variant="primary" onClick={() => setAccepting(true)}>
                 Record acceptance
               </Button>
@@ -85,7 +90,9 @@ export function QuotePage() {
             )}
           </>
         }
-      />
+      >
+        <Tabs label="Tender sections" value={tab} onChange={(v) => setParams(v === "overview" ? {} : { tab: v }, { replace: true })} tabs={tabs} />
+      </PageHead>
       <PageBody className="grid max-w-6xl gap-5">
         {q.query && (
           <p className="rounded-md bg-warn-soft px-3 py-2 text-warn">
@@ -94,7 +101,17 @@ export function QuotePage() {
         )}
         {q.drafted && (q.status === "Awaiting approval" || q.status === "Draft") && <p className="rounded-md bg-accent-soft px-3 py-2 text-accent-ink">Drafted for you from the enquiry, priced from your rates. Check the quantities, then send.</p>}
 
-        {view === "client" && seeValues ? (
+        {tab === "overview" && <TenderOverview q={q} />}
+        {tab === "documents" && <TenderFiles q={q} kinds={DOC_KINDS} title="Tender documents" empty="No tender documents yet" />}
+        {tab === "subcontractors" && <TenderSubcontractors q={q} />}
+        {tab === "photos" && <TenderFiles q={q} kinds={["Site photo"]} photos title="Site photos" empty="No photos yet" />}
+        {tab === "completed" && <TenderCompleted q={q} />}
+        {tab === "workings" && seeValues && (
+          <div className="flex justify-end">
+            <Segmented label="Quote view" value={view} onChange={setView} options={[{ value: "costing", label: "Costing" }, { value: "client", label: "Client copy" }]} />
+          </div>
+        )}
+        {tab !== "workings" ? null : view === "client" && seeValues ? (
           <ClientCopy quoteRef={q.ref} />
         ) : (
           <>
@@ -217,47 +234,10 @@ export function QuotePage() {
                 </Section>
               )}
 
-              <Section title="Where it stands">
-                <Panel>
-                  <dl className="px-3 py-1">
-                    {[
-                      ["Sent", q.sentAt ? when(q.sentAt, day) : "Not sent yet"],
-                      ["Opened by client", q.openedAt ? when(q.openedAt, day) : "Not yet"],
-                      ["Last chased", q.chasedAt ? when(q.chasedAt, day) : "Not chased"],
-                      ["Client answered", q.respondedAt ? when(q.respondedAt, day) : "No answer yet"],
-                      ["Purchase order", q.poNumber ?? "None"],
-                      ["Valid until", q.sentAt ? dFull(addDays(q.sentAt.slice(0, 10), q.validDays)) : `${q.validDays} days from sending`],
-                    ].map(([k, v]) => (
-                      <div key={k} className="flex gap-3 border-b border-line py-1.5 last:border-0">
-                        <dt className="w-36 shrink-0 text-muted">{k}</dt>
-                        <dd>{v}</dd>
-                      </div>
-                    ))}
-                  </dl>
-                </Panel>
-                {out && canPrice && (
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <Button
-                      onClick={() => {
-                        chaseQuote(q.id);
-                        toast(`Chase to ${client?.contactName} recorded`);
-                      }}
-                    >
-                      Chase the client
-                    </Button>
-                    {editable && <Button onClick={() => setAccepting(true)}>Record acceptance</Button>}
-                    <Button
-                      variant="danger"
-                      onClick={() => {
-                        declineQuote(q.id);
-                        toast(`${q.ref} recorded as declined`);
-                      }}
-                    >
-                      Record as declined
-                    </Button>
-                  </div>
-                )}
-              </Section>
+              <div className="grid content-start gap-5">
+                <BuildsoftPanel q={q} />
+                <WorkingsFiles q={q} />
+              </div>
             </div>
           </>
         )}

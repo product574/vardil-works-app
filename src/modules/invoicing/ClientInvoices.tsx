@@ -1,5 +1,5 @@
 import { DotsThree, MagnifyingGlass, Trash } from "@phosphor-icons/react";
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { clearHold, deleteDraftInvoice, draftInvoice, issueInvoice, saveDraftInvoice, unmarkInvoicePaid } from "@/data/actions";
 import { co } from "@/data/place";
@@ -302,11 +302,12 @@ type DraftLine = Omit<InvoiceLine, "id">;
  * extra or dayworks, and everything can be changed before the draft is made.
  * With `edit`, the same form changes a draft that already exists.
  */
-export function DraftInvoiceDialog({ open, onClose, onSaved, edit }: { open: boolean; onClose: () => void; onSaved: (ref: string) => void; edit?: SalesInvoice }) {
-  return open ? <DraftForm key={edit?.id ?? "new"} edit={edit} onClose={onClose} onSaved={onSaved} /> : null;
+/** `projectId`: start on this project (Money in, Payment claims: "Draft this month's claim"). */
+export function DraftInvoiceDialog({ open, onClose, onSaved, edit, projectId }: { open: boolean; onClose: () => void; onSaved: (ref: string) => void; edit?: SalesInvoice; projectId?: string }) {
+  return open ? <DraftForm key={edit?.id ?? projectId ?? "new"} edit={edit} preset={projectId} onClose={onClose} onSaved={onSaved} /> : null;
 }
 
-function DraftForm({ edit, onClose, onSaved }: { edit?: SalesInvoice; onClose: () => void; onSaved: (ref: string) => void }) {
+function DraftForm({ edit, preset, onClose, onSaved }: { edit?: SalesInvoice; preset?: string; onClose: () => void; onSaved: (ref: string) => void }) {
   const { db, region, access } = useInv();
   const formId = useId();
   const [find, setFind] = useState("");
@@ -342,6 +343,10 @@ function DraftForm({ edit, onClose, onSaved }: { edit?: SalesInvoice; onClose: (
     setLines(first.lines.map((l) => ({ ...l })));
     setPoNumber(db.quotes.find((x) => x.id === proj.quoteId)?.poNumber ?? "");
   };
+  // Opened for one project: start on it, as if it had been picked.
+  useEffect(() => {
+    if (preset && !edit) choose(preset);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const begin = (key: string) => {
     const s = starts.find((x) => x.key === key);
     if (!s) return;

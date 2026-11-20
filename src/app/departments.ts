@@ -70,6 +70,9 @@ export const DEPARTMENTS: Department[] = [
     key: "sales", label: "Sales", icon: Handshake, home: "/sales", inBar: true,
     groups: [
       { label: "Pipeline", items: [
+        { to: "/sales/tenders", label: "Tenders" },
+        { to: "/sales/confirmed", label: "Confirmed" },
+        { to: "/sales/pipeline", label: "Pipeline" },
         { to: "/sales", label: "Board", end: true },
         { to: "/sales/enquiries", label: "Enquiries", count: (db) => db.enquiries.filter((e) => e.status === "Logged" && !e.quoteId).length },
         { to: "/sales/awaiting", label: "Awaiting response", count: (db) => db.quotes.filter((q) => q.status === "Queried").length, countTone: "warn" },
@@ -86,8 +89,10 @@ export const DEPARTMENTS: Department[] = [
     key: "projects", label: "Projects", icon: HardHat, home: "/projects", inBar: true,
     groups: [
       { label: "Work", items: [
-        { to: "/projects", label: "All projects", end: true },
-        { to: "/projects/today", label: "On site today" },
+        { to: "/projects", label: "Live projects", end: true },
+        { to: "/projects/not-started", label: "Not started" },
+        { to: "/projects/resources", label: "Resources today" },
+        { to: "/projects/all", label: "All projects" },
         { to: "/projects/extras", label: "Extras and snagging", count: (db) => db.projects.filter((p) => p.invoiceHold).length, countTone: "warn" },
         { to: "/projects/completed", label: "Completed" },
       ] },
@@ -197,6 +202,7 @@ export const DEPARTMENTS: Department[] = [
     groups: [
       // One list of client invoices, opened on all of them, on the unpaid, or on the held (18 Nov).
       { label: "Money in", items: [
+        { to: "/invoicing/claims", label: "Payment claims" },
         { to: "/invoicing", label: "Client invoices", end: true, count: (db) => db.salesInvoices.filter((i) => i.status === "To invoice").length },
         { to: "/invoicing/invoiced", label: "Unpaid", count: (db, today) => db.salesInvoices.filter((i) => i.status === "Invoiced" && !!i.dueOn && i.dueOn < today).length, countTone: "bad" },
         { to: "/invoicing/held", label: "Held", count: (db) => db.salesInvoices.filter((i) => i.status === "Held").length, countTone: "warn" },

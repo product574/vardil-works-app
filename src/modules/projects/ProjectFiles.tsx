@@ -14,7 +14,7 @@ import { toast } from "@/ui/toast";
  * project has the same folders, like a shared drive, so anyone can find a drawing or a
  * certificate without asking.
  */
-const FOLDERS: FileCategory[] = ["Drawings", "Method statements", "Conservation reports", "Health and safety", "Correspondence", "Photos and videos", "Invoices", "Handover"];
+const FOLDERS: FileCategory[] = ["Drawings", "Method statements", "Conservation reports", "Health and safety", "Correspondence", "Photos and videos", "Invoices", "Handover", "Programme"];
 const ICON: Record<FileKind, typeof FilePdf> = { pdf: FilePdf, image: ImageIcon, video: FilmStrip, doc: FileDoc, sheet: FileXls, email: EnvelopeSimple, drawing: Blueprint };
 const size = (kb: number) => (kb >= 1000 ? `${(kb / 1000).toFixed(1)} MB` : `${kb} KB`);
 

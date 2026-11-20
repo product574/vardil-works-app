@@ -9,6 +9,7 @@ import { dShort, plural, when, whenInline } from "@/lib/format";
 import { money0 } from "@/lib/money";
 import { scopePercent } from "@/lib/project-costs";
 import { crewRequests, mayHandleCrewRequest, requestsFor, withOffice } from "@/lib/requests";
+import { dayRoster } from "@/lib/roster";
 import { Badge, Button, DeclineNote, Empty, PageBody, PageHead, Panel, Section, Segmented } from "@/ui";
 import { HoldBadge, Progress, ProjectBadge } from "@/ui/status";
 import { toast } from "@/ui/toast";
@@ -21,12 +22,19 @@ const clientOf = (db: Db, p: Project) => db.clients.find((c) => c.id === p.clien
 
 type Filter = "All" | ProjectStatus;
 
-export function AllProjects() {
+/** Projects, Live projects (20 Nov, the Oldstone template): the live jobs only, opening each on its own page. */
+export const LiveProjects = () => <AllProjects fixed="Live" />;
+/** Projects, Not started: confirmed and waiting to start. */
+export const NotStarted = () => <AllProjects fixed="Not started" />;
+
+export function AllProjects({ fixed }: { fixed?: "Live" | "Not started" } = {}) {
   const db = useData((s) => s.db);
   const region = usePrefs((s) => s.brand.region);
   const access = useAccess();
   const navigate = useNavigate();
-  const [filter, setFilter] = useState<Filter>("Live");
+  const day = useDay();
+  const [chosen, setFilter] = useState<Filter>("Live");
+  const filter: Filter = fixed ?? chosen;
   const [q, setQ] = useState("");
   const mine = access.scope(db.projects);
   const count = (s: ProjectStatus) => mine.filter((p) => p.status === s).length;
@@ -37,9 +45,12 @@ export function AllProjects() {
 
   return (
     <>
-      <PageHead title="All projects" note={!access.allProjects ? "The projects you run. Other site managers' projects are not shown to you." : "Every contract, each with its site code."}>
+      <PageHead
+        title={fixed === "Live" ? "Live projects" : fixed === "Not started" ? "Not started" : "All projects"}
+        note={`${fixed === "Live" ? `${plural(rows.length, "project")} on site now.` : fixed === "Not started" ? `${plural(rows.length, "project")} confirmed and waiting to start.` : "Every contract, each with its site code."}${!access.allProjects ? " The projects you run; other site managers' are not shown to you." : ""} Open one for its overview, files, programme, week ahead, variations, photos, plant, site requests and costs.`}
+      >
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          <Segmented label="Project status" value={filter} onChange={setFilter} options={[{ value: "Live", label: "Live", count: count("Live") }, { value: "Not started", label: "Not started", count: count("Not started") }, { value: "Complete", label: "Complete", count: count("Complete") }, { value: "Invoiced", label: "Invoiced", count: count("Invoiced") }, { value: "Closed", label: "Closed", count: count("Closed") }, { value: "All", label: "All", count: mine.length }]} />
+          {!fixed && <Segmented label="Project status" value={filter} onChange={setFilter} options={[{ value: "Live", label: "Live", count: count("Live") }, { value: "Not started", label: "Not started", count: count("Not started") }, { value: "Complete", label: "Complete", count: count("Complete") }, { value: "Invoiced", label: "Invoiced", count: count("Invoiced") }, { value: "Closed", label: "Closed", count: count("Closed") }, { value: "All", label: "All", count: mine.length }]} />}
           <input type="search" aria-label="Search projects" placeholder="Search by code, name, client or county" className="field max-w-xs" value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
       </PageHead>
@@ -55,7 +66,9 @@ export function AllProjects() {
                   <th>Project</th>
                   <th>Client</th>
                   <th>Site manager</th>
-                  <th>On site</th>
+                  <th>{filter === "Not started" ? "Starts" : "On site"}</th>
+                  {filter === "Live" && <th className="num">Today</th>}
+                  {filter === "Not started" && <th className="num">People planned</th>}
                   <th>Scope done</th>
                   {access.seeValues && <th className="num">Value</th>}
                   <th>Status</th>
@@ -79,7 +92,10 @@ export function AllProjects() {
                     <td>{person(db, p.siteManagerId)}</td>
                     <td className="whitespace-nowrap">
                       {dShort(p.startDate)} to {dShort(p.endDate)}
+                      {p.status === "Live" && p.endDate < day && <span className="block text-[0.87rem] text-bad">Past its finish date</span>}
                     </td>
+                    {filter === "Live" && <td className="num">{dayRoster(db.attendance, db.plan, p.id, day, day).rows.length || "-"}</td>}
+                    {filter === "Not started" && <td className="num">{new Set(db.plan.filter((e) => e.projectId === p.id).map((e) => e.personId)).size || <span className="text-warn">None yet</span>}</td>}
                     <td>
                       <Progress pct={pctOf(db, p)} />
                     </td>
