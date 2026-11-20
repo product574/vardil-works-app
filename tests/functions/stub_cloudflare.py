@@ -4,16 +4,18 @@ import json, sys, threading
 #   GET  /client/v4/accounts/acc/access/groups/grp         the managed group
 #   PUT  /client/v4/accounts/acc/access/groups/grp         write it (kept here)
 #   POST /client/v4/accounts/acc/access/organizations/revoke_user   sign someone out
+#   POST /client/v4/accounts/acc/email/sending/send       an email to Vardil (kept here)
 #   GET  /__state   the group and every revoke; POST /__fail with {"on": true} makes the PUT fail
 # Usage: python3 stub_cloudflare.py <jwks.json> [port]
 import http.server
 
 JWKS = open(sys.argv[1], encoding="utf-8").read()
 PORT = int(sys.argv[2]) if len(sys.argv) > 2 else 4196
-STATE = {"group": {"id": "grp", "name": "Demo clients, kept by Vardil HQ", "include": []}, "revoked": [], "puts": 0, "fail": False, "auth": []}
+STATE = {"group": {"id": "grp", "name": "Demo clients, kept by Vardil HQ", "include": []}, "revoked": [], "puts": 0, "fail": False, "auth": [], "emails": []}
 LOCK = threading.Lock()
 G = "/client/v4/accounts/acc/access/groups/grp"
 R = "/client/v4/accounts/acc/access/organizations/revoke_user"
+E = "/client/v4/accounts/acc/email/sending/send"
 
 class H(http.server.BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
@@ -51,6 +53,9 @@ class H(http.server.BaseHTTPRequestHandler):
         if self.path == R:
             with LOCK: STATE["revoked"].append(b.get("email"))
             return self.send_json(200, {"success": True, "result": True})
+        if self.path == E:
+            with LOCK: STATE["emails"].append({"auth": self.headers.get("authorization"), **b})
+            return self.send_json(200, {"success": True, "result": {"delivered": [b.get("to")]}})
         self.send_json(404, {"success": False})
 
 http.server.ThreadingHTTPServer(("127.0.0.1", PORT), H).serve_forever()

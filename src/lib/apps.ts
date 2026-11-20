@@ -82,22 +82,85 @@ const DESIGN_SWITCH = ["showLogo", "showBank", "showSite", "rule"] as const;
 /** Written out here rather than imported, so the server's own build needs nothing from the page's. */
 export type LookDesign = Partial<Record<(typeof DESIGN_TEXT)[number], string> & Record<(typeof DESIGN_SWITCH)[number], boolean>>;
 
-/** A client as Vardil HQ saves it: who signs in (named emails only), their apps and their look. */
+/**
+ * The levels a person may sign in to a demo as (20 Nov, decision 210): the six on the "Who are you
+ * signing in as?" page. Written out here (the same keys as RoleKey in data/types) so the server
+ * needs nothing from the page's code; apps.test.ts checks the two agree.
+ */
+export const DEMO_LEVELS = ["md", "contracts", "site", "accounts", "operative", "client"] as const;
+export type DemoLevel = (typeof DEMO_LEVELS)[number];
+export const LEVEL_NAMES: Record<DemoLevel, string> = { md: "Managing director", contracts: "Contracts manager", site: "Site manager", accounts: "Accounts", operative: "Operative (phone)", client: "Client (portal)" };
+export const isLevel = (x: unknown): x is DemoLevel => typeof x === "string" && (DEMO_LEVELS as readonly string[]).includes(x);
+
+/** One person who may sign in to a client's demo, and the levels they may use. */
+export type ClientPerson = { email: string; levels: DemoLevel[] };
+
+/** Where a demo stands: running, or closed because they became a client or said no. */
+export type DemoStage = "active" | "won" | "lost";
+export const STAGE_NAMES: Record<DemoStage, string> = { active: "Demo", won: "Became a client", lost: "Not interested" };
+/** How long a new demo runs, and how much "Extend" adds. */
+export const DEMO_DAYS = 30;
+/** How long before the end a demo is flagged. */
+export const ENDING_SOON_DAYS = 7;
+/** How long what prospects did in their demo is kept. */
+export const KEEP_ACTIVITY_DAYS = 365;
+
+/** What one person has done in their demo, over the days kept. */
+export type PersonActivity = {
+  email: string;
+  firstAt: string | null;
+  lastAt: string | null;
+  /** Days they opened the demo on, and separate visits (a gap of 30 minutes starts a new one). */
+  days: number;
+  visits: number;
+  /** Each app they opened, and on how many days. */
+  apps: Partial<Record<AppKey, number>>;
+  levels: DemoLevel[];
+};
+
+/** A client as Vardil HQ saves it: who signs in (named emails only) at which levels, their apps, look and demo status. */
 export type ClientConfig = {
   id: string;
   name: string;
-  emails: string[];
+  people: ClientPerson[];
   apps: AppKey[];
   automations: boolean;
   look: ClientLook;
   /** Where their logo is served from, or "" for none. */
   logoUrl: string;
+  stage: DemoStage;
+  /** The last day the demo is open (yyyy-mm-dd), or null for no end. */
+  endsOn: string | null;
+  /** Staff only: what each person has done. */
+  activity?: PersonActivity[];
   updatedAt?: string;
   updatedBy?: string;
 };
 
-/** What a signed-in client is sent about their own firm. */
-export type OwnConfig = Pick<ClientConfig, "id" | "name" | "apps" | "automations" | "look" | "logoUrl">;
+/** What a signed-in client is sent about their own firm: never anyone else's emails or activity. */
+export type OwnConfig = Pick<ClientConfig, "id" | "name" | "apps" | "automations" | "look" | "logoUrl"> & { levels: DemoLevel[] };
+
+/** A date as yyyy-mm-dd, plus or minus whole days. */
+export function shiftDay(day: string, by: number): string {
+  const d = new Date(`${day}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + by);
+  return d.toISOString().slice(0, 10);
+}
+/** Today in Ireland, as yyyy-mm-dd: the day a demo's end date is counted against. */
+export function irishToday(now = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Dublin", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+}
+
+/** Where a demo stands today, for the screens: open, ending within a week, past its end date, or closed. */
+export type DemoState = "open" | "ending" | "ended" | "won" | "lost";
+export function demoState(stage: DemoStage, endsOn: string | null, today: string): DemoState {
+  if (stage === "won" || stage === "lost") return stage;
+  if (endsOn && endsOn < today) return "ended";
+  if (endsOn && endsOn <= shiftDay(today, ENDING_SOON_DAYS)) return "ending";
+  return "open";
+}
+/** Whether its people may sign in today. */
+export const demoLive = (stage: DemoStage, endsOn: string | null, today: string) => stage === "active" && !(endsOn && endsOn < today);
 
 /** One sign-in email, lower case and trimmed, or null. A firm's whole domain is not accepted (decision 209: named emails only). */
 export function cleanEmail(raw: string): string | null {
@@ -119,9 +182,16 @@ export function splitEmails(raw: string): { good: string[]; bad: string[] } {
 }
 
 /** The client whose list holds this email. */
-export function clientOf<T extends { emails: string[] }>(email: string, rows: T[]): T | null {
+export function clientOf<T extends { people: { email: string }[] }>(email: string, rows: T[]): T | null {
   const e = email.trim().toLowerCase();
-  return rows.find((r) => r.emails.includes(e)) ?? null;
+  return rows.find((r) => r.people.some((p) => p.email === e)) ?? null;
+}
+
+/** The levels a person keeps when sent: known ones only, in the page's order; none means every level. */
+export function readLevels(raw: unknown): DemoLevel[] {
+  const got = Array.isArray(raw) ? raw.filter(isLevel) : [];
+  const kept = DEMO_LEVELS.filter((l) => got.includes(l));
+  return kept.length ? kept : [...DEMO_LEVELS];
 }
 
 /** A starting look for a new client: their name, Vardil's colour, Ireland. */
@@ -178,8 +248,12 @@ export function packageOf(on: readonly AppKey[], automations: boolean): Package 
 // ── What Vardil HQ may send to the server ─────────────────────────────────────
 
 export type WorkspaceAction =
-  | { action: "set_client"; id: string | null; name: string; emails: string[]; apps: AppKey[]; automations: boolean; look: ClientLook }
+  | { action: "set_client"; id: string | null; name: string; people: ClientPerson[]; apps: AppKey[]; automations: boolean; look: ClientLook }
   | { action: "delete_client"; id: string }
+  | { action: "set_stage"; id: string; stage: DemoStage }
+  | { action: "set_end"; id: string; endsOn: string | null }
+  | { action: "visit" }
+  | { action: "seen"; app: AppKey; level: DemoLevel | null }
   | { action: "set_logo"; id: string; logo: string | null }
   | { action: "sync_cloudflare" }
   | { action: "announce"; title: string; body: string }
@@ -188,7 +262,9 @@ export type WorkspaceAction =
   | { action: "ask_app"; app: AppKey; firm: string };
 
 /** Actions only Vardil staff may take. Asking about an app is open to every signed-in client. */
-export const STAFF_ACTIONS = new Set(["set_client", "delete_client", "set_logo", "sync_cloudflare", "announce", "remove_announcement", "handle_request"]);
+export const STAFF_ACTIONS = new Set(["set_client", "delete_client", "set_stage", "set_end", "set_logo", "sync_cloudflare", "announce", "remove_announcement", "handle_request"]);
+/** What a client's own page sends about their visit. Staff are never recorded. */
+export const VISIT_ACTIONS = new Set(["visit", "seen"]);
 
 /** The most people one client can have signed in. */
 export const MAX_EMAILS = 200;
@@ -207,18 +283,18 @@ export function readWorkspaceAction(raw: unknown): { ok: true; act: WorkspaceAct
       if (id === undefined) return { ok: false, reason: "id" };
       const name = text(raw.name, 120);
       if (!name) return { ok: false, reason: "name" };
-      if (!Array.isArray(raw.emails) || raw.emails.length > MAX_EMAILS) return { ok: false, reason: "emails" };
-      const emails: string[] = [];
-      for (const e of raw.emails) {
-        const c = typeof e === "string" ? cleanEmail(e) : null;
-        if (!c) return { ok: false, reason: "emails" };
-        if (!emails.includes(c)) emails.push(c);
+      if (!Array.isArray(raw.people) || raw.people.length > MAX_EMAILS) return { ok: false, reason: "people" };
+      const people: ClientPerson[] = [];
+      for (const p of raw.people) {
+        const c = isObj(p) && typeof p.email === "string" ? cleanEmail(p.email) : null;
+        if (!c) return { ok: false, reason: "people" };
+        if (!people.some((x) => x.email === c)) people.push({ email: c, levels: readLevels(isObj(p) ? p.levels : null) });
       }
       if (!Array.isArray(raw.apps) || !raw.apps.every(isAppKey)) return { ok: false, reason: "apps" };
       const apps = [...new Set([...(raw.apps as AppKey[]), ...ALWAYS_ON])];
       const look = readLook(raw.look);
       if (!look) return { ok: false, reason: "look" };
-      return { ok: true, act: { action: "set_client", id, name, emails, apps, automations: raw.automations === true, look } };
+      return { ok: true, act: { action: "set_client", id, name, people, apps, automations: raw.automations === true, look } };
     }
     case "delete_client":
       return isId(raw.id) ? { ok: true, act: { action: "delete_client", id: raw.id } } : { ok: false, reason: "id" };
@@ -230,6 +306,20 @@ export function readWorkspaceAction(raw: unknown): { ok: true; act: WorkspaceAct
     }
     case "sync_cloudflare":
       return { ok: true, act: { action: "sync_cloudflare" } };
+    case "set_stage":
+      if (!isId(raw.id)) return { ok: false, reason: "id" };
+      return raw.stage === "active" || raw.stage === "won" || raw.stage === "lost" ? { ok: true, act: { action: "set_stage", id: raw.id, stage: raw.stage } } : { ok: false, reason: "stage" };
+    case "set_end": {
+      if (!isId(raw.id)) return { ok: false, reason: "id" };
+      if (raw.endsOn === null) return { ok: true, act: { action: "set_end", id: raw.id, endsOn: null } };
+      const ok = typeof raw.endsOn === "string" && /^\d{4}-\d{2}-\d{2}$/.test(raw.endsOn) && !Number.isNaN(Date.parse(`${raw.endsOn}T00:00:00Z`));
+      return ok ? { ok: true, act: { action: "set_end", id: raw.id, endsOn: raw.endsOn as string } } : { ok: false, reason: "endsOn" };
+    }
+    case "visit":
+      return { ok: true, act: { action: "visit" } };
+    case "seen":
+      if (!isAppKey(raw.app)) return { ok: false, reason: "app" };
+      return { ok: true, act: { action: "seen", app: raw.app, level: isLevel(raw.level) ? raw.level : null } };
     case "announce": {
       const title = text(raw.title, 120);
       const body = text(raw.body, 2000);

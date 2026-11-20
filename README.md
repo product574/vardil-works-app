@@ -415,5 +415,43 @@ projects and people stay ABC's invented ones. Each person's clicks stay in their
 "Open their demo" on a client shows staff exactly what that client sees, with the staff strip on
 top to come back.
 
+### Levels, demo end dates and who has signed in (20 Nov 2026)
+
+Each client's page in Vardil HQ, Clients has:
+
+- **Demo status.** Demo, Became a client, or Not interested. A new demo runs for 30 days;
+  change the last day or press "Extend 30 days". Marking a demo Became a client or Not
+  interested, or its last day passing, takes everyone on it off Cloudflare and signs them out.
+  The client, its look and its history stay, under "Closed demos", and can be reopened.
+  Someone whose demo has closed sees only "This demo has ended" with our email address.
+- **Levels for each person.** Tick which of the six levels each email may use. With one
+  ticked they go straight in as it; with more, they choose from those.
+- **What they have looked at.** When each person last signed in, on how many days, how many
+  visits, the levels they used and the apps they opened. Kept for a year. Staff are never
+  recorded. A small link on the sign-in page, "How Vardil uses your sign-in", tells prospects
+  this (GDPR asks for it; have the wording checked).
+
+There is no clock on Pages, so a demo whose last day has passed is closed the first time
+anyone asks the server after it: that person, or anyone in Vardil HQ.
+
+### An email when a prospect signs in (optional)
+
+Vardil gets an email the first time each person opens their demo each day. It goes through
+Cloudflare's Email Service, which sends to an address verified in the account for free.
+
+1. Zero Trust is not involved. In the main Cloudflare dashboard, open Email Service. Add
+   `hello@vardil.com` as a verified destination address and press the link in the email
+   Cloudflare sends. Set up sending for vardil.com (Email Sending, onboard the domain), which
+   adds records to vardil.com's DNS. **Before confirming anything, check it does not change
+   vardil.com's MX records**: those decide where Vardil's own email goes. If it wants to,
+   stop and ask.
+2. Give the API token from "Clients and Cloudflare" the permission to send email as well, or
+   make a second token with only that and save it as `ALERT_API_TOKEN` (Secret).
+3. On the Pages project, for Production and Preview: `ALERT_TO` = `hello@vardil.com` and
+   `ALERT_FROM` = an address on vardil.com, such as `demo@vardil.com`. Redeploy.
+
+Without these nothing is sent and nothing fails. Not tried against the real Email Service
+yet; the test uses a stand-in.
+
 On your own computer, put `VITE_STAFF=1` in `.env.local` to see it with `npm run dev`. Never set it
 for `npm run build:preview`: that file can be opened by anyone it is shared with.

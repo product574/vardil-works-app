@@ -14,6 +14,7 @@ import { useGate } from "./AuthPages";
 import { signOut } from "./auth";
 import { DEPARTMENTS, departmentFor, type NavItem } from "./departments";
 import { staff } from "./staff";
+import { noteApp, useAllowedLevels } from "./workspace";
 import { clearScreenState } from "./screen-state";
 import { clearTrail, previous, saveScroll, scrollFor, stepBack, useTrail, visit } from "./trail";
 
@@ -69,11 +70,19 @@ export function Shell() {
   const location = useLocation();
   const dept = departmentFor(location.pathname);
   const askOpen = useAsk((s) => s.open);
+  const allowedLevels = useAllowedLevels();
   useTrailTracker(gate === true && !!access.def && access.can(dept.key));
+  // Which apps a prospect opens, and at which level (decision 210). Nothing is sent for staff or local copies.
+  const opened = gate === true && access.def && access.can(dept.key) ? dept.key : null;
+  useEffect(() => {
+    if (opened) noteApp(opened, access.role);
+  }, [opened, access.role]);
 
   if (gate === null) return null;
   if (gate === false) return <Navigate to="/sign-in" replace />;
   if (!access.def) return <Navigate to="/who" replace />;
+  // A level this person was not given (decision 210), say from an earlier visit: back to choose.
+  if (allowedLevels && access.role && !allowedLevels.includes(access.role)) return <Navigate to="/who" replace />;
   if (location.pathname === "/") return <Navigate to={access.home} replace />;
   // A role only reaches the departments it has been given in Admin > Roles and access.
   if (!access.can(dept.key)) return <Navigate to={access.home} replace />;
@@ -117,6 +126,7 @@ function TopBar() {
   const setTheme = usePrefs((s) => s.setTheme);
   const role = usePrefs((s) => s.role);
   const setRole = usePrefs((s) => s.setRole);
+  const allowedLevels = useAllowedLevels();
   const portalClientId = usePrefs((s) => s.portalClientId);
   const day = useDay();
   const reset = useData((s) => s.reset);
@@ -186,7 +196,7 @@ function TopBar() {
         {(close) => (
           <>
             <p className="px-2.5 pt-1 pb-1.5 text-[0.87rem] text-muted">Sign in as</p>
-            {ROLES.map((r) => (
+            {ROLES.filter((r) => !allowedLevels || allowedLevels.includes(r.key)).map((r) => (
               <MenuItem
                 key={r.key}
                 onClick={() => {

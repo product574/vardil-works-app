@@ -4,8 +4,9 @@ import { Navigate, useNavigate } from "react-router-dom";
 import { DEMO_BUILT_BY, DEMO_BUILT_BY_URL } from "@/config/brand";
 import { ROLES } from "@/data/roles";
 import { useDb, usePrefs } from "@/data/store";
-import { Avatar, Button, cx, useOnce } from "@/ui";
+import { Avatar, Button, cx, Dialog, useOnce } from "@/ui";
 import { staff } from "./staff";
+import { useAllowedLevels, useWorkspace } from "./workspace";
 import { authMode, isSignedIn, signedInEmail, signIn, signOut, usingDefaultLogin } from "./auth";
 
 /** Asks the gate once whether this browser is already signed in. Null while it is checking. */
@@ -22,8 +23,10 @@ export function useGate() {
 }
 
 /** The two-panel frame shared by the sign-in page and the role page. */
-function Frame({ children }: { children: ReactNode }) {
-  const brand = usePrefs((s) => s.brand);
+function Frame({ children, plain }: { children: ReactNode; plain?: boolean }) {
+  const own = usePrefs((s) => s.brand);
+  // A closed demo is no longer the client's or ABC's: it says Vardil (decision 210).
+  const brand = plain ? { ...own, logoUrl: "", brandName: DEMO_BUILT_BY, legalName: DEMO_BUILT_BY, tagline: "Operations for construction firms" } : own;
   return (
     <div className="grid min-h-dvh bg-surface md:grid-cols-[minmax(18rem,2fr)_3fr]">
       <aside className="blueprint flex flex-col justify-between gap-10 px-8 py-8 text-white md:px-10 md:py-10">
@@ -121,15 +124,66 @@ function SignInAgain() {
   );
 }
 
+/**
+ * Shown instead of the demo when a prospect's demo is over (decision 210): they became a client,
+ * said no, or it passed its end date. Nothing else of the demo is drawn.
+ */
+export function DemoEnded() {
+  return (
+    <Frame plain>
+      <div className="w-full max-w-sm">
+        <h1 className="text-[1.9rem] leading-tight">This demo has ended</h1>
+        <p className="mt-2 text-muted">Thank you for taking a look. If you would like to see it again, or to talk about using it for real, email hello@vardil.com and we will open it for you.</p>
+        <Button className="mt-6" onClick={() => void signOut()}>
+          Sign out
+        </Button>
+      </div>
+    </Frame>
+  );
+}
+
+/** Why a prospect's sign-ins are recorded, in a few lines (GDPR, Article 13), behind a small link on the role page. */
+function DemoPrivacy() {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button type="button" className="mt-3 block text-[0.87rem] text-muted underline underline-offset-2 hover:text-ink" onClick={() => setOpen(true)}>
+        How Vardil uses your sign-in
+      </button>
+      <Dialog open={open} onClose={() => setOpen(false)} title="How Vardil uses your sign-in">
+        <div className="grid gap-2">
+          <p>Vardil Ltd keeps a record of when you open this demo and which parts of it you look at, against the email you signed in with.</p>
+          <p>We use it to follow up with you about the demo, which is in our legitimate interest as the company offering it. It is not shared with anyone else.</p>
+          <p>It is kept for up to a year, and deleted sooner when your demo is closed and you ask us to. Everything you type or change in the demo stays in your own browser and is not sent to us.</p>
+          <p>To see what we hold, have it deleted, or object to it, email hello@vardil.com. You can also complain to the Data Protection Commission (Ireland) or the ICO (UK).</p>
+        </div>
+      </Dialog>
+    </>
+  );
+}
+
 export function RolePage() {
   const navigate = useNavigate();
   const gate = useGate();
   const setRole = usePrefs((s) => s.setRole);
   const brand = usePrefs((s) => s.brand);
   const people = useDb((db) => db.people);
+  const allowed = useAllowedLevels();
+  const isClient = useWorkspace((s) => s.config !== null) && !staff.is;
+  const roles = allowed ? ROLES.filter((r) => allowed.includes(r.key)) : ROLES;
+  const only = roles.length === 1 ? roles[0]! : null;
+
+  // Someone given one level goes straight in as it (decision 210).
+  useEffect(() => {
+    if (gate === true && only) {
+      setRole(only.key);
+      navigate(only.home, { replace: true });
+    }
+  }, [gate, only, setRole, navigate]);
 
   if (gate === null) return null;
   if (gate === false) return <Navigate to="/sign-in" replace />;
+  if (only) return null;
   const email = signedInEmail();
 
   return (
@@ -145,7 +199,7 @@ export function RolePage() {
               <staff.ui.RoleEntry onPick={() => navigate("/vardil", { replace: true })} />
             </li>
           )}
-          {ROLES.map((r) => {
+          {roles.map((r) => {
             const person = people.find((p) => p.id === r.personId);
             return (
               <li key={r.key}>
@@ -184,6 +238,7 @@ export function RolePage() {
         >
           Leave the demo
         </button>
+        {isClient && <DemoPrivacy />}
       </div>
     </Frame>
   );

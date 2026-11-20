@@ -13,7 +13,7 @@
 import { create } from "zustand";
 import { matchDataToBrand, usePrefs } from "@/data/store";
 import type { DepartmentKey } from "@/data/types";
-import { type Announcement, type AppRequest, appsOff, brandOfLook, type ClientConfig, type CloudflareResult, type CloudflareState, type OwnConfig, STARTER_ANNOUNCEMENTS, type WorkspaceAction } from "@/lib/apps";
+import { type Announcement, type AppKey, type AppRequest, appsOff, brandOfLook, type ClientConfig, type CloudflareResult, type CloudflareState, type DemoLevel, isAppKey, type OwnConfig, STARTER_ANNOUNCEMENTS, type WorkspaceAction } from "@/lib/apps";
 import { authMode } from "./auth";
 import { staff } from "./staff";
 
@@ -27,9 +27,13 @@ type ServerState = {
   clients: ClientConfig[];
   requests: AppRequest[];
   cloudflare: CloudflareState | null;
+  /** Their client's demo is over (won, not interested, or past its end date): the page says so and shows nothing else. */
+  ended: boolean;
+  /** The server's day in Ireland, for end dates. */
+  today: string | null;
 };
 
-export const useWorkspace = create<ServerState>()(() => ({ online: false, config: null, announcements: [], clients: [], requests: [], cloudflare: null }));
+export const useWorkspace = create<ServerState>()(() => ({ online: false, config: null, announcements: [], clients: [], requests: [], cloudflare: null, ended: false, today: null }));
 
 const URL_ = "/api/workspace";
 
@@ -44,10 +48,40 @@ export async function initWorkspace() {
     const res = await fetch(URL_, { credentials: "same-origin", headers: { accept: "application/json" } });
     if (!res.ok || !(res.headers.get("content-type") ?? "").includes("json")) return;
     const body = (await res.json()) as Partial<ServerState>;
-    useWorkspace.setState({ online: true, config: body.config ?? null, announcements: body.announcements ?? [], clients: body.clients ?? [], requests: body.requests ?? [], cloudflare: body.cloudflare ?? null });
+    useWorkspace.setState({ online: true, config: body.config ?? null, announcements: body.announcements ?? [], clients: body.clients ?? [], requests: body.requests ?? [], cloudflare: body.cloudflare ?? null, ended: body.ended === true, today: body.today ?? null });
   } catch {
     /* no server: this browser's own settings */
   }
+}
+
+/** Tell the server something about this prospect's visit. Never waited on, never shown, and never for staff. */
+function note(act: WorkspaceAction) {
+  if (staff.is || !useWorkspace.getState().config) return;
+  // The answer is read and dropped: an unread body would leave the request open in the browser.
+  void fetch(URL_, { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify(act) })
+    .then((r) => r.text())
+    .catch(() => undefined);
+}
+
+/** Once a page load: this prospect opened their demo (decision 210). */
+export function noteVisit() {
+  note({ action: "visit" });
+}
+
+const seen = new Set<string>();
+/** A prospect opened an app at a level: told once a page load for each pair. */
+export function noteApp(app: string, level: DemoLevel | null) {
+  if (!isAppKey(app)) return;
+  const key = `${app}|${level ?? ""}`;
+  if (seen.has(key)) return;
+  seen.add(key);
+  note({ action: "seen", app: app as AppKey, level });
+}
+
+/** The levels this person may sign in as (decision 210), or null for every level: staff, local copies, and anyone on no client's list. */
+export function useAllowedLevels(): DemoLevel[] | null {
+  const config = useWorkspace((s) => s.config);
+  return !staff.is && config ? config.levels : null;
 }
 
 /** The client whose demo is showing: a staff member's opened one, or the signed-in client's own. */

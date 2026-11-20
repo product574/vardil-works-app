@@ -3,7 +3,7 @@ import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { openClientDemo, sendWorkspace, useAnnouncements, useWorkspace } from "@/app/workspace";
 import { useAccess } from "@/data/access";
 import { usePrefs } from "@/data/store";
-import { ALWAYS_ON, APP_INFO, packageOf } from "@/lib/apps";
+import { ALWAYS_ON, APP_INFO, type ClientConfig, demoState, irishToday, packageOf } from "@/lib/apps";
 import { dFull, plural } from "@/lib/format";
 import { Badge, Button, cx, Empty, Field, PageBody, PageHead, Panel, Section } from "@/ui";
 import { toast } from "@/ui/toast";
@@ -60,8 +60,11 @@ export function ClientApps() {
   const access = useAccess();
   const online = useWorkspace((s) => s.online);
   const clients = useWorkspace((s) => s.clients);
-  const setRole = usePrefs((s) => s.setRole);
   const navigate = useNavigate();
+  // Open demos first, the most recently used on top; closed ones in their own list below.
+  const byLast = (a: ClientConfig, b: ClientConfig) => (lastIn(b) ?? "").localeCompare(lastIn(a) ?? "") || a.name.localeCompare(b.name);
+  const live = clients.filter((c) => c.stage === "active").sort(byLast);
+  const closed = clients.filter((c) => c.stage !== "active").sort(byLast);
   const note = (useLocation().state as { note?: { tone: "ok" | "warn"; text: string } | null } | null)?.note ?? null;
   if (!access.staffMode) return <Navigate to="/" replace />;
   return (
@@ -72,53 +75,85 @@ export function ClientApps() {
         {note && <p role="status" className={cx("rounded-md px-3 py-2.5", note.tone === "ok" ? "bg-ok-soft text-ok" : "bg-warn-soft text-warn")}>{note.text}</p>}
         {online && <CloudflarePanel />}
         <Panel>
-          {clients.length === 0 ? (
-            <Empty title="No clients set up yet">Someone who signs in and is on no client's list sees the standard demo, ABC Construction with every app. Add a client to give them their own.</Empty>
+          {live.length === 0 ? (
+            <Empty title={clients.length ? "No demos open" : "No clients set up yet"}>Someone who signs in and is on no client's list sees the standard demo, ABC Construction with every app. Add a client to give them their own.</Empty>
           ) : (
-            <table className="tbl" aria-label="Clients">
-              <thead>
-                <tr>
-                  <th>Client</th>
-                  <th>People</th>
-                  <th>Apps</th>
-                  <th>Changed</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {clients.map((c) => {
-                  const pkg = packageOf(c.apps, c.automations);
-                  return (
-                    <tr key={c.id}>
-                      <td>
-                        <span className="flex items-center gap-2.5">
-                          {c.logoUrl ? <img src={c.logoUrl} alt="" className="h-7 w-12 shrink-0 object-contain" /> : <span aria-hidden className="size-4 shrink-0 rounded-full" style={{ background: c.look.accent }} />}
-                          <span className="min-w-0">
-                            <Link to={`/vardil/clients/${c.id}`} className="font-medium text-accent-ink hover:underline">{c.name}</Link>
-                            <span className="block text-[0.87rem] text-muted">{c.look.region === "UK" ? "United Kingdom" : "Ireland"}</span>
-                          </span>
-                        </span>
-                      </td>
-                      <td>{c.emails.length ? plural(c.emails.length, "person", "people") : <span className="text-warn">Nobody yet</span>}</td>
-                      <td>{pkg ? pkg.name : `${plural(c.apps.filter((a) => !ALWAYS_ON.includes(a)).length, "app")} of their own`}</td>
-                      <td className="text-[0.93rem] text-muted">{c.updatedAt ? `${dFull(c.updatedAt.slice(0, 10))}, ${c.updatedBy}` : ""}</td>
-                      <td className="text-right whitespace-nowrap">
-                        <Button size="sm" variant="ghost" onClick={() => { openClientDemo(c.id); setRole("md"); navigate("/"); }}>
-                          Open their demo
-                        </Button>{" "}
-                        <Button size="sm" onClick={() => navigate(`/vardil/clients/${c.id}`)}>
-                          Change
-                        </Button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
+            <ClientTable label="Clients" rows={live} />          )}
         </Panel>
+        {closed.length > 0 && (
+          <Section title="Closed demos" aside="Became a client or not interested. Nobody on these can sign in; their history is kept.">
+            <Panel>
+              <ClientTable label="Closed demos" rows={closed} />
+            </Panel>
+          </Section>
+        )}
       </PageBody>
     </>
+  );
+}
+
+/** When a client's people last opened their demo, or null. */
+const lastIn = (c: ClientConfig) => (c.activity ?? []).map((a) => a.lastAt ?? "").sort().pop() || null;
+
+/** A demo's state in a few words, for the list. */
+function stateText(c: ClientConfig, today: string): { text: string; tone: "ok" | "warn" | "muted" } {
+  const st = demoState(c.stage, c.endsOn, today);
+  if (st === "won") return { text: "Became a client", tone: "ok" };
+  if (st === "lost") return { text: "Not interested", tone: "muted" };
+  if (st === "ended") return { text: `Ended ${dFull(c.endsOn!)}`, tone: "warn" };
+  if (!c.endsOn) return { text: "Open", tone: "ok" };
+  const left = Math.round((Date.parse(c.endsOn) - Date.parse(today)) / 86_400_000);
+  return { text: st === "ending" ? (left === 0 ? "Ends today" : `Ends in ${plural(left, "day")}`) : `Open until ${dFull(c.endsOn)}`, tone: st === "ending" ? "warn" : "ok" };
+}
+
+/** Clients as a table: who, where their demo stands, how many people, when they last looked. */
+function ClientTable({ label, rows }: { label: string; rows: ClientConfig[] }) {
+  const navigate = useNavigate();
+  const setRole = usePrefs((s) => s.setRole);
+  const today = useWorkspace((s) => s.today) ?? irishToday();
+  return (
+    <table className="tbl" aria-label={label}>
+      <thead>
+        <tr>
+          <th>Client</th>
+          <th>Demo</th>
+          <th>People</th>
+          <th>Last signed in</th>
+          <th />
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((c) => {
+          const pkg = packageOf(c.apps, c.automations);
+          const st = stateText(c, today);
+          const last = lastIn(c);
+          return (
+            <tr key={c.id}>
+              <td>
+                <span className="flex items-center gap-2.5">
+                  {c.logoUrl ? <img src={c.logoUrl} alt="" className="h-7 w-12 shrink-0 object-contain" /> : <span aria-hidden className="size-4 shrink-0 rounded-full" style={{ background: c.look.accent }} />}
+                  <span className="min-w-0">
+                    <Link to={`/vardil/clients/${c.id}`} className="font-medium text-accent-ink hover:underline">{c.name}</Link>
+                    <span className="block text-[0.87rem] text-muted">{pkg ? pkg.name : `${plural(c.apps.filter((a) => !ALWAYS_ON.includes(a)).length, "app")} of their own`}</span>
+                  </span>
+                </span>
+              </td>
+              <td className={cx("text-[0.93rem]", st.tone === "warn" ? "text-warn" : st.tone === "muted" ? "text-muted" : "")}>{st.text}</td>
+              <td>{c.people.length ? plural(c.people.length, "person", "people") : <span className="text-warn">Nobody yet</span>}</td>
+              <td className="text-[0.93rem]">{last ? dFull(last.slice(0, 10)) : <span className="text-muted">Not yet</span>}</td>
+              <td className="text-right whitespace-nowrap">
+                <Button size="sm" variant="ghost" onClick={() => { openClientDemo(c.id); setRole("md"); navigate("/"); }}>
+                  Open their demo
+                </Button>{" "}
+                <Button size="sm" onClick={() => navigate(`/vardil/clients/${c.id}`)}>
+                  Change
+                </Button>
+              </td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
   );
 }
 

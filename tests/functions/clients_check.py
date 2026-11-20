@@ -1,4 +1,4 @@
-import base64, json, os, struct, subprocess, sys, tempfile, time, urllib.error, urllib.request, zlib
+import base64, json, os, re, struct, subprocess, sys, tempfile, time, urllib.error, urllib.request, zlib
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(HERE))
 # Clients in Vardil HQ (20 Nov, decision 209), end to end: the real server functions
@@ -34,6 +34,7 @@ cmd = ([wr] if wr else ["npx", "--yes", "wrangler@4.156.0"]) + [
     "--binding", f"ACCESS_CERTS_URL=http://127.0.0.1:{CF}/certs",
     "--binding", "CF_API_TOKEN=test-cf-token", "--binding", "CF_ACCOUNT_ID=acc", "--binding", "CF_ACCESS_GROUP_ID=grp",
     "--binding", f"CF_API_BASE=http://127.0.0.1:{CF}/client/v4",
+    "--binding", "ALERT_TO=hello@vardil.com", "--binding", "ALERT_FROM=demo@vardil.com",
 ]
 log = open(os.path.join(work, "wrangler.log"), "w")
 # Its own process group, so stopping it also stops the runtime it starts.
@@ -54,7 +55,8 @@ def http(method, path, body=None, who=None, raw=False):
 def cf_state():
     return json.loads(urllib.request.urlopen(f"http://127.0.0.1:{CF}/__state").read())
 def group_emails():
-    return sorted(r["email"]["email"] for r in cf_state()["group"]["include"])
+    # An empty group holds one address that can never sign in (server/cloudflare.ts, NOBODY).
+    return sorted(e for e in (r["email"]["email"] for r in cf_state()["group"]["include"]) if e != "nobody@clients.invalid")
 
 def png(w, h, rgb):
     raw = b"".join(b"\x00" + bytes(rgb) * w for _ in range(h))
@@ -63,6 +65,9 @@ def png(w, h, rgb):
 
 LOOK = {"brandName": "Oldstone", "legalName": "Oldstone Conservation Ltd", "tagline": "Conservation contractors", "accent": "#8a4b2a", "region": "UK", "design": {"iban": "GB00 OLDS 1111 2222 3333 44"}}
 MAIN = ["dashboard", "schedule", "people", "compliance", "site", "admin", "settings"]
+ALL = ["md", "contracts", "site", "accounts", "operative", "client"]
+def P(*emails, levels=None):
+    return [{"email": e, "levels": levels or ALL} for e in emails]
 
 try:
     for _ in range(160):
@@ -80,28 +85,29 @@ try:
     s, _, b = http("GET", "/api/workspace")
     check("No sign-in, no answer", s == 401, s)
 
-    s, _, b = http("POST", "/api/workspace", {"action": "set_client", "id": None, "name": "Oldstone", "emails": [MAJELLA], "apps": MAIN, "automations": False, "look": LOOK}, who=MAJELLA)
+    s, _, b = http("POST", "/api/workspace", {"action": "set_client", "id": None, "name": "Oldstone", "people": P(MAJELLA), "apps": MAIN, "automations": False, "look": LOOK}, who=MAJELLA)
     check("A client cannot set up clients", s == 403, s)
-    s, _, b = http("POST", "/api/workspace", {"action": "set_client", "id": None, "name": "Oldstone", "emails": ["@oldstone.ie"], "apps": MAIN, "automations": False, "look": LOOK}, who=STAFF)
+    s, _, b = http("POST", "/api/workspace", {"action": "set_client", "id": None, "name": "Oldstone", "people": P("@oldstone.ie"), "apps": MAIN, "automations": False, "look": LOOK}, who=STAFF)
     check("A whole domain is refused: named emails only", s == 400, s)
-    s, _, b = http("POST", "/api/workspace", {"action": "set_client", "id": None, "name": "Oldstone", "emails": [MAJELLA, "aodhan@vardil.com"], "apps": MAIN, "automations": False, "look": LOOK}, who=STAFF)
+    s, _, b = http("POST", "/api/workspace", {"action": "set_client", "id": None, "name": "Oldstone", "people": P(MAJELLA, "aodhan@vardil.com"), "apps": MAIN, "automations": False, "look": LOOK}, who=STAFF)
     check("A Vardil address cannot be put on a client", s == 409 and "Vardil address" in b, b)
 
-    s, _, b = http("POST", "/api/workspace", {"action": "set_client", "id": None, "name": "Oldstone", "emails": [MAJELLA, PAT], "apps": MAIN, "automations": False, "look": LOOK}, who=STAFF)
+    s, _, b = http("POST", "/api/workspace", {"action": "set_client", "id": None, "name": "Oldstone", "people": P(MAJELLA, PAT), "apps": MAIN, "automations": False, "look": LOOK}, who=STAFF)
     out = json.loads(b) if s == 200 else {}
     FIRM = out.get("id", "")
     check("Staff add Oldstone with two named emails", s == 200 and FIRM, b)
     check("Cloudflare's list is written with both", out.get("cloudflare", {}).get("ok") and group_emails() == [MAJELLA, PAT], (out, group_emails()))
     check("The group keeps its own name, and the token is sent", cf_state()["group"]["name"] == "Demo clients, kept by Vardil HQ" and all(a == "Bearer test-cf-token" for a in cf_state()["auth"]))
 
-    s, _, b = http("POST", "/api/workspace", {"action": "set_client", "id": None, "name": "Another firm", "emails": [PAT], "apps": MAIN, "automations": False, "look": {**LOOK, "brandName": "Another"}}, who=STAFF)
+    s, _, b = http("POST", "/api/workspace", {"action": "set_client", "id": None, "name": "Another firm", "people": P(PAT), "apps": MAIN, "automations": False, "look": {**LOOK, "brandName": "Another"}}, who=STAFF)
     check("One email cannot sign in to two clients", s == 409 and "already signs in to Oldstone" in b, b)
 
     s, _, b = http("GET", "/api/workspace", who=MAJELLA)
     cfg = json.loads(b)["config"] or {}
+    check("Majella is told the levels she may use", cfg.get("levels") == ALL, cfg.get("levels"))
     check("Majella gets Oldstone, its apps and its look", cfg.get("name") == "Oldstone" and sorted(cfg.get("apps", [])) == sorted(MAIN) and cfg.get("look", {}).get("accent") == "#8a4b2a" and cfg.get("look", {}).get("region") == "UK", cfg)
     check("Her firm's invoice paper comes with it", cfg.get("look", {}).get("design", {}).get("iban") == "GB00 OLDS 1111 2222 3333 44")
-    check("And no other client's emails", "emails" not in cfg)
+    check("And no other client's people", "people" not in cfg and "activity" not in cfg)
     s, _, b = http("GET", "/api/workspace", who=OTHER)
     check("Someone on no list still gets the standard demo", json.loads(b)["config"] is None)
 
@@ -123,12 +129,13 @@ try:
 
     s, _, b = http("GET", "/api/workspace", who=STAFF)
     st = json.loads(b)
-    check("Staff see every client with their emails", [c["emails"] for c in st["clients"]] == [[MAJELLA, PAT]], st.get("clients"))
+    check("Staff see every client with their people", [[x["email"] for x in c["people"]] for c in st["clients"]] == [[MAJELLA, PAT]], st.get("clients"))
+    check("A new demo runs for 30 days", st["clients"][0]["stage"] == "active" and st["clients"][0]["endsOn"] == (__import__("datetime").date.fromisoformat(st["today"]) + __import__("datetime").timedelta(days=30)).isoformat(), (st["clients"][0].get("endsOn"), st.get("today")))
     check("Staff see Cloudflare's state", st["cloudflare"]["linked"] and st["cloudflare"]["count"] == 2 and st["cloudflare"]["error"] is None, st.get("cloudflare"))
 
     # Cloudflare failing, then put right.
     urllib.request.urlopen(urllib.request.Request(f"http://127.0.0.1:{CF}/__fail", data=b'{"on": true}', method="POST", headers={"content-type": "application/json"}))
-    s, _, b = http("POST", "/api/workspace", {"action": "set_client", "id": FIRM, "name": "Oldstone", "emails": [MAJELLA, PAT, NEW], "apps": MAIN, "automations": False, "look": LOOK}, who=STAFF)
+    s, _, b = http("POST", "/api/workspace", {"action": "set_client", "id": FIRM, "name": "Oldstone", "people": P(MAJELLA, PAT, NEW), "apps": MAIN, "automations": False, "look": LOOK}, who=STAFF)
     cf = json.loads(b).get("cloudflare", {})
     check("When Cloudflare fails the save still stands and says so", s == 200 and cf.get("ok") is False and "Update Cloudflare now" in cf.get("message", ""), b)
     st = json.loads(http("GET", "/api/workspace", who=STAFF)[2])
@@ -141,12 +148,75 @@ try:
     check("A client cannot ask for an update of Cloudflare", http("POST", "/api/workspace", {"action": "sync_cloudflare"}, who=MAJELLA)[0] == 403)
 
     # Taking Sean off again signs him out.
-    s, _, b = http("POST", "/api/workspace", {"action": "set_client", "id": FIRM, "name": "Oldstone", "emails": [MAJELLA, PAT], "apps": MAIN, "automations": False, "look": LOOK}, who=STAFF)
+    s, _, b = http("POST", "/api/workspace", {"action": "set_client", "id": FIRM, "name": "Oldstone", "people": P(MAJELLA, PAT), "apps": MAIN, "automations": False, "look": LOOK}, who=STAFF)
     cf = json.loads(b).get("cloudflare", {})
     check("Someone taken off is signed out at once", cf.get("signedOut") == [NEW] and cf_state()["revoked"] == [NEW], (cf, cf_state()["revoked"]))
     check("And off Cloudflare's list", group_emails() == [MAJELLA, PAT])
-    s, _, b = http("POST", "/api/workspace", {"action": "set_client", "id": FIRM, "name": "Oldstone Conservation", "emails": [MAJELLA, PAT], "apps": MAIN, "automations": False, "look": LOOK}, who=STAFF)
+    s, _, b = http("POST", "/api/workspace", {"action": "set_client", "id": FIRM, "name": "Oldstone Conservation", "people": P(MAJELLA, PAT), "apps": MAIN, "automations": False, "look": LOOK}, who=STAFF)
     check("A change that leaves the list alone does not touch Cloudflare", s == 200 and "cloudflare" not in json.loads(b), b)
+
+    # ── Levels, what prospects do, the email to Vardil, closing a demo (decision 210) ──
+    s, _, b = http("POST", "/api/workspace", {"action": "set_client", "id": FIRM, "name": "Oldstone Conservation", "people": P(MAJELLA) + P(PAT, levels=["site"]), "apps": MAIN, "automations": False, "look": LOOK}, who=STAFF)
+    cfg = json.loads(http("GET", "/api/workspace", who=PAT)[2])["config"] or {}
+    check("Pat is given the site manager level only", s == 200 and cfg.get("levels") == ["site"], cfg.get("levels"))
+    s, _, b = http("POST", "/api/workspace", {"action": "set_client", "id": FIRM, "name": "Oldstone Conservation", "people": [{"email": PAT, "levels": ["boss"]}] + P(MAJELLA), "apps": MAIN, "automations": False, "look": LOOK}, who=STAFF)
+    cfg = json.loads(http("GET", "/api/workspace", who=PAT)[2])["config"] or {}
+    check("A made-up level is dropped, and none left means every level", cfg.get("levels") == ALL, cfg.get("levels"))
+    http("POST", "/api/workspace", {"action": "set_client", "id": FIRM, "name": "Oldstone Conservation", "people": P(MAJELLA) + P(PAT, levels=["site"]), "apps": MAIN, "automations": False, "look": LOOK}, who=STAFF)
+
+    mails_before = len(cf_state()["emails"])
+    check("Majella's visit is recorded", http("POST", "/api/workspace", {"action": "visit"}, who=MAJELLA)[0] == 200)
+    em = cf_state()["emails"][mails_before:]
+    check("Vardil gets one email on her first visit of the day", len(em) == 1 and em[0]["to"] == "hello@vardil.com" and em[0]["from"] == "demo@vardil.com" and "Oldstone Conservation: majella@oldstone.ie opened their demo" == em[0]["subject"] and em[0]["auth"] == "Bearer test-cf-token", em)
+    http("POST", "/api/workspace", {"action": "visit"}, who=MAJELLA)
+    check("And no second email the same day", len(cf_state()["emails"]) == mails_before + 1, len(cf_state()["emails"]))
+    for app, lvl in [("schedule", "md"), ("compliance", "md"), ("schedule", "md"), ("people", "site")]:
+        http("POST", "/api/workspace", {"action": "seen", "app": app, "level": lvl}, who=MAJELLA)
+    check("A made-up app is refused", http("POST", "/api/workspace", {"action": "seen", "app": "nonsense"}, who=MAJELLA)[0] == 400)
+    http("POST", "/api/workspace", {"action": "visit"}, who=STAFF)
+    http("POST", "/api/workspace", {"action": "seen", "app": "invoicing", "level": "md"}, who=STAFF)
+    http("POST", "/api/workspace", {"action": "visit"}, who=OTHER)
+    st = json.loads(http("GET", "/api/workspace", who=STAFF)[2])
+    act = {a["email"]: a for a in st["clients"][0].get("activity", [])}
+    m = act.get(MAJELLA, {})
+    check("Staff see what Majella opened, by day, and at which levels", m.get("days") == 1 and m.get("visits") == 1 and m.get("apps") == {"schedule": 1, "compliance": 1, "people": 1} and sorted(m.get("levels", [])) == ["md", "site"] and m.get("lastAt"), m)
+    check("Pat has not signed in yet", act.get(PAT, {}).get("days") == 0, act.get(PAT))
+    check("Staff and people on no list are never recorded", set(act) == {MAJELLA, PAT} and len(cf_state()["emails"]) == mails_before + 1, list(act))
+
+    import datetime
+    today = datetime.date.fromisoformat(st["today"])
+    yesterday = (today - datetime.timedelta(days=1)).isoformat()
+    revoked_before = len(cf_state()["revoked"])
+    s, _, b = http("POST", "/api/workspace", {"action": "set_end", "id": FIRM, "endsOn": yesterday}, who=STAFF)
+    check("An end date in the past takes them off Cloudflare and signs them out", s == 200 and group_emails() == [] and sorted(cf_state()["revoked"][revoked_before:]) == [MAJELLA, PAT], (b, group_emails(), cf_state()["revoked"][revoked_before:]))
+    g = json.loads(http("GET", "/api/workspace", who=MAJELLA)[2])
+    check("Majella is told her demo has ended, and given nothing else", g.get("ended") is True and g.get("config") is None and g.get("announcements") == [], g)
+    check("Her visits are no longer recorded", http("POST", "/api/workspace", {"action": "visit"}, who=MAJELLA)[0] == 200 and len(cf_state()["emails"]) == mails_before + 1)
+    s, _, b = http("POST", "/api/workspace", {"action": "set_end", "id": FIRM, "endsOn": (today + datetime.timedelta(days=30)).isoformat()}, who=STAFF)
+    check("Extending it lets them back in", s == 200 and group_emails() == [MAJELLA, PAT] and not json.loads(http("GET", "/api/workspace", who=MAJELLA)[2]).get("ended"), group_emails())
+
+    revoked_before = len(cf_state()["revoked"])
+    s, _, b = http("POST", "/api/workspace", {"action": "set_stage", "id": FIRM, "stage": "won"}, who=STAFF)
+    check("Became a client: off Cloudflare and signed out", s == 200 and group_emails() == [] and sorted(cf_state()["revoked"][revoked_before:]) == [MAJELLA, PAT], (group_emails(), cf_state()["revoked"][revoked_before:]))
+    st = json.loads(http("GET", "/api/workspace", who=STAFF)[2])
+    check("The client and its history are kept", st["clients"][0]["stage"] == "won" and {a["email"]: a for a in st["clients"][0]["activity"]}[MAJELLA]["days"] == 1)
+    check("A client cannot close a demo", http("POST", "/api/workspace", {"action": "set_stage", "id": FIRM, "stage": "active"}, who=MAJELLA)[0] == 403)
+    http("POST", "/api/workspace", {"action": "set_stage", "id": FIRM, "stage": "active"}, who=STAFF)
+    check("Reopened, they are back on the list", group_emails() == [MAJELLA, PAT])
+
+    # An end date passing on its own, as it does at midnight: the date is moved in the local database
+    # directly, so Cloudflare's list still holds them until the next time anyone asks.
+    import glob, sqlite3
+    dbfile = next(f for f in glob.glob(os.path.join(work, "state", "**", "*.sqlite"), recursive=True) if "d1" in f.lower())
+    con = sqlite3.connect(dbfile); con.execute("UPDATE firms SET ends_on = ?, swept_at = NULL WHERE id = ?", (yesterday, FIRM)); con.commit(); con.close()
+    still = group_emails()
+    revoked_before = len(cf_state()["revoked"])
+    g = json.loads(http("GET", "/api/workspace", who=PAT)[2])
+    time.sleep(1.5)
+    check("A demo past its end date is closed the next time someone signs in", still == [MAJELLA, PAT] and g.get("ended") is True and group_emails() == [] and sorted(cf_state()["revoked"][revoked_before:]) == [MAJELLA, PAT], (still, g.get("ended"), group_emails(), cf_state()["revoked"][revoked_before:]))
+    http("GET", "/api/workspace", who=MAJELLA); time.sleep(1)
+    check("And only once", sorted(cf_state()["revoked"][revoked_before:]) == [MAJELLA, PAT], cf_state()["revoked"][revoked_before:])
+    http("POST", "/api/workspace", {"action": "set_end", "id": FIRM, "endsOn": (today + datetime.timedelta(days=30)).isoformat()}, who=STAFF)
 
     # ── 2. In Chrome ──────────────────────────────────────────────────────────
     errors = []
@@ -195,7 +265,7 @@ try:
         check("The logo shows in the preview", pg.get_by_role("figure", name="Preview of their demo").locator("img").count() == 1)
         pg.get_by_label("IBAN").fill("GB11 KILB 0000 1111 2222 33")
         pg.screenshot(path=os.path.join(shots, "client-new.png"), full_page=True)
-        pg.get_by_role("button", name="Save").click()
+        pg.get_by_role("button", name="Save", exact=True).click()
         pg.wait_for_url(lambda u: "/vardil/clients/" in u and not u.endswith("/new"), timeout=15000)
         pg.wait_for_timeout(500)
         check("Saved, and Cloudflare's list is updated", pg.get_by_role("status").filter(has_text="Cloudflare's list is updated").count() == 1)
@@ -224,7 +294,7 @@ try:
 
         # Take Tom off Kilbride: signed out.
         pg.get_by_role("button", name="Take tom@kilbride.ie off").click()
-        pg.get_by_role("button", name="Save").click(); pg.wait_for_timeout(1500)
+        pg.get_by_role("button", name="Save", exact=True).click(); pg.wait_for_timeout(1500)
         check("Taking Tom off says he is signed out", pg.get_by_role("status").filter(has_text="Signed out now: tom@kilbride.ie").count() == 1)
         check("Cloudflare signed him out", "tom@kilbride.ie" in cf_state()["revoked"])
         ctx.close()
@@ -248,6 +318,62 @@ try:
         staff_files = pg.evaluate("fetch('/staff/ready.html').then(r => r.status)")
         check("(Locally the staff folder is not behind its own Access app; that is the live check)", staff_files in (200, 404))
         ctx.close()
+
+        # Pat has the site manager level only: straight in, no choice.
+        ctx, pg = context(br, PAT)
+        pg.goto(B + "/who"); pg.wait_for_load_state("networkidle"); pg.wait_for_timeout(700)
+        check("Pat goes straight in as site manager, with no choice of level", "/people/timesheet" in pg.url and pg.get_by_text("Who are you signing in as?").count() == 0, pg.url)
+        pg.goto(B + "/dashboard"); pg.wait_for_load_state("networkidle"); pg.wait_for_timeout(400)
+        check("He cannot reach the managing director's screens by their address", "/dashboard" not in pg.url or pg.get_by_text("AI overview").count() == 0, pg.url)
+        ctx.close()
+
+        # Majella: every level, the notice, and what she opens is recorded.
+        ctx, pg = context(br, MAJELLA)
+        pg.goto(B + "/who"); pg.wait_for_load_state("networkidle"); pg.wait_for_timeout(400)
+        check("Majella chooses from all six levels", pg.get_by_role("button", name=re.compile("^(Managing director|Contracts manager|Site manager|Accounts|Operative|Client)")).count() == 6)
+        pg.get_by_role("button", name="How Vardil uses your sign-in").click()
+        check("A small link opens how her sign-in is used", pg.get_by_role("dialog").get_by_text("legitimate interest").count() == 1 and pg.get_by_role("dialog").get_by_text("hello@vardil.com").count() == 1)
+        pg.keyboard.press("Escape")
+        pg.get_by_role("button", name=re.compile("^Managing director")).click(); pg.wait_for_load_state("networkidle")
+        pg.goto(B + "/compliance"); pg.wait_for_load_state("networkidle"); pg.wait_for_timeout(800)
+        oc = next(c for c in json.loads(http("GET", "/api/workspace", who=STAFF)[2])["clients"] if c["id"] == FIRM)
+        m = {a["email"]: a for a in oc["activity"]}.get(MAJELLA, {"apps": {}})
+        check("Opening Compliance in her demo is recorded for Vardil", m["apps"].get("compliance") == 1 and m["apps"].get("dashboard") == 1, m["apps"])
+        ctx.close()
+
+        # Staff: the client's page shows it all.
+        ctx, pg = context(br, STAFF)
+        pg.goto(B + "/who"); pg.wait_for_load_state("networkidle")
+        pg.get_by_text("Vardil HQ", exact=True).click(); pg.wait_for_url("**/vardil")
+        pg.goto(B + "/vardil/clients"); pg.wait_for_load_state("networkidle"); pg.wait_for_timeout(300)
+        row = pg.get_by_role("table", name="Clients").get_by_role("row").filter(has_text="Oldstone Conservation")
+        check("The list shows when Oldstone's demo ends and that they have signed in", row.get_by_text(re.compile("Open until")).count() == 1 and row.get_by_text("Not yet").count() == 0, row.inner_text() if row.count() else "")
+        row.get_by_role("link", name="Oldstone Conservation").click(); pg.wait_for_load_state("networkidle"); pg.wait_for_timeout(300)
+        check("Its page has the demo's status and end date", pg.get_by_role("heading", name="Demo status").count() == 1 and pg.get_by_text(re.compile("Open until .*30 days left")).count() == 1)
+        check("Each person's levels, and Pat's is site manager only", pg.get_by_role("group", name=f"Levels for {PAT}").get_by_role("button", pressed=True).all_inner_texts() == ["Site manager"])
+        check("When each last signed in", pg.get_by_role("list", name="People who can sign in").get_by_text(re.compile("Last in .*1 day, 1 visit")).count() == 2 and pg.get_by_text("Not signed in yet").count() == 0)
+        acts = pg.get_by_role("table", name="What they have looked at")
+        check("What Majella looked at, and as which levels", acts.get_by_text(re.compile("Compliance")).count() == 1 and acts.get_by_text(re.compile("As Managing director")).count() == 1)
+        pg.screenshot(path=os.path.join(shots, "client-status.png"), full_page=True)
+        grp = pg.get_by_role("group", name=f"Levels for {PAT}")
+        grp.get_by_role("button", name="Accounts").click()
+        pg.get_by_role("button", name="Save", exact=True).click(); pg.wait_for_timeout(1200)
+        cfg = json.loads(http("GET", "/api/workspace", who=PAT)[2])["config"]
+        check("Giving Pat Accounts too is saved", cfg["levels"] == ["site", "accounts"], cfg["levels"])
+        pg.get_by_role("tab", name="Not interested").click()
+        check("Not interested asks first", pg.get_by_role("dialog").get_by_text(re.compile("2 people will be taken off Cloudflare and signed out")).count() == 1)
+        pg.get_by_role("button", name="Confirm and close their demo").click(); pg.wait_for_timeout(1200)
+        check("Marked not interested, and Cloudflare's list updated", pg.get_by_role("status").filter(has_text="Marked not interested").count() == 1 and MAJELLA not in group_emails() and PAT not in group_emails() and "ann@kilbride.ie" in group_emails(), group_emails())
+        pg.goto(B + "/vardil/clients"); pg.wait_for_load_state("networkidle"); pg.wait_for_timeout(300)
+        check("It moves to Closed demos", pg.get_by_role("table", name="Closed demos").get_by_text("Oldstone Conservation").count() == 1 and pg.get_by_role("table", name="Clients").get_by_text("Oldstone Conservation").count() == 0)
+        ctx.close()
+
+        ctx, pg = context(br, MAJELLA)
+        pg.goto(B + "/who"); pg.wait_for_load_state("networkidle"); pg.wait_for_timeout(300)
+        check("Majella now sees only that her demo has ended", pg.get_by_role("heading", name="This demo has ended").count() == 1 and pg.get_by_role("navigation", name="Departments").count() == 0)
+        pg.screenshot(path=os.path.join(shots, "demo-ended.png"))
+        ctx.close()
+        http("POST", "/api/workspace", {"action": "set_stage", "id": FIRM, "stage": "active"}, who=STAFF)
 
         # Someone on no list: the standard demo.
         ctx, pg = context(br, OTHER)

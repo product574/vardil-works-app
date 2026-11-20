@@ -63,7 +63,7 @@ send him a fresh zip first, or bring his changes across with care, so the two do
 This copy's own decisions from 18 Nov were numbered 64 to 118 on `invoicing-section` and
 clashed with the other branch's; they are now 130 to 184, in the same order.
 
-**Each client's own demo, 20 Nov:** decision 209, on the branch `client-workspaces` (not published): Vardil HQ, Clients keeps each client's named emails, apps, name, logo, colour, region and invoice paper on the server, writes Cloudflare's sign-in list itself and signs out anyone taken off. Set-up steps in README, "Clients and Cloudflare". See "Each client's own demo, 20 Nov" further down.
+**Each client's own demo, 20 Nov:** decisions 209 and 210, on the branch `client-workspaces` (not published): Vardil HQ, Clients keeps each client's named emails, apps, name, logo, colour, region and invoice paper on the server, writes Cloudflare's sign-in list itself and signs out anyone taken off. Set-up steps in README, "Clients and Cloudflare". See "Each client's own demo, 20 Nov" further down.
 
 **The main offering, 19 Nov:** decisions 198 to 208: Vardil HQ (our own level, staff only), the main offering package, one phone for everyone, client apps saved on the server, and Vardil Works in every client's Admin. Built on the branch `main-offering`; published on 19 Nov at Oisin's word ("publish it"): `invoicing-section` and his `main` fast-forwarded to 76ee96f, Cloudflare's build passed, and the artifact "Construction demo (Oisin's copy)" republished.
 
@@ -418,6 +418,7 @@ the recommended answer unless it says otherwise):
 | 207 | Dashboard and Admin follow the apps | The dashboard shows Waiting for your yes or no (the same sections as Admin, Requests: leave, requests, overtime claims, repairs, certificates, reimbursements) when there are no drafts to approve, Compliance monitoring (four figures and what to see to first), the AI overview limited to the firm's apps (`apps` in `recordsOverview`), Ask AI for the managing director (his pick: both), and the firm at a glance only with more than one of its apps. Roles and access lists only the apps the firm has, and leaves out permissions for apps it does not have (his pick: hide them). Automations is a switch in Vardil HQ, off in the main offering (`NavItem.automations`). A sidebar item can belong to another app (`NavItem.app`) |
 | 208 | Vardil Works and Vardil HQ | Our staff tile is renamed Vardil HQ (his pick). Vardil Works is now the page every client has in Admin, System: announcements from Vardil (written in Vardil HQ, Announcements), then their apps, on, and the others, blurred with the switch off and "Ask about this app", which lands in Vardil HQ, App requests with their firm and email (his pick). Read-only: only Vardil switches apps (his pick) |
 | 209 | Each client's own demo | Oisin, 20 Nov: "group, like, say, Old Stone emails, Vardil emails, and other clients' emails ... so that when they sign on, they go on to their specific demo tailored to them ... in our Vardil HQ ... what apps are turned on for what people, and then also like their company logo, the format, the coloring". One address and one Cloudflare policy for everyone; Cloudflare only decides who gets in, the app decides which demo. Two rounds of question buttons; his picks: Vardil HQ keeps Cloudflare's list itself (one Access group, written whole from the database after every change, `server/cloudflare.ts`; the policy includes that group and "Emails ending in vardil.com"); named emails only, never a whole domain (`cleanEmail`); per client: name, logo, colour and region, and their invoice paper (not light or dark); the sample data stays ABC's records under their name; only Vardil sets the look (Settings, Branding and Region, and Invoicing, Invoice design, are read-only for them); someone taken off is off Cloudflare and signed out at once (Cloudflare's revoke_user); staff get "Open their demo"; the logo is uploaded (shrunk to a JPEG in the page, kept in D1, served by `functions/api/logo/[id].ts` to the firm's own people and staff only). Built: `firms` and `firm_emails` tables (one email belongs to one client; a Vardil address is refused), `ClientLook` and the rules in `src/lib/apps.ts`, Vardil HQ, Clients (a list with Cloudflare's state and "Update Cloudflare now", and a page per client at `/vardil/clients/<id>` with Who signs in, Apps, How it looks, Their invoices and a preview), `applyLook` in `src/app/workspace.ts` (run in main.tsx once staff status is known; fresh sample data only when the region, trading name or invented email domain differ: `lookKey`, `matchDataToBrand`), the staff strip naming the client. The sample staff's email domain comes from the client's name (`sampleDomain`: oldstone.example), never a real one. The first version's `clients` table (keyed by email or domain) is no longer read: anything saved there must be added again. Set-up in README, "Clients and Cloudflare" |
+| 210 | Levels, end dates and tracking per demo | Oisin, 20 Nov: "give the login for different levels for their company specific demo ... easily keep track of who has access and who does not and be able to track when a client logs on as we then know they are interested as we should remove old potential clients if they are full time wi us or not intersted". Two rounds of question buttons; his picks: each person gets set levels (ticked per email, `ClientPerson.levels`; one level goes straight in, more choose from those; the role page, the account menu and the Shell keep to them, `useAllowedLevels`); sign-ins and apps opened are recorded (`demo_days`: first and last time, visits with a 30 minute gap, apps and levels per day; `noteVisit`, `noteApp`; staff never recorded; kept 365 days); a demo is marked Became a client or Not interested and its access ends (everyone off Cloudflare and signed out, history kept under Closed demos, can be reopened; `set_stage`); an end date per client (30 days to start, Extend 30 days, flagged a week before; `set_end`, `demoState`, `sweepEnded` when the server is next asked, since Pages has no clock); who has access shown per client only (his pick, over one page for everyone); an email to Vardil on each person's first visit of the day (his pick; Cloudflare Email Service to a verified address, `server/alerts.ts`, off until `ALERT_TO` and `ALERT_FROM` are set); prospects told "No if it is legal": recording them silently is not (GDPR Article 13), so the least visible lawful way, a small "How Vardil uses your sign-in" link on the role page (`DemoPrivacy`). A closed demo shows only "This demo has ended", in Vardil's name (`DemoEnded`). Who came onto or left Cloudflare's list is now worked out by the server before and after each change (`allClientEmails` counts only demos open today) |
 
 Standing preferences (these come from Aodhan and are not optional):
 
@@ -1841,9 +1842,29 @@ from the plan), `s9_check` (My week shows the Saturday) and `pay_check`'s Back s
 looking straight away failed now and then on the old code too. `csp_check.py`: 78 screens, no
 violations.
 
+**Decision 210, the same day: levels, end dates and tracking.** `clients_check.py` grew to
+104 checks (all pass): levels per person (a made-up one dropped, none meaning every level);
+Majella's visit recorded, one email to Vardil on her first visit of the day and none on the
+second; apps and levels per day; staff and people on no list never recorded; an end date in the
+past signing them out and the server answering "ended" with nothing else; extending it letting
+them back in; Became a client signing them out with the history kept; a client unable to close a
+demo; an end date passing on its own (moved in the local database) closed the next time someone
+asks, and only once. In Chrome: Pat with one level going straight in and kept off the managing
+director's screens; Majella choosing from six, the notice link, Compliance and the Dashboard
+recorded from her clicks; the client page's status, end date, levels, last sign-in and what was
+looked at; giving Pat a second level; Not interested asking first, then moving to Closed demos;
+Majella then seeing only "This demo has ended". New unit tests: `server/alerts.test.ts`,
+`activityOf` in `server/workspace.test.ts`, levels and demo state in `src/lib/apps.test.ts`.
+Found while testing: the page's fire-and-forget POST left its answer unread, which keeps the
+request open in the browser (`note` now reads it). 737 automated tests. Not tested: the real
+Email Service and the real Cloudflare API.
+
 **Known gaps.**
 
 - Five browser checks fail on a Friday (above); the suites, not the app, need a fix.
+- Levels are kept to on the page only (as all roles in the demo are); a prospect who knows how
+  could reach another level in their own browser. It is sample data.
+- The ended page is shown by the page; Cloudflare's list and sign-outs do the rest.
 - With the UK region the sample data still names Irish tickets (Safe Pass) in places. This was so
   before (Settings, Region) and shows more now that a client can be set to the UK.
 - The logo is kept as a JPEG, so a logo with a clear background gets a white one.
