@@ -13,6 +13,22 @@ behind Cloudflare Access (see "Hosting and sign-in" below).
 **Read `DESIGN.md` before touching any interface.** It holds Aodhan's design rules and they
 are not optional.
 
+## This repository: the master demo (from 20 Nov 2026)
+
+This is **product574/vardil-works-master-demo**, Oisin's new project. On 20 Nov he asked to
+leave the construction demo as it is (product574/vardil-construction-demo, deployed to his
+Cloudflare Pages project vardil-works-construction) and carry on in a new one "from where we
+were". It was copied with its full history from that repository's `main` at 97d8255 (decision
+213 published), so every record below still holds. From 97d8255 on, this repository has its own
+history; the old one is not changed from here.
+
+The first round here restructured the demo to the **Oldstone visual template** agreed on a call
+with Jimmy, Oldstone's managing director, on 20 Nov (his spreadsheet "Oldstone - Visual Template
+1.1" and the call notes are in Oisin's uploads, not in the repository): Level 1 the Dashboard,
+Level 2 the apps, Level 3 the sections. Decisions 214 to 229, and "The master demo, 20 Nov"
+further down. The preview is a private Claude artifact, "Vardil Works master demo"; Cloudflare
+comes later (decision 229).
+
 ## Start here (handed over 16 Nov 2026)
 
 Aodhan built this with Claude up to the end of step 1. From 16 Nov his co-founder develops
@@ -424,6 +440,29 @@ the recommended answer unless it says otherwise):
 | 211 | The phone app for the people on site | Oisin, 20 Nov, over two chats of questions and pictures; his picks: one app whose home screen follows the role (operatives and site managers for now, office staff later); sign-in by the mobile number on the employee register, the office presses Send invite, the first time a one-time code then their own password, then fingerprint or Face ID if they want it; password rules he agreed (at least 8 characters, easy ones and their own name refused, 5 wrong tries then a 15 minute lock, codes last 10 minutes and at most 3 an hour, signed in 30 days per phone, signed out at once when archived, the office's Sign out everywhere); only the office changes a number (Change number, which signs the app out); English first, other languages asked on the onboarding form; the site manager marks people in (no clocking in); operative home: big tiles (his pick B of two pictures: My week, My hours, Holidays, Receipt, Report a repair, My tickets, Something else, and the driving check with Fleet); site manager home: his sites with today's timesheet state, Waiting for you (overtime claims, reimbursements, crew requests) and the same tiles without My week and My hours; the timesheet in his pick A (Full, Half, Not in for each person) with Overtime as a fourth choice that opens the two boxes, and the days as buttons back to the Monday of last week; Report a repair asks Vehicle or Plant first, then the item; a site manager approves reimbursements on his sites on the phone (confirm box), which go to the office's Ready to be paid list (Admin, Requests; was Reimbursements to pay), where the office marks them paid. Built on the branch `phone-app` for the main offering (Projects off, where the one phone was); with Projects on the two phones are as before. `PhoneAccount` and `db.phoneAccounts`, rules in `src/lib/phone-auth.ts`, actions `invitePhone`, `sendPhoneCode`, `enterPhoneCode`, `setPhonePassword`, `tryPhonePassword`, `setPhoneBiometrics`, `signOutPhone`, `signOutEverywhere`, `setPersonPhone`; screens `src/modules/site/PhoneApp.tsx`, and in the employee register a Phone app column and box. In the demo the code is shown on the phone in place of the text, and the hash is made in the browser (REAL BUILD: texted and hashed on the server). Sample data: everyone on the app set up three weeks ago with a password nobody knows (reset it with a code), most with fingerprint, the last operative alphabetically not invited and the one before invited but not set up. DATA_VERSION 26 |
 | 212 | The phone app everywhere, and the chain from the onboarding form | Oisin, 20 Nov, after seeing 211: "Yes" to the two phones of the full demo becoming the same app, and "Publish". The Site phone is now the phone app whatever apps are on (`SiteView` renders `PhoneAppView`; the two phones, `TwoPhones`, `Phone_` and `ManagerPhone`'s front page, are gone, and `ManagerPhone.tsx` keeps only the sheets the app uses). A site manager's site opens as a screen of its own on the phone (`JobScreen`): the timesheet and what waits for him on it (overtime claims, reimbursements, crew requests) always, and with Projects on the whole job as his phone had it (overtime time stamp, subcontractor invoices, week and month ahead, site instructions, who cannot work, scaffold inspections, send a photo, report extra work, make a request), with All my sites to go back. Each site's card says who is on it today ("on site today" once marked, else "down for today", from `dayRoster`), "Run by" for a site given by the office, and badges for who cannot work and what waits. An operative on a site with Projects on also has Send a photo and Report extra work; with Fleet, everyone has Send a licence and the driving check, and a van out of date shows Do not drive. Today on the operative's home: the site, the site manager (his details and Call), today's instructions with who put them up, and the standing site instructions. Something else shows how many of their own general requests wait (renamed Make a request later the same day, decision 213). Tickets go through My tickets (`MyCerts`: a new card waits in Admin, Requests, Certificates to check), also with Compliance on. Report damage is gone at his word (Report a repair, vehicle or plant; it reaches Admin, Repairs and What the office receives, not Fleet, Damage reported). His answer on the approval chain: it depends on each client's answers to the onboarding form, so it is not built into the demo yet |
 | 213 | Make a request on the phone | Oisin, 20 Nov: "replace the name of Something else with make a request and make it a square box button above the driving check beside Send a licence". The wide button under the driving check is now a tile like the others, "Make a request", in the grid after Send a licence (so the two sit side by side above the driving check when Fleet is on), with the count of their general requests still waiting as a badge. The request kind "Something else" inside the form is unchanged |
+
+Decisions made by Oisin on the master demo, 20 Nov 2026, after the call with Jimmy, Oldstone's
+managing director (asked with question buttons, the layout ones with sketches; he picked the
+recommended answer each time):
+
+| # | Question | Decision |
+|---|---|---|
+| 214 | A new project | The construction demo is left as it is; a new private repository, product574/vardil-works-master-demo, copied with its whole history (Oisin: "leave that as it is and start like a new project from where we were") |
+| 215 | The structure | Jimmy's template: Level 1 the Dashboard, a box each for Sales, Projects, Resources and Finance with their updates; Level 2 the apps; Level 3 the sections inside each app. Sales: Enquiries, Tenders, Confirmed, Pipeline (value and list of tendered works, value and list of confirmed orders); a tender: overview (location, client, return date), tender documents, subcontractors, photos, workings and Buildsoft, tender completed. Projects: live projects, not started, resources today; a project: overview (location, client, site team, on site today), files, programme, week ahead, variations, photos, plant, site requests, costs. Resources: scheduling, timesheet, plant, fleet, training ("training, which will be compliance"; "they're all separate apps in my current code, so just make them within the one app"). Finance: money in (invoices to clients), money out (invoices from subcontractors and suppliers), profitability reports (money in less money out, with labour from the timesheets) |
+| 216 | Getting about | The bottom bar has only the five apps; each app's sections are buttons across the top of the page, and a section's screens are tabs under them. No left sidebar (Jimmy: "strip back the left-hand side ... buttons for payments in and payments out"). Option A of three sketches; the others were the bar with a left sidebar, and no bar at all with the dashboard boxes as the way in |
+| 217 | The apps not in the template | Folded in: Customers is a section of Sales, Reports of Finance (decision 228), Files and the Portal sections of Projects. Email, Team chat, the Site phone and Admin are small buttons in the top bar, with their unread counts (and Vardil HQ for our staff) |
+| 218 | Health and Safety | In Jimmy's sheet as a Level 1 box, "details tbc", and he is working on it. Left out until he sends it, so prospects see no empty box |
+| 219 | Opening a project | A full page with the nine tabs (option A of three sketches; the others were a panel sliding out over the list and a pop-up). Old links still land: Scope is in Programme, Extras is Variations, History is at the foot of the Overview |
+| 220 | Dashboard boxes | Two or three figures, one small bar and up to three lines that need attention, each a link to where it is dealt with; the heading opens the app (option A of three sketches). Rules in `src/lib/boxes.ts` |
+| 221 | The rest of the dashboard | Under the boxes: Waiting for your yes or no (the approvals, with a line for what waits in Admin) and To do. The AI overview, On site today, the Portal panel, Compliance monitoring and the firm at a glance went; the boxes cover them |
+| 222 | Money in | Opens on Payment claims, Jimmy's simple list: every job to claim this month (live jobs, and finished ones whose final account has not gone) with a column red To be issued, amber Drafted or Held, green Issued; due out by the last working day of the month. A job opens to its invoices; "Draft this month's claim" opens Draft an invoice on that job. The full client invoice list is the next tab (option A of three sketches). Rules in `src/lib/claims.ts` |
+| 223 | Money out | Jimmy's chain as the default, set in Admin, Invoice approvals: the site manager of the job, then the managing director, then the office pays. Also "site manager only", and the rule from 18 Nov (accounts up to the limit, the managing director above). Each firm's from its onboarding form (Jimmy: "in other organisations it might be sufficed to be signed by the site manager, or it might have to go to the finance manager") |
+| 224 | Sales | Four sections as in the sheet, plus Customers. Tenders opens on the list (being priced, with the client, won, lost), the drag-and-drop board and Awaiting response are tabs beside it |
+| 225 | A tender's sections | Workings and Buildsoft: our priced items and cost build-up, the Buildsoft total checked against them, and the Buildsoft and workings files. Subcontractors: ask one per trade, record each price, the lowest marked, pick one per trade, and the picked prices become the tender's subcontract. Tender completed: four checks (documents read, subcontractors priced, workings checked, price approved by the managing director), then Submit tender, which sends it and puts it in the Pipeline as tendered |
+| 226 | Programme | Each scope item as a bar across the weeks, worked out from the job's start and finish, today as a red line, late items in red (option A of three sketches), and the client's programme file attached beside it (it also goes in the project's new Programme folder). The scope is ticked off under the chart |
+| 227 | The People screens | Inside the five sections of Resources: Timesheet has Attendance history, Payroll export and Reimbursements as tabs; Scheduling has Holidays and Holiday requests; the Employee register is a tab of Training |
+| 228 | Reports | One section of Finance, Profitability reports, opening on Profit by job, with Gross margin, Sales by customer, Tender conversion, the 12 months overview and Job costs as tabs. The managing director's by default, as before |
+| 229 | Where it is looked at | A private Claude artifact for now; a Cloudflare Pages project of its own when it goes to prospects (Jimmy is aiming for CSL and Michael Murray on Friday 27 Nov or the Monday after) |
 
 Standing preferences (these come from Aodhan and are not optional):
 
@@ -1921,6 +1960,85 @@ to All my sites, an operative's photo and extra work, Send a licence with Fleet.
 - Tickets sent from the app go to Admin, Certificates to check, not to Compliance, Personnel's
   "Cards sent from the site phone", which nothing sends to now.
 - The greeting follows the real time of day, not the demo's.
+
+## The master demo, 20 Nov (decisions 214 to 229)
+
+Branch `master-demo-structure`, from 97d8255. DATA_VERSION 27.
+
+**Built.**
+
+- **Apps** (`src/app/apps.ts`): the five apps, each a list of sections, each section a list of
+  screens (`Tab`: a sidebar item with the department whose access opens it). An app is a layer
+  over the departments in `departments.ts`, which still decide access, addresses and Ask AI's
+  links, so Admin, Roles and access works as before. `placeOf(path)` finds the app and section of
+  any address (a screen listed, else the longest `also`: a tender's page belongs to Tenders).
+- **The frame** (`Shell.tsx`): `AppBar` (the five apps, each opening on its first screen the
+  person may open), `SectionNav` (section buttons and the open section's tabs; outside the five
+  apps the department's own screens are the buttons), `UtilityButtons` (Email, Team chat, Site
+  phone, Admin and Vardil HQ in the top bar). A section button counts only what needs attention
+  (warn or bad counts); plain counts stay on the tabs. On a phone the light and dark switch is in
+  the account menu. `Sidebar`, `SideNavCompact` and `DepartmentBar` went.
+- **Dashboard** (`dashboard/Overview.tsx`, rules in `lib/boxes.ts`): the four boxes, then the
+  approvals as Waiting for your yes or no (`ApprovalsPanel` takes a title) with a line for what
+  waits in Admin, and To do. A box shows when the person may open its app.
+- **Sales** (`sales/Sections.tsx`: `Tenders`, `Confirmed`, `Pipeline`; `sales/TenderSections.tsx`):
+  the tender page (`QuotePage.tsx`) has six tabs at `?tab=documents`, `subcontractors`, `photos`,
+  `workings`, `completed`. Send moved from the page's head to Tender completed. `Quote.tender`
+  (`Tender`: return date, files, subcontractors' prices, checks, Buildsoft total); actions
+  `setTenderReturn`, `addTenderFile`, `removeTenderFile`, `askSubPrice`, `recordSubPrice`,
+  `pickSubPrice` (the subcontract line becomes the total picked), `setTenderCheck`,
+  `setBuildsoftTotal`; rules in `lib/tenders.ts`. A quote drafted from an enquiry starts with an
+  empty tender. Sample data `seed/tenders.ts` (no random numbers): every tender of the last few
+  months has its documents, three site photos, the Buildsoft file, subcontractors' prices for
+  scaffolding and the specialist trade its kind of work needs (two or three asked, ours lowest and
+  picked), and its four checks; the draft Q-2620 has one price not back and nothing picked, the
+  one awaiting approval three checks done. The year of past tenders keeps only a return date.
+- **Finance**: `invoicing/Claims.tsx` (`PaymentClaims`), `DraftInvoiceDialog` takes a
+  `projectId` to start on. Jimmy's chain: `PayChain` on `ApprovalLimit.chain`;
+  `SupplierInvoice.siteStep`, `siteApprovedBy`, `siteApprovedAt`; `chainOf`, `approveStep`,
+  `approvalBy` ("finish" or "site"), `approverWords` and `approveLabel` in `lib/purchases.ts`;
+  actions `siteApprovePurchase`, `setPayChain`; `sendForApproval` and a subcontractor's portal
+  invoice set the site step. The site manager's page (Projects, Requests and variations,
+  Invoices to approve) lists suppliers' invoices too under Jimmy's chain; so does his phone.
+  Admin, Requests lists what the site has approved for the managing director
+  (`waitingForDirector`). Admin, Invoice approvals (`admin/InvoiceApprovals.tsx`). The
+  permission "Approve subcontractor invoices for their own sites" is now "Approve invoices for
+  their own sites". Sample data: all seven waiting invoices start on the site step; Slieve
+  Bloom's and Portumna's are site-approved, waiting for the managing director.
+- **Projects**: `LiveProjects` and `NotStarted` (the old list with its status fixed; `/projects`
+  is Live projects, the old list with every status at `/projects/all`), `ResourcesToday`
+  (`/projects/resources`; `/projects/today` goes there), the project page's nine tabs,
+  `projects/ProjectPlan.tsx` (`ProgrammeChart`, `SiteWeekAhead`; rules in `lib/programme.ts`).
+  `FileCategory` gains "Programme", with a folder in Files and on the project.
+
+**Tested.** 787 automated tests in 76 files (new: `lib/claims.test.ts` 11, `lib/boxes.test.ts`
+5, `lib/pay-chain.test.ts` 10, `lib/programme.test.ts` 5), both type checks. New browser suite
+`tests/browser/master_check.py`, 47 checks, all passing, no console errors: the bar of five, no
+sidebar, the four top bar buttons; the dashboard's boxes and a line in a box opening its screen;
+Finance's sections and Payment claims (marks, a job opening to its invoices, drafting a claim);
+Jimmy's chain end to end (waiting on the site manager, the site manager's yes as his step only,
+the managing director's yes into job costs, the old rule picked in Admin with its limit); Sales'
+sections, a tender's six tabs, a price recorded and picked into the subcontract, Submit held until
+all four checks are ticked, then sent and in the Pipeline; Confirmed; Projects' sections, Live
+projects, Resources today, the nine tabs, the programme's bars, the week ahead, an old link to
+Extras; Resources' five sections and Training with the employee register; the phone width.
+Checked by eye in screenshots: the dashboard, Money out, Tenders, a tender's subcontractors and
+completed tabs, Payment claims, the programme, Resources today, Admin, Invoice approvals, the
+dashboard at phone width.
+
+**Not tested, and known gaps.**
+
+- The 28 browser suites from before (`run_all.sh`) were written for the department bar and the
+  left sidebar, and stop at their first step now (checked: `m1_check.py`, `comp_check.py`). They
+  need their navigation steps moved to the apps and sections; what they test underneath has not
+  changed. `master_check.py` is in `run_all.sh`.
+- Ask AI has not been tried with the new screens (its links come from `departments.ts`, which
+  lists the new addresses; its summary does not yet know about tenders' sections or the chain).
+- Health and Safety waits for Jimmy (decision 218).
+- The programme is worked out from the scope and the job's dates, not from a real programme; the
+  attached file is not read.
+- Nothing is sent to subcontractors asked to price; the request is recorded.
+- A real phone, Safari and Firefox, the hosted build behind Cloudflare.
 
 ## Build status
 

@@ -180,7 +180,7 @@ function TopBar() {
 
       <UtilityButtons className={away} />
       <span className="hidden text-[0.93rem] text-muted xl:inline">{dWeekday(day)}</span>
-      <button type="button" onClick={() => setTheme(theme === "dark" ? "light" : "dark")} aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"} className={cx("press grid size-9 place-items-center rounded-md text-muted hover:bg-accent-soft hover:text-accent-ink", away)}>
+      <button type="button" onClick={() => setTheme(theme === "dark" ? "light" : "dark")} aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"} className={cx("press grid size-9 place-items-center rounded-md text-muted hover:bg-accent-soft hover:text-accent-ink max-sm:hidden", away)}>
         {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
       </button>
 
@@ -214,6 +214,10 @@ function TopBar() {
               </MenuItem>
             ))}
             <div className="my-1.5 border-t border-line" />
+            {/* On a phone the light and dark switch lives here, to leave the top bar room (20 Nov). */}
+            <MenuItem className="sm:hidden" onClick={() => { close(); setTheme(theme === "dark" ? "light" : "dark"); }}>
+              {theme === "dark" ? <Sun size={18} className="text-faint" /> : <Moon size={18} className="text-faint" />} {theme === "dark" ? "Light mode" : "Dark mode"}
+            </MenuItem>
             {access.can("settings") && (
               <MenuItem onClick={() => { close(); navigate("/settings"); }}>
                 <GearSix size={18} className="text-faint" /> Settings
@@ -591,7 +595,7 @@ function UtilityButtons({ className }: { className?: string }) {
             title={d.label}
             aria-label={badge > 0 ? `${d.label}, ${badge} unread` : d.label}
             aria-current={active ? "page" : undefined}
-            className={cx("press relative inline-flex h-9 items-center gap-1.5 rounded-md px-2 text-[0.93rem] font-medium", active ? "bg-accent-soft text-accent-ink" : "text-muted hover:bg-accent-soft hover:text-accent-ink")}
+            className={cx("press relative inline-flex h-9 items-center gap-1.5 rounded-md px-1.5 text-[0.93rem] font-medium sm:px-2", active ? "bg-accent-soft text-accent-ink" : "text-muted hover:bg-accent-soft hover:text-accent-ink")}
           >
             <Icon size={20} weight={active ? "fill" : "regular"} />
             <span className="hidden 2xl:inline">{d.label}</span>

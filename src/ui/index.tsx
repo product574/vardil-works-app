@@ -397,9 +397,9 @@ export function Menu({ trigger, children, align = "right", label }: { trigger: R
   );
 }
 
-export function MenuItem({ children, onClick, tone }: { children: ReactNode; onClick: () => void; tone?: "bad" }) {
+export function MenuItem({ children, onClick, tone, className }: { children: ReactNode; onClick: () => void; tone?: "bad"; className?: string }) {
   return (
-    <button type="button" role="menuitem" onClick={onClick} className={cx("flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left hover:bg-accent-soft", tone === "bad" ? "text-bad" : "hover:text-accent-ink")}>
+    <button type="button" role="menuitem" onClick={onClick} className={cx("flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left hover:bg-accent-soft", tone === "bad" ? "text-bad" : "hover:text-accent-ink", className)}>
       {children}
     </button>
   );
