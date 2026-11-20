@@ -26,8 +26,12 @@ The first round here restructured the demo to the **Oldstone visual template** a
 with Jimmy, Oldstone's managing director, on 20 Nov (his spreadsheet "Oldstone - Visual Template
 1.1" and the call notes are in Oisin's uploads, not in the repository): Level 1 the Dashboard,
 Level 2 the apps, Level 3 the sections. Decisions 214 to 229, and "The master demo, 20 Nov"
-further down. The preview is a private Claude artifact, "Vardil Works master demo"; Cloudflare
-comes later (decision 229).
+further down. The preview is a private Claude artifact, "Vardil Works master demo" (slug
+4b5930f4-1ab3-4776-b06e-d39091e3dc72, https://claude.ai/artifact/AJeong6GJsrZs9kQaQrpJ5),
+rebuilt with `npm run build:preview` and republished with `publish_files` after each change
+(sign in with demo / demo; downloads do nothing inside the artifact's frame). Cloudflare comes
+later (decision 229). `main` here is the exact copy of the construction demo (97d8255); the
+restructure is on the branch `master-demo-structure`, to go into `main` at Oisin's word.
 
 ## Start here (handed over 16 Nov 2026)
 
