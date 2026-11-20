@@ -35,8 +35,10 @@ into `main` on 20 Nov at Oisin's word ("yes push to github"); work on a new bran
 for each round, as before.
 
 **Easier to put things in, 20 Nov (later):** decisions 230 to 238, built on the branch
-`easier-inputs` from `main` at b2a98ca. See "Easier to put things in, 20 Nov" further down. Not
-merged into `main` until Oisin says.
+`easier-inputs` from `main` at b2a98ca, pushed to GitHub, and the artifact "Vardil Works master
+demo" republished from it the same evening so he can look. See "Easier to put things in, 20 Nov"
+further down. Not merged into `main` until Oisin says. The checklist of changes was given in the
+chat, with the open questions as "Decision for you" lines.
 
 ## Start here (handed over 16 Nov 2026)
 
