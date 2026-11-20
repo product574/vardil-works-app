@@ -26,7 +26,7 @@ function CloudflarePanel() {
     return (
       <Panel className="px-4 py-3">
         <p className="font-medium">Cloudflare is not linked yet</p>
-        <p className="text-muted">Clients are saved here, but Cloudflare's list of who may sign in has to be kept by hand until the three settings in the README ("Clients and Cloudflare") are added to the project. Until then, add each client's emails to the Demo access policy yourself.</p>
+        <p className="text-muted">Clients are saved here, but Cloudflare's list of who may sign in has to be kept by hand until the three settings in the README ("Clients and Cloudflare") are added to the project. Until then, add each client's emails yourself to the Access policy in front of this site.</p>
       </Panel>
     );
   return (
