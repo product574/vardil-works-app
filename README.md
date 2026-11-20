@@ -437,14 +437,20 @@ anyone asks the server after it: that person, or anyone in Vardil HQ.
 ### An email when a prospect signs in (optional)
 
 Vardil gets an email the first time each person opens their demo each day. It goes through
-Cloudflare's Email Service, which sends to an address verified in the account for free.
+Cloudflare's Email Service. Not set up as of 20 Nov: the dashboard's Email Sending page asks for
+the Workers Paid plan (5 US dollars a month minimum, for the whole account; a decision for
+Aodhan, whose account it is). Cloudflare's pricing page says sending to a verified destination
+address is free with only Email Routing set up, but that has not been tried, and Email Routing
+must then go on a subdomain (such as alerts.vardil.com), never on vardil.com itself. Until then,
+Vardil HQ, Clients shows each person's last sign-in.
 
-1. Zero Trust is not involved. In the main Cloudflare dashboard, open Email Service. Add
-   `hello@vardil.com` as a verified destination address and press the link in the email
-   Cloudflare sends. Set up sending for vardil.com (Email Sending, onboard the domain), which
-   adds records to vardil.com's DNS. **Before confirming anything, check it does not change
-   vardil.com's MX records**: those decide where Vardil's own email goes. If it wants to,
-   stop and ask.
+1. Zero Trust is not involved. In the main Cloudflare dashboard, open Email Service. Under
+   Email Routing, Destination addresses, add `hello@vardil.com` and press the link in the email
+   Cloudflare sends (free, and changes nothing about Vardil's own email). **Never press Onboard
+   Domain on the Email Routing page for vardil.com**: it replaces vardil.com's MX records, which
+   decide where Vardil's own email goes. With Workers Paid, set up sending under Email Sending,
+   Onboard Domain: its records go on `cf-bounce.vardil.com` and a DKIM name. If it wants to add
+   or change an MX, SPF or DMARC record on vardil.com itself, stop and ask.
 2. Give the API token from "Clients and Cloudflare" the permission to send email as well, or
    make a second token with only that and save it as `ALERT_API_TOKEN` (Secret).
 3. On the Pages project, for Production and Preview: `ALERT_TO` = `hello@vardil.com` and
