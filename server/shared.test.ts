@@ -144,7 +144,7 @@ describe("supabaseStore", () => {
     }) as unknown as typeof fetch;
     return { calls, f };
   }
-  const env = { SUPABASE_URL: "https://xyz.supabase.co/", SUPABASE_SERVICE_ROLE_KEY: "service-key" };
+  const env = { SUPABASE_URL: "https://xyz.supabase.co/", SUPABASE_SECRET_KEY: "sb_secret_test" };
 
   it("is not set up without both settings, or with an address that is not https", () => {
     expect(supabaseStore({})).toBeNull();
@@ -163,9 +163,9 @@ describe("supabaseStore", () => {
       "https://xyz.supabase.co/rest/v1/rpc/apply_changes",
       "https://xyz.supabase.co/rest/v1/rpc/reset_firm",
     ]);
-    const h = calls[0].init.headers as Record<string, string>;
-    expect(h.apikey).toBe("service-key");
-    expect(h.authorization).toBe("Bearer service-key");
+    const h = calls[0]!.init.headers as Record<string, string>;
+    expect(h.apikey).toBe("sb_secret_test");
+    expect(h.authorization).toBeUndefined();
     expect(JSON.parse(calls[1].init.body as string)).toEqual({ p_firm: FIRM, p_changes: [rec("a")], p_by: "me@x.ie" });
   });
 
@@ -175,6 +175,14 @@ describe("supabaseStore", () => {
     const down = supabaseStore(env, fake(() => new Response("upstream down", { status: 503 })).f)!;
     await expect(down.since(FIRM, 0)).rejects.toThrow(/503/);
     await expect(down.apply(FIRM, [], "x")).rejects.toThrow(/503/);
+  });
+
+  it("sends an old service_role key (a JWT) on both headers", async () => {
+    const { calls, f } = fake(() => new Response("[]"));
+    await supabaseStore({ ...env, SUPABASE_SECRET_KEY: "eyJold.jwt.key" }, f)!.exists(FIRM);
+    const h = calls[0]!.init.headers as Record<string, string>;
+    expect(h.apikey).toBe("eyJold.jwt.key");
+    expect(h.authorization).toBe("Bearer eyJold.jwt.key");
   });
 
   it("asks whether the firm exists without reading its records", async () => {

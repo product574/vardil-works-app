@@ -9,7 +9,7 @@ REPO = os.path.dirname(os.path.dirname(HERE))
 # (WRANGLER, or `npx wrangler@4.156.0`). It does not reach the real Supabase or Cloudflare.
 FN, UP, SB, PG = 4196, 4192, 4194, 54331
 B = f"http://127.0.0.1:{FN}"
-KEY = "service-key-for-tests"
+KEY = "sb_secret_testkey_for_checks"
 PGBIN = os.environ.get("PGBIN", "/usr/lib/postgresql/16/bin")
 results = []
 def check(name, cond, detail=""):
@@ -48,7 +48,7 @@ try:
         "--persist-to", os.path.join(work, "state"),
         "--binding", "ACCESS_TEAM_DOMAIN=test.cloudflareaccess.com", "--binding", "ACCESS_AUD=test-aud",
         "--binding", f"ACCESS_CERTS_URL=http://127.0.0.1:{UP}/certs", "--binding", "STAFF_DOMAINS=vardil.example",
-        "--binding", f"SUPABASE_URL=http://127.0.0.1:{SB}", "--binding", f"SUPABASE_SERVICE_ROLE_KEY={KEY}", "--binding", "DEMO_FIRM=abc-test",
+        "--binding", f"SUPABASE_URL=http://127.0.0.1:{SB}", "--binding", f"SUPABASE_SECRET_KEY={KEY}", "--binding", "DEMO_FIRM=abc-test",
     ]
     log = open(os.path.join(work, "wrangler.log"), "w")
     procs.append(subprocess.Popen(cmd, cwd=REPO, env=env, stdout=log, stderr=subprocess.STDOUT, start_new_session=True))

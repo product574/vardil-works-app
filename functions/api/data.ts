@@ -4,7 +4,7 @@
  * The rules are in server/shared.ts; this file only finds who is signed in (Cloudflare Access,
  * from the signed token, never from anything the page says) and which store to use.
  *
- * Settings on the Pages project: SUPABASE_URL (plain), SUPABASE_SERVICE_ROLE_KEY (secret),
+ * Settings on the Pages project: SUPABASE_URL (plain), SUPABASE_SECRET_KEY (secret: the project's sb_secret_ key),
  * DEMO_FIRM (plain, default "abc-demo"), plus the Access ones the other functions use.
  */
 import { ACCESS_DEFAULTS, accessToken, verifyAccessToken } from "../../server/access";

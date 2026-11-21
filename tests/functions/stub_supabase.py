@@ -37,7 +37,7 @@ class H(BaseHTTPRequestHandler):
         data = body.encode() if isinstance(body, str) else json.dumps(body).encode()
         self.send_response(status); self.send_header("content-type", "application/json"); self.send_header("content-length", str(len(data))); self.end_headers(); self.wfile.write(data)
     def authorised(self):
-        return self.headers.get("apikey") == KEY and self.headers.get("authorization") == f"Bearer {KEY}"
+        return self.headers.get("apikey") == KEY and self.headers.get("authorization") is None  # a new secret key goes on apikey only
     def do_GET(self):
         u = urlparse(self.path)
         if not self.authorised(): return self.send(401, {"message": "Invalid API key"})

@@ -128,19 +128,23 @@ export async function handleData(request: Request, opts: { caller: Caller | null
   }
 }
 
-export type SupabaseEnv = { SUPABASE_URL?: string; SUPABASE_SERVICE_ROLE_KEY?: string };
+/** SUPABASE_SECRET_KEY: the project's secret key (sb_secret_...). The old service_role key (a JWT) works too until Supabase retires it. */
+export type SupabaseEnv = { SUPABASE_URL?: string; SUPABASE_SECRET_KEY?: string };
 
 /** The records kept in Supabase. Null until both settings are in place. */
 export function supabaseStore(env: SupabaseEnv, fetchImpl: typeof fetch = fetch): SharedStore | null {
   const url = env.SUPABASE_URL?.replace(/\/+$/, "");
-  const key = env.SUPABASE_SERVICE_ROLE_KEY;
+  const key = env.SUPABASE_SECRET_KEY;
   // https only, apart from this machine's own address for the local test (tests/functions/data_check.py).
   if (!url || !key || !/^(https:\/\/|http:\/\/(127\.0\.0\.1|localhost)(:\d+)?(\/|$))/.test(url)) return null;
+
+  // New keys (sb_...) are not JWTs: Supabase wants them on the apikey header only. The old JWT key also goes on Authorization.
+  const auth: Record<string, string> = key.startsWith("sb_") ? { apikey: key } : { apikey: key, authorization: `Bearer ${key}` };
 
   async function rpc<T>(fn: string, args: Record<string, unknown>): Promise<T> {
     const r = await fetchImpl(`${url}/rest/v1/rpc/${fn}`, {
       method: "POST",
-      headers: { apikey: key!, authorization: `Bearer ${key}`, "content-type": "application/json", accept: "application/json" },
+      headers: { ...auth, "content-type": "application/json", accept: "application/json" },
       body: JSON.stringify(args),
     });
     const text = await r.text();
@@ -156,7 +160,7 @@ export function supabaseStore(env: SupabaseEnv, fetchImpl: typeof fetch = fetch)
   return {
     async exists(firm) {
       const r = await fetchImpl(`${url}/rest/v1/firms?id=eq.${encodeURIComponent(firm)}&select=id`, {
-        headers: { apikey: key!, authorization: `Bearer ${key}`, accept: "application/json" },
+        headers: { ...auth, accept: "application/json" },
       });
       if (!r.ok) throw new Error(`Supabase firms answered ${r.status}`);
       return ((await r.json()) as unknown[]).length > 0;

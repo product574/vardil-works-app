@@ -41,14 +41,14 @@ each change, `changedRecords` (`src/lib/sync.ts`) compares the database before a
 keeps untouched records as the same objects, so this finds exactly what an action changed,
 whatever the action. Each record carries a position so list order survives ("newest first").
 The changes go to `/api/data` (`functions/api/data.ts`, rules in `server/shared.ts`), which
-checks the Cloudflare Access token and writes Supabase with the service role key through three
+checks the Cloudflare Access token and writes Supabase with the project's secret key through three
 database functions (`supabase/migrations/20261121000000_shared_records.sql`): `apply_changes`,
 `changes_since` and `reset_firm`. Records are one generic table (firm, list, id, position, the
 record as JSON, version, a deleted marker). Screens ask for "changes since version N"; a screen
 that last looked before a reset gets the whole firm again. Row level security is on with no
 policies, so Supabase's public keys read nothing. The first person in may set the firm up; after
 that only Vardil staff may reset it. Settings on the Pages project: `SUPABASE_URL`,
-`SUPABASE_SERVICE_ROLE_KEY` (secret), `DEMO_FIRM` (default `abc-demo`), and the Access ones.
+`SUPABASE_SECRET_KEY` (secret: the project's `sb_secret_` key, sent on the `apikey` header only), `DEMO_FIRM` (default `abc-demo`), and the Access ones.
 
 **Built on 21 Nov (branch `linked-site-app`, not yet in `main`):** the change finder and its
 opposite, `applyChanges` (`src/lib/sync.ts`, `src/lib/sync-records.ts`, 14 tests); the database
