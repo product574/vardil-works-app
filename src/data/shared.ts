@@ -32,10 +32,20 @@ export async function initShared(): Promise<void> {
     firmName: () => usePrefs.getState().brand.legalName,
     notify: (m) => toast(m),
   });
-  const started = await l.start();
-  if (started === "off") return;
-  link = l;
+  // Linked from the start, so the firm being loaded is not also saved in this browser.
   linked.on = true;
+  const started = await l.start().catch(() => "off" as const);
+  if (started === "off") {
+    linked.on = false;
+    return;
+  }
+  link = l;
+  // A copy kept from before this screen was linked is of no further use, and fills the browser.
+  try {
+    window.localStorage.removeItem("cod.data");
+  } catch {
+    /* nothing kept */
+  }
   linked.reset = () => void l.reset();
   // The firm is kept until Vardil resets it, so "today" is simply today.
   useData.setState({ day: demoDay(dublinToday()) });
