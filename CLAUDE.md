@@ -13,6 +13,58 @@ behind Cloudflare Access (see "Hosting and sign-in" below).
 **Read `DESIGN.md` before touching any interface.** It holds Aodhan's design rules and they
 are not optional.
 
+## This repository: vardil-works-app, the linked site app (from 21 Nov 2026)
+
+This is **product574/vardil-works-app** (Oisin creates the empty GitHub repository; until then the
+work is local to Claude's session). It was copied from the master demo
+(`product574/vardil-works-master-demo`, branch `finance-quick-adds`, 25a9ef8) on 21 Nov, so
+everything below about the master demo still describes the screens. The master demo stays a sales
+demo; this repository becomes the real web app. The handover and every decision of 21 Nov are in
+the project doc `web-app/start-here.md`; in short:
+
+- **First:** the Site phone as it already works in the master demo, **linked to the office**: one
+  shared database, so a repair sent from a real phone shows in What the office receives and the
+  office's answers reach the phone. The full offering (Projects and Fleet on), then Jimmy's order:
+  Sales, Projects, the rest of Resources, Finance.
+- **Data:** sample data for now, in **Supabase** (project `vardil-works-app`, West EU, Ireland,
+  Vardil's own account; never the Vardkey Supabase linked to Claude). **One shared ABC
+  Construction** for everyone, **kept until Vardil staff reset it**. Many firms from day one
+  (`firm_id` on every row). Long term each client's **SharePoint** is their database, so all
+  reading and writing goes through one store on the server (`SharedStore` in `server/shared.ts`).
+- **Sign-in for the demo:** Cloudflare Access's emailed one-time code, office and phone alike;
+  the office then picks a role, the phone picks whose phone. The real build's sign-in (email and
+  password; number, Twilio text and password on the phone) comes later.
+- **Email and Team chat:** hidden for now. **Address:** app.vardil.com, the phone at /app.
+
+**How the link works.** `mutate` in `src/data/store.ts` is still the only way data changes. After
+each change, `changedRecords` (`src/lib/sync.ts`) compares the database before and after: Immer
+keeps untouched records as the same objects, so this finds exactly what an action changed,
+whatever the action. Each record carries a position so list order survives ("newest first").
+The changes go to `/api/data` (`functions/api/data.ts`, rules in `server/shared.ts`), which
+checks the Cloudflare Access token and writes Supabase with the service role key through three
+database functions (`supabase/migrations/20261121000000_shared_records.sql`): `apply_changes`,
+`changes_since` and `reset_firm`. Records are one generic table (firm, list, id, position, the
+record as JSON, version, a deleted marker). Screens ask for "changes since version N"; a screen
+that last looked before a reset gets the whole firm again. Row level security is on with no
+policies, so Supabase's public keys read nothing. The first person in may set the firm up; after
+that only Vardil staff may reset it. Settings on the Pages project: `SUPABASE_URL`,
+`SUPABASE_SERVICE_ROLE_KEY` (secret), `DEMO_FIRM` (default `abc-demo`), and the Access ones.
+
+**Built on 21 Nov (branch `linked-site-app`, not yet in `main`):** the change finder and its
+opposite, `applyChanges` (`src/lib/sync.ts`, `src/lib/sync-records.ts`, 14 tests); the database
+(9 checks on a real Postgres 16, `sh tests/db/run.sh`, skipped in `npm test`); `/api/data` (14
+tests in `server/shared.test.ts`, and `python3 tests/functions/data_check.py`, 19 checks: the real
+function in Cloudflare's local runtime with signed test sign-ins, through `stub_supabase.py` to
+the real database functions on a throwaway Postgres, a 6,000 record firm loaded in under a
+second). 905 tests pass in `npm test`; both type checks pass. A full local Supabase cannot run in
+Claude's session (its images are blocked), so Supabase itself, its REST interface and Realtime
+are not tested yet.
+
+**Next, in order:** the store loads the firm from `/api/data`, sends each change and picks up
+others' every few seconds (`src/data/store.ts`); the phone at /app with Cloudflare sign-in and
+"pick whose phone" (a picture first); Email and Team chat hidden; Reset demo data for Vardil staff
+only; then live on Supabase and Cloudflare, tried with two real phones and an office screen.
+
 ## This repository: the master demo (from 20 Nov 2026)
 
 This is **product574/vardil-works-master-demo**, Oisin's new project. On 20 Nov he asked to
