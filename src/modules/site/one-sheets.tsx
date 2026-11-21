@@ -113,15 +113,15 @@ export function RepairSheet({ me, onClose }: { me: Person; onClose: () => void }
         <Field label="Where is it?">{(id) => <input id={id} className="field h-11" value={where} placeholder="e.g. C721, by the north gable" onChange={(e) => setWhere(e.target.value)} />}</Field>
         <Field label="What is wrong?">{(id) => <textarea id={id} rows={3} className="field" value={what} placeholder="What it is doing, and whether it is safe to use" onChange={(e) => setWhat(e.target.value)} />}</Field>
         <div className="grid gap-2">
-          <p className="text-[0.93rem] font-medium">Photos ({photos.length} of 4)</p>
+          <p className="text-body font-medium">Photos ({photos.length} of 4)</p>
           <Thumbs files={photos} remove={(key) => setPhotos((ps) => ps.filter((p) => p.key !== key))} />
           {photos.length < 4 && <AddButtons onFiles={(l) => void add(l)} />}
           {error && <p role="alert" className="text-bad">{error}</p>}
         </div>
         {reports.length > 0 && (
           <section>
-            <h3 className="mb-1 text-[0.93rem] font-medium">Your repairs</h3>
-            <ul className="divide-y divide-line rounded-md border border-line bg-surface" aria-label="Your repairs">
+            <h3 className="mb-1 text-body font-medium">Your repairs</h3>
+            <ul className="divide-y divide-line rounded-card border border-line bg-surface" aria-label="Your repairs">
               {reports.map((r) => {
                 const last = r.steps[r.steps.length - 1];
                 return (
@@ -130,7 +130,7 @@ export function RepairSheet({ me, onClose }: { me: Person; onClose: () => void }
                       <span className="min-w-0 flex-1">{r.item.name}</span>
                       <Badge tone={REPAIR_TONE[r.status]}>{r.status}</Badge>
                     </span>
-                    <span className="text-[0.87rem] text-muted">
+                    <span className="text-detail text-muted">
                       {last ? `${last.by}, ${dShort(last.at.slice(0, 10))}${last.note ? `: ${last.note}` : ""}` : `Sent ${dShort(r.at.slice(0, 10))}, waiting for the office`}
                     </span>
                   </li>
@@ -166,8 +166,8 @@ export function MyCerts({ me, day }: { me: Person; day: string }) {
   const answered = sent.filter((s) => s.status !== "Waiting").slice(0, 3);
   return (
     <div lang="en">
-      <h3 className="mb-1 text-base">My certificates</h3>
-      <ul className="divide-y divide-line rounded-md border border-line" aria-label="My certificates">
+      <h3 className="mb-1 text-title font-semibold">My certificates</h3>
+      <ul className="divide-y divide-line rounded-card border border-line" aria-label="My certificates">
         {rows.map((r) => {
           const state = r.expires ? stateOf(r.expires, day) : "expired";
           const w = waitingFor(r);
@@ -178,7 +178,7 @@ export function MyCerts({ me, day }: { me: Person; day: string }) {
                 <Badge tone={state === "expired" ? "bad" : state === "due" ? "warn" : "ok"}>{r.expires ? `${state === "expired" ? "Ran out" : "Runs out"} ${dShort(r.expires)}` : "None on file"}</Badge>
               </span>
               {w ? (
-                <span className="text-[0.93rem] text-accent-ink">New one sent {dShort(w.sentAt.slice(0, 10))}, waiting for the office to check</span>
+                <span className="text-body text-accent-ink">New one sent {dShort(w.sentAt.slice(0, 10))}, waiting for the office to check</span>
               ) : (
                 <Button size="sm" className={cx("justify-self-start", state === "ok" && "text-muted")} onClick={() => setSending(r)}>
                   <Camera size={16} /> Send a new one
@@ -198,7 +198,7 @@ export function MyCerts({ me, day }: { me: Person; day: string }) {
         <Plus size={18} /> Add a certificate
       </Button>
       {answered.length > 0 && (
-        <ul className="mt-2 grid gap-1 text-[0.93rem]" aria-label="Checked by the office">
+        <ul className="mt-2 grid gap-1 text-body" aria-label="Checked by the office">
           {answered.map((s) => (
             <li key={s.id} className={s.status === "Accepted" ? "text-ok" : "text-bad"}>
               {s.name}: {s.status === "Accepted" ? `accepted by ${s.decidedBy}` : `turned down by ${s.decidedBy}${s.note ? `. ${s.note}` : ""}`}
@@ -267,7 +267,7 @@ function CertSheet({ me, row, day, onClose }: { me: Person; row: Row | null; day
           <p className="mb-1 font-medium">Photo of the card or certificate</p>
           <PickFile accept="image/*" what="card" onFile={(f) => { setError(""); shrinkImage(f).then(setPicture).catch((e: Error) => { setPicture(null); setError(e.message); }); }} />
           <p role="alert" className="text-bad">{error}</p>
-          {picture ? <img src={picture.dataUrl} alt="" className="mt-2 max-h-44 rounded-md border border-line" /> : <p className="text-[0.93rem] text-muted">The office checks the name and the dates on it before it counts.</p>}
+          {picture ? <img src={picture.dataUrl} alt="" className="mt-2 max-h-44 rounded-card border border-line" /> : <p className="text-body text-muted">The office checks the name and the dates on it before it counts.</p>}
         </div>
       </div>
     </Dialog>
@@ -280,15 +280,15 @@ export function CompanyHolidays({ day }: { day: string }) {
   const rows = companyYears(day).flatMap((y) => holidayRows(list, y)).filter((r) => (r.kind === "day" ? r.date : r.to) >= day).slice(0, 8);
   return (
     <div lang="en">
-      <h3 className="mb-1 text-base">Company holidays</h3>
+      <h3 className="mb-1 text-title font-semibold">Company holidays</h3>
       {rows.length === 0 ? (
         <p className="text-muted">None coming up.</p>
       ) : (
-        <ul className="divide-y divide-line rounded-md border border-line" aria-label="Company holidays">
+        <ul className="divide-y divide-line rounded-card border border-line" aria-label="Company holidays">
           {rows.map((r) => (
             <li key={r.kind === "day" ? r.date : r.closure + r.from} className="flex items-baseline gap-2 px-2.5 py-1.5">
               <span className="min-w-0 flex-1">{r.name}</span>
-              <span className="text-[0.93rem] text-muted">{r.kind === "day" ? dFull(r.date) : `${dShort(r.from)} to ${dFull(r.to)}, ${plural(r.days, "day")}`}</span>
+              <span className="text-body text-muted">{r.kind === "day" ? dFull(r.date) : `${dShort(r.from)} to ${dFull(r.to)}, ${plural(r.days, "day")}`}</span>
             </li>
           ))}
         </ul>

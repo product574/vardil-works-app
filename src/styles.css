@@ -4,6 +4,12 @@
 @import "@fontsource/barlow/600.css";
 @import "@fontsource/barlow-semi-condensed/500.css";
 @import "@fontsource/barlow-semi-condensed/600.css";
+/* The site app's own type (21 Nov, Oisin's calmer look): Figtree, and JetBrains Mono for codes and money. */
+@import "@fontsource/figtree/400.css";
+@import "@fontsource/figtree/500.css";
+@import "@fontsource/figtree/600.css";
+@import "@fontsource/jetbrains-mono/400.css";
+@import "@fontsource/jetbrains-mono/500.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -92,6 +98,18 @@
 
   --font-sans: "Barlow", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Barlow Semi Condensed", "Barlow", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  /* The site app's four text sizes and one corner (21 Nov). In px, since the office's root size is 15px. */
+  --text-detail: 12px;
+  --text-detail--line-height: 1.4;
+  --text-body: 14px;
+  --text-body--line-height: 1.5;
+  --text-title: 16px;
+  --text-title--line-height: 1.35;
+  --text-page: 22px;
+  --text-page--line-height: 1.25;
+  --radius-card: 8px;
 
   --shadow-pop: var(--shadow-pop);
   --shadow-dock: var(--shadow-dock);
@@ -272,5 +290,116 @@
 @keyframes flash-once {
   from {
     background-color: var(--accent-soft);
+  }
+}
+
+/*
+ * The site app's calmer look (21 Nov 2026, Oisin's brief). Everything inside `.site-app`: the phone
+ * screens, their frame and the sheets that open over them. The office screens are not touched.
+ * The phone's own files use text-detail, text-body, text-title and text-page and rounded-card;
+ * the rules here bring the shared pieces they borrow (buttons, badges, fields, dialogs) into line.
+ */
+@layer components {
+  .site-app {
+    font-family: "Figtree", ui-sans-serif, system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    font-weight: 400;
+    letter-spacing: 0;
+    color: var(--ink);
+    --overlay: rgb(15 23 31 / 0.06);
+  }
+  .dark .site-app,
+  .site-app.dark {
+    --overlay: rgb(255 255 255 / 0.07);
+  }
+  .site-app :is(h1, h2, h3) {
+    font-family: inherit;
+    font-weight: 600;
+    letter-spacing: 0;
+  }
+  .site-app .font-bold {
+    font-weight: 600;
+  }
+  /* Codes, money and IDs. Only 400 and 500 are loaded, so headings and names take 500, not a faked bold. */
+  .site-app .font-mono {
+    font-family: var(--font-mono);
+    font-size: 0.93em;
+    font-weight: 400;
+    letter-spacing: 0;
+  }
+  .site-app :is(h1, h2, h3, .font-medium, .font-semibold) .font-mono,
+  .site-app .font-mono.font-medium {
+    font-weight: 500;
+  }
+
+  /* The shared pieces' sizes, mapped onto the four. */
+  .site-app :is(.text-\[0\.8125rem\], .text-\[0\.87rem\]) {
+    font-size: 12px;
+    line-height: 1.4;
+  }
+  .site-app :is(.text-\[0\.93rem\], .text-base) {
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  .site-app :is(.text-\[1\.08rem\], .text-\[1\.15rem\]) {
+    font-size: 16px;
+    line-height: 1.35;
+  }
+  .site-app .text-\[1\.45rem\] {
+    font-size: 22px;
+    line-height: 1.25;
+  }
+
+  /* One corner on cards, inputs and buttons. Round things (avatars, dots) stay round. */
+  .site-app :is(.rounded, .rounded-md, .rounded-lg, .rounded-xl, .field) {
+    border-radius: 8px;
+  }
+  .site-app .rounded-t-2xl {
+    border-radius: 8px 8px 0 0;
+  }
+  /* 16px in boxes people type in: below that, an iPhone zooms the page when the box is tapped. */
+  .site-app .field {
+    font-size: 16px;
+    height: 2.75rem;
+  }
+  .site-app textarea.field {
+    height: auto;
+  }
+
+  /* Hover: a light dark wash over whatever is there, never a change of colour. */
+  .site-app :is(button, a[href], summary, label:has(> input)):not(:disabled):hover {
+    background-image: linear-gradient(var(--overlay), var(--overlay));
+  }
+  .site-app :is(.hover\:border-accent, .hover\:border-line-strong):hover {
+    border-color: var(--line-strong);
+  }
+  .site-app :is(.hover\:text-accent-ink, .hover\:text-ink):hover {
+    color: inherit;
+  }
+  .site-app :is(.hover\:bg-accent-soft, .hover\:bg-bad-soft):hover {
+    background-color: transparent;
+  }
+  .site-app .hover\:brightness-110:hover {
+    filter: none;
+  }
+
+  /* Links inside text: the accent, underlined only under the pointer. */
+  .site-app .text-link {
+    color: var(--accent-ink);
+    text-decoration: none;
+  }
+  .site-app .text-link:hover {
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    background-image: none;
+  }
+
+  /* Accent only for primary buttons, the picked item and the focus ring: badges and soft fills go grey. */
+  .site-app .bg-accent-soft:not([aria-pressed="true"], [aria-selected="true"], [aria-current], .is-picked) {
+    background-color: var(--side);
+  }
+  .site-app .text-accent-ink:not([aria-pressed="true"], [aria-selected="true"], [aria-current], .is-picked) {
+    color: var(--ink);
   }
 }

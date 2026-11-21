@@ -67,18 +67,18 @@ export function WeekSheet({ me, lang, day, onClose }: { me: Person; lang: Langua
                         <span key={e.projectId} className="block">
                           <span className="flex flex-wrap items-baseline gap-x-2">
                             <span className={d.date < day ? "font-normal text-muted" : undefined}>
-                              {site?.code} {site?.name}
+                              <span className="font-mono">{site?.code}</span> {site?.name}
                               {e.half && <span className="font-normal text-muted">, {t.half}</span>}
                               {gone && e.restday ? <span className="font-normal text-muted">, {overtimeText(e)}</span> : overtimeTotal(e) > 0 ? <span className="font-normal text-muted">, {gone ? overtimeNote(e) : `+${e.overtimeHours}h`}</span> : null}
                             </span>
                             {site && manager && (
-                              <button type="button" aria-label={`${t.manager}: ${manager.name}, ${site.code}`} className="press -my-1 inline-flex min-h-9 items-center gap-1 rounded text-[0.93rem] font-normal text-accent-ink underline decoration-line-strong underline-offset-2" onClick={() => setCard({ manager, site })}>
+                              <button type="button" aria-label={`${t.manager}: ${manager.name}, ${site.code}`} className="text-link -my-1 inline-flex min-h-9 items-center gap-1 text-body font-normal" onClick={() => setCard({ manager, site })}>
                                 <Phone size={15} /> {manager.name}
                               </button>
                             )}
                           </span>
                           {note && (
-                            <span className="mt-0.5 block text-[0.87rem] font-normal text-muted" lang="en">
+                            <span className="mt-0.5 block text-detail font-normal text-muted" lang="en">
                               {note.text}
                             </span>
                           )}

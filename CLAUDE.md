@@ -91,6 +91,22 @@ server). 922 tests pass.
   in a second within 4 seconds, and ticking it off there cleared it from the first (server version
   3, written in his name). Not tried: a real phone, two people at once on one record.
 
+**The site app made calmer, 21 Nov (branch `site-app-calm-ui`, from `linked-site-app`; not merged):**
+visual only, on Oisin's brief, the site app alone (the office screens and the bottom bar are
+unchanged; the master demo repository is never edited from here, only read). Everything is
+scoped under the class `.site-app` in `src/styles.css` (on `PhoneFrame` and `StandalonePhone`):
+Figtree for text, JetBrains Mono for codes, money, regs and IDs (`font-mono`); four sizes only,
+the tokens `text-detail` 12px, `text-body` 14px, `text-title` 16px, `text-page` 22px; weights
+400, 500 and 600; one corner, `rounded-card` 8px; the accent kept for the primary button, the
+picked item (`is-picked`, aria-pressed, aria-selected, aria-current) and the focus ring; soft
+accent fills turned to plain grey; a 6% overlay on hover; `text-link` (accent, underline on
+hover). Inputs stay 16px, or an iPhone zooms in. The blue header band is white, with the
+greeting as the page's 22px heading; a site's Timesheet is the primary button. Blue-grey
+background kept. Fonts are bundled (@fontsource), so still no outside requests. Tested:
+`phone_app_check.py` 38 of 38 (its button name brought up to date: "Invoices to approve"), 914
+unit tests, both type checks, screenshots in light and dark at phone and desktop width read by
+eye. `main_offering_check.py` still stops at "Admin screens", as it did before this round.
+
 **Next, in order:** the phone at /app with Cloudflare sign-in and "pick whose phone" (a picture
 first); Email and Team chat hidden; Reset demo data for Vardil staff only (the server already
 refuses anyone else); then two real phones and an office screen; then merge into `main` at Oisin's

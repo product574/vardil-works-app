@@ -99,11 +99,11 @@ export function TimeSheet({ site, me, day, onClose, app }: { site: Project; me: 
                   type="button"
                   aria-pressed={d === date}
                   aria-label={d === day ? `Today, ${dWeekday(d)}` : dWeekday(d)}
-                  className={cx("press min-h-11 rounded-md border px-1 text-[0.87rem] leading-tight", d === date ? "border-accent bg-accent-soft font-medium text-accent-ink" : "border-line-strong")}
+                  className={cx("press min-h-11 rounded-card border px-1 text-detail leading-tight", d === date ? "is-picked border-accent bg-accent-soft font-medium text-accent-ink" : "border-line-strong")}
                   onClick={() => setDate(d)}
                 >
                   {new Date(`${d}T12:00:00Z`).toLocaleDateString("en-IE", { weekday: "short", timeZone: "UTC" })}
-                  <span className="block text-[0.8rem] text-muted">{d === day ? "Today" : new Date(`${d}T12:00:00Z`).toLocaleDateString("en-IE", { day: "numeric", month: "short", timeZone: "UTC" })}</span>
+                  <span className="block text-detail text-muted">{d === day ? "Today" : new Date(`${d}T12:00:00Z`).toLocaleDateString("en-IE", { day: "numeric", month: "short", timeZone: "UTC" })}</span>
                 </button>
               ))}
             </div>
@@ -145,11 +145,11 @@ export function TimeSheet({ site, me, day, onClose, app }: { site: Project; me: 
             </div>
           )}
         </div>
-        <p className="mb-2 text-[0.93rem] text-muted">
+        <p className="mb-2 text-body text-muted">
           {site.code}: {marked} of {people.length} marked{isToday && unsent > 0 ? `, ${unsent} not sent yet` : ""}.{canMark ? "" : " Marking needs the \"Mark the timesheet\" permission."}
         </p>
-        {holiday && <p className="mb-2 rounded-md bg-warn-soft px-3 py-2 text-[0.93rem] text-warn">{bankHolidayOn(db.bankHolidays, date)?.name} is a bank holiday. Nobody is marked a normal day on it: put anyone who worked in with Overtime time stamp.</p>}
-        {locked && <p className="mb-2 rounded-md bg-canvas px-3 py-2 text-[0.93rem] text-muted">This week's hours have gone to payroll. Only the office can change them now.</p>}
+        {holiday && <p className="mb-2 rounded-card bg-warn-soft px-3 py-2 text-body text-warn">{bankHolidayOn(db.bankHolidays, date)?.name} is a bank holiday. Nobody is marked a normal day on it: put anyone who worked in with Overtime time stamp.</p>}
+        {locked && <p className="mb-2 rounded-card bg-canvas px-3 py-2 text-body text-muted">This week's hours have gone to payroll. Only the office can change them now.</p>}
         <ul className="divide-y divide-line" aria-label={isToday ? "People on site today" : `People on site ${dWeekday(date)}`}>
           {people.map((p) => {
             const a = entry(p.id);
@@ -161,13 +161,13 @@ export function TimeSheet({ site, me, day, onClose, app }: { site: Project; me: 
               <li key={p.id} className="grid gap-1.5 py-2.5">
                 <p className="flex items-baseline gap-2">
                   <span className="min-w-0 flex-1 font-medium">{p.name}</span>
-                  <span className="text-[0.87rem] text-muted">{p.trade}</span>
+                  <span className="text-detail text-muted">{p.trade}</span>
                 </p>
                 {stops.length > 0 ? (
-                  <p className="rounded-md bg-bad-soft px-2.5 py-2 text-[0.93rem] text-bad">Cannot work: {blocksText(stops, day)}. The office renews it in Compliance.</p>
+                  <p className="rounded-card bg-bad-soft px-2.5 py-2 text-body text-bad">Cannot work: {blocksText(stops, day)}. The office renews it in Compliance.</p>
                 ) : !live ? (
                   <div className="flex items-center gap-2">
-                    <p className="min-w-0 flex-1 text-muted">
+                    <p className="min-w-0 flex-1">
                       {a ? attendanceShort(a) : holiday ? "Bank holiday" : "Not in"}
                       {a?.sent ? ", sent" : ""}
                     </p>
@@ -202,7 +202,7 @@ export function TimeSheet({ site, me, day, onClose, app }: { site: Project; me: 
                     />
                     {/* Overtime on a full day, typed at each rate: a day can have both (17 Nov). */}
                     {a?.status === "full" && (!app || value === "ot") && (
-                      <div className="flex w-full flex-wrap items-center gap-x-3 gap-y-1.5 text-[0.93rem]">
+                      <div className="flex w-full flex-wrap items-center gap-x-3 gap-y-1.5 text-body">
                         <span className="text-muted">Hours over:</span>
                         <label className="flex items-center gap-1.5">
                           <NumInput label={`${p.name} hours at time and a half`} className="h-9 w-14" value={a.overtimeHours} onChange={(h) => actAs(me.id, () => markAttendance(site.id, p.id, day, { status: "full", overtimeHours: Math.max(0, h), doubleHours: doubleOf(a) }))} />
@@ -212,7 +212,7 @@ export function TimeSheet({ site, me, day, onClose, app }: { site: Project; me: 
                           <NumInput label={`${p.name} hours at double time`} className="h-9 w-14" value={doubleOf(a)} onChange={(h) => actAs(me.id, () => markAttendance(site.id, p.id, day, { status: "full", overtimeHours: a.overtimeHours, doubleHours: Math.max(0, h) }))} />
                           <span className="text-muted">at x2</span>
                         </label>
-                        {doubleWithoutHalf(a) && <span className="w-full text-[0.87rem] text-warn">{DOUBLE_WITHOUT_HALF}.</span>}
+                        {doubleWithoutHalf(a) && <span className="w-full text-detail text-warn">{DOUBLE_WITHOUT_HALF}.</span>}
                       </div>
                     )}
                   </div>
@@ -222,7 +222,7 @@ export function TimeSheet({ site, me, day, onClose, app }: { site: Project; me: 
           })}
         </ul>
         {people.length === 0 && <p className="text-muted">Nobody is on this job's list yet. Add someone with the box above.</p>}
-        {canMark && <p className="mt-3 text-[0.93rem] text-muted">Time and a half (x1.5) is after a normal day's hours, up to midnight. Double time (x2) is only for work that carries on past midnight. {EARLY_START_NOTE}{canCorrect ? " A day already sent is changed with Change, and a short reason." : ""}</p>}
+        {canMark && <p className="mt-3 text-body text-muted">Time and a half (x1.5) is after a normal day's hours, up to midnight. Double time (x2) is only for work that carries on past midnight. {EARLY_START_NOTE}{canCorrect ? " A day already sent is changed with Change, and a short reason." : ""}</p>}
       </Dialog>
       {fix && <CorrectDialog key={`${fix.id}-${date}`} person={fix} date={date} bankHoliday={holiday} a={entry(fix.id)} onClose={() => setFix(null)} onSave={(mark, reason) => actAs(me.id, () => correctAttendance(site.id, fix.id, date, mark, reason))} />}
     </>
@@ -262,7 +262,7 @@ function DayCrew({ site, date, me, day }: { site: Project; date: string; me: Per
       {rows.length === 0 ? (
         <p className="text-muted">{gone ? "Nobody was marked in." : "Nobody is down yet."}</p>
       ) : (
-        <ul className="divide-y divide-line rounded-md border border-line bg-surface" aria-label={`${gone ? "On site" : "Planned"} ${dWeekday(date)}`}>
+        <ul className="divide-y divide-line rounded-card border border-line bg-surface" aria-label={`${gone ? "On site" : "Planned"} ${dWeekday(date)}`}>
           {rows.map((r) => {
             const p = person(r.personId);
             const clash = clashes.get(`${r.personId}|${date}`)?.filter((s) => s !== site.id);
@@ -270,9 +270,9 @@ function DayCrew({ site, date, me, day }: { site: Project; date: string; me: Per
               <li key={r.id} className="flex min-h-11 items-center gap-2 px-3 py-1">
                 <span className="min-w-0 flex-1">
                   {p?.name}
-                  {clash && clash.length > 0 && <span className="block text-[0.87rem] text-bad">Also on {clash.map(code).join(", ")}</span>}
+                  {clash && clash.length > 0 && <span className="block text-detail text-bad">Also on {clash.map(code).join(", ")}</span>}
                 </span>
-                <span className="shrink-0 text-right text-[0.87rem] text-muted">
+                <span className="shrink-0 text-right text-detail text-muted">
                   {p?.trade}
                   {r.text ? `, ${r.text}` : ""}
                 </span>
@@ -282,7 +282,7 @@ function DayCrew({ site, date, me, day }: { site: Project; date: string; me: Per
         </ul>
       )}
       {asked.map((r) => (
-        <p key={r.id} className={cx("rounded-md px-3 py-2 text-[0.93rem]", r.decision === "Declined" ? "bg-canvas text-muted" : "bg-accent-soft text-accent-ink")}>
+        <p key={r.id} className={cx("rounded-card px-3 py-2 text-body", r.decision === "Declined" ? "bg-canvas text-muted" : "bg-accent-soft text-accent-ink")}>
           Asked for: {person(r.personId!)?.name}. {r.decision === "Declined" ? `Turned down by ${r.decidedBy}${r.declineNote ? `. Note: ${r.declineNote}` : ""}` : r.decision === "Approved" ? "Agreed, the office is arranging it" : "Waiting for the office"}
         </p>
       ))}
@@ -293,7 +293,7 @@ function DayCrew({ site, date, me, day }: { site: Project; date: string; me: Per
       )}
       {canAsk && asking && (
         <form
-          className="grid gap-2 rounded-lg border border-line bg-surface p-3"
+          className="grid gap-2 rounded-card border border-line bg-surface p-3"
           onSubmit={(e) => {
             e.preventDefault();
             const p = person(personId);
@@ -318,7 +318,7 @@ function DayCrew({ site, date, me, day }: { site: Project; date: string; me: Per
             )}
           </Field>
           <Field label="Why (optional)">{(id) => <input id={id} className="field h-11" value={note} onChange={(e) => setNote(e.target.value)} />}</Field>
-          <p className="text-[0.93rem] text-muted">The office says yes or no and changes the plan. They show here once they are down for the day.</p>
+          <p className="text-body text-muted">The office says yes or no and changes the plan. They show here once they are down for the day.</p>
           <div className="flex justify-end gap-2">
             <Button onClick={() => setAsking(false)}>Cancel</Button>
             <Button type="submit" variant="primary" disabled={!personId}>
@@ -413,19 +413,19 @@ export function WeekendSheet({ site, me, day, onClose }: { site: Project; me: Pe
             )}
           </Field>
           {done.length > 0 && (
-            <p className="rounded-md bg-canvas px-3 py-2 text-[0.93rem] text-muted">
+            <p className="rounded-card bg-canvas px-3 py-2 text-body text-muted">
               Already stamped that day: {done.map((a) => `${name(a.personId)} (${attendanceShort(a)})`).join(", ")}.
             </p>
           )}
           <fieldset>
-            <legend className="mb-1 text-[0.93rem] font-medium">Who worked</legend>
-            <ul className="divide-y divide-line rounded-md border border-line bg-surface" aria-label="People to stamp">
+            <legend className="mb-1 text-body font-medium">Who worked</legend>
+            <ul className="divide-y divide-line rounded-card border border-line bg-surface" aria-label="People to stamp">
               {[...crew, ...extra].map((p) => (
                 <li key={p.id}>
                   <label className="flex min-h-11 items-center gap-2.5 px-3 py-1">
                     <input type="checkbox" className="size-5" checked={picked.includes(p.id)} onChange={() => setPicked((x) => (x.includes(p.id) ? x.filter((y) => y !== p.id) : [...x, p.id]))} />
                     <span className="min-w-0 flex-1">{p.name}</span>
-                    <span className="text-[0.87rem] text-muted">{extra.some((x) => x.id === p.id) ? "From another site" : p.trade}</span>
+                    <span className="text-detail text-muted">{extra.some((x) => x.id === p.id) ? "From another site" : p.trade}</span>
                   </label>
                 </li>
               ))}
@@ -453,9 +453,9 @@ export function WeekendSheet({ site, me, day, onClose }: { site: Project; me: Pe
             <Field label="Hours at time and a half">{(id) => <NumInput id={id} label="Hours at time and a half" className="h-11 w-full" value={timeAndHalf} onChange={setHalf} disabled={kind !== "saturday"} />}</Field>
             <Field label="Hours at double time">{(id) => <NumInput id={id} label="Hours at double time" className="h-11 w-full" value={double} onChange={setDouble} />}</Field>
           </div>
-          {kind && <p className="text-[0.93rem] text-muted">{REST_DAY_RULE[kind]} There is no normal day on a rest day: every hour is overtime.</p>}
+          {kind && <p className="text-body text-muted">{REST_DAY_RULE[kind]} There is no normal day on a rest day: every hour is overtime.</p>}
           {errors.length > 0 && (
-            <ul role="alert" className="grid gap-1 text-[0.93rem] text-bad">
+            <ul role="alert" className="grid gap-1 text-body text-bad">
               {errors.map((e) => (
                 <li key={e}>{e}</li>
               ))}
@@ -474,16 +474,16 @@ export function SiteWeekSheet({ site, me, day, onClose }: { site: Project; me: P
   const week = [...nextWorkWeek(day), ...fullWeek(nextWorkWeek(day)[0]!).slice(5).filter((d) => db.plan.some((p) => p.projectId === site.id && p.date === d))];
   return (
     <Dialog open onClose={onClose} title={`Week ahead, ${site.code}`}>
-      <p className="mb-2 text-[0.93rem] text-muted">Week of {dShort(week[0])}. The plan is changed in the office. If you need someone on a day, ask for them here.</p>
+      <p className="mb-2 text-body text-muted">Week of {dShort(week[0])}. The plan is changed in the office. If you need someone on a day, ask for them here.</p>
       <ul className="grid gap-3">
         {week.map((d) => {
           const open = d >= site.startDate && d <= site.endDate;
           const n = dayRoster(db.attendance, db.plan, site.id, d, day).rows.length;
           return (
-            <li key={d} className="rounded-lg border border-line">
+            <li key={d} className="rounded-card border border-line">
               <p className="flex items-baseline justify-between border-b border-line px-3 py-2">
                 <span className="font-medium">{dWeekday(d)}</span>
-                <span className="text-[0.87rem] text-muted">{open ? plural(n, "person", "people") : d < site.startDate ? "Not started" : "Finished"}</span>
+                <span className="text-detail text-muted">{open ? plural(n, "person", "people") : d < site.startDate ? "Not started" : "Finished"}</span>
               </p>
               {open && (
                 <div className="p-3">
@@ -545,19 +545,19 @@ export function SiteMonthSheet({ site, me, day, onClose }: { site: Project; me: 
                   const n = running ? count(d) : null;
                   const inner = (
                     <>
-                      <span className="block text-[0.87rem] text-muted">
+                      <span className="block text-detail text-muted">
                         {new Date(d + "T12:00:00Z").toLocaleDateString("en-IE", { weekday: "short", timeZone: "UTC" }).slice(0, 2)} {Number(d.slice(8))}
                       </span>
-                      <span className={cx("block text-[1.05rem] font-semibold tabular-nums", n === 0 && "text-faint")}>{n === null ? "-" : n}</span>
+                      <span className={cx("block text-title font-medium tabular-nums", n === 0 && "text-faint")}>{n === null ? "-" : n}</span>
                     </>
                   );
-                  const box = cx("block w-full rounded-md border px-1 py-1.5", d === day ? "border-accent bg-accent-soft" : "border-line bg-surface");
+                  const box = cx("block w-full rounded-card border px-1 py-1.5", d === day ? "is-picked border-accent bg-accent-soft" : "border-line bg-surface");
                   return (
                     <li key={d} className={cx(!inMonth && "opacity-70")} data-outside={!inMonth || undefined}>
                       {n === null ? (
                         <span className={box}>{inner}</span>
                       ) : (
-                        <button type="button" aria-label={`${dWeekday(d)}: ${plural(n, "person", "people")}. See who`} className={cx(box, "press min-h-12 hover:border-accent")} onClick={() => setPicked(d)}>
+                        <button type="button" aria-label={`${dWeekday(d)}: ${plural(n, "person", "people")}. See who`} className={cx(box, "press min-h-12")} onClick={() => setPicked(d)}>
                           {inner}
                         </button>
                       )}
@@ -567,7 +567,7 @@ export function SiteMonthSheet({ site, me, day, onClose }: { site: Project; me: 
               </ul>
             ))}
           </div>
-          <p className="mt-3 text-[0.87rem] text-muted">Each number is the people on {site.code} that day: who attended for days gone, who is planned for days to come. Tap a day to see who, and to ask for someone.</p>
+          <p className="mt-3 text-detail text-muted">Each number is the people on {site.code} that day: who attended for days gone, who is planned for days to come. Tap a day to see who, and to ask for someone.</p>
         </>
       )}
     </Dialog>
@@ -634,15 +634,15 @@ export function InstructionsSheet({ site, me, day, onClose }: { site: Project; m
             { value: next, label: dWeekday(next) },
           ]}
         />
-        <Field label="What the crew needs to know that day">{(id) => <textarea id={id} rows={5} className="field text-[1.02rem]" value={text} onChange={(e) => setText(e.target.value)} />}</Field>
-        <p className="text-[0.93rem] text-muted">
+        <Field label="What the crew needs to know that day">{(id) => <textarea id={id} rows={5} className="field text-title" value={text} onChange={(e) => setText(e.target.value)} />}</Field>
+        <p className="text-body text-muted">
           {current ? `Put up by ${current.by}, ${when(current.at, day)}. ` : ""}
           It shows on the phone of everyone on {site.code} that day, above the standing site instructions.
         </p>
         {site.siteInstructions && (
-          <div className="rounded-lg bg-surface px-3 py-2.5">
-            <p className="text-[0.87rem] font-medium text-muted">Standing site instructions</p>
-            <p className="mt-1 text-[0.93rem]">{site.siteInstructions}</p>
+          <div className="rounded-card bg-surface px-3 py-2.5">
+            <p className="text-detail font-medium text-muted">Standing site instructions</p>
+            <p className="mt-1 text-body">{site.siteInstructions}</p>
           </div>
         )}
       </div>
@@ -666,12 +666,12 @@ export function CrewRequestsSheet({ site, me, day, onClose }: { site: Project | 
         ) : (
           <ul className="grid gap-3" aria-label="Requests from the crew">
             {list.map((r) => (
-              <li key={r.id} className="grid gap-2 rounded-lg border border-line-strong bg-surface p-3">
+              <li key={r.id} className="grid gap-2 rounded-card border border-line-strong bg-surface p-3">
                 <p className="font-medium">
                   {r.description}
                   {r.quantity > 1 && <span className="font-normal text-muted"> x {r.quantity}</span>}
                 </p>
-                <p className="text-[0.93rem] text-muted">
+                <p className="text-body text-muted">
                   {sites.length > 1 && `${sites.find((x) => x.id === r.projectId)?.code}. `}
                   {KIND[r.kind]}. Asked by {r.requestedBy}, {when(r.createdAt, day)}. Needed {dShort(r.neededFrom)} to {dShort(r.neededTo)}.
                 </p>
@@ -682,13 +682,13 @@ export function CrewRequestsSheet({ site, me, day, onClose }: { site: Project | 
         )}
         {earlier.length > 0 && (
           <div>
-            <h3 className="mb-1 text-base">Already dealt with</h3>
-            <ul className="divide-y divide-line rounded-md border border-line" aria-label="Crew requests already dealt with">
+            <h3 className="mb-1 text-title font-semibold">Already dealt with</h3>
+            <ul className="divide-y divide-line rounded-card border border-line" aria-label="Crew requests already dealt with">
               {earlier.map((r) => (
                 <li key={r.id} className="flex items-center gap-2 px-2.5 py-1.5">
                   <span className="min-w-0 flex-1">
                     {r.description}
-                    <span className="block text-[0.87rem] text-muted">{r.raisedBy ?? r.requestedBy}</span>
+                    <span className="block text-detail text-muted">{r.raisedBy ?? r.requestedBy}</span>
                     {r.decision === "Declined" && <DeclineNote note={r.declineNote} />}
                   </span>
                   <Badge tone={r.raisedBy ? (r.decision === "Approved" ? "ok" : r.decision === "Declined" ? "neutral" : "accent") : "ok"}>{r.raisedBy ? (r.decision ? `Management: ${r.decision.toLowerCase()}` : "With management") : "Dealt with on site"}</Badge>
@@ -736,22 +736,22 @@ export function CannotWorkSheet({ site, day, onClose }: { site: Project; day: st
   return (
     <Dialog open onClose={onClose} title="Who cannot work">
       <div className="grid gap-3">
-        <p className="text-[0.93rem] text-muted">On {site.code}, today and the next two weeks. Someone whose Safe Pass or trade ticket has run out cannot be marked or planned until it is renewed. The office renews it in Compliance.</p>
+        <p className="text-body text-muted">On {site.code}, today and the next two weeks. Someone whose Safe Pass or trade ticket has run out cannot be marked or planned until it is renewed. The office renews it in Compliance.</p>
         {rows.length === 0 ? (
           <p>Everyone on {site.code} has the tickets they need.</p>
         ) : (
-          <ul className="divide-y divide-line rounded-md border border-line" aria-label={`Who cannot work on ${site.code}`}>
+          <ul className="divide-y divide-line rounded-card border border-line" aria-label={`Who cannot work on ${site.code}`}>
             {rows.map((r) => {
               const course = bookingFor(db.courses, r.person.id, r.blocks[0]!.ticket);
               return (
                 <li key={r.person.id} className="grid gap-0.5 px-3 py-2.5">
                   <span className="font-medium">{r.person.name}</span>
-                  <span className="text-[0.93rem] text-muted">{r.person.trade}</span>
-                  <span className="text-[0.93rem] text-bad">
+                  <span className="text-body text-muted">{r.person.trade}</span>
+                  <span className="text-body text-bad">
                     {r.from <= day ? "Cannot work today" : `Cannot work from ${dWeekday(r.from)}`}: {blocksText(r.blocks, day)}
                   </span>
-                  {r.planned.length > 0 && <span className="text-[0.93rem]">Planned here {r.planned.length > 3 ? `on ${plural(r.planned.length, "day")} from ${dShort(r.planned[0]!)}` : r.planned.map((d) => dShort(d)).join(", ")}: the office takes them off or renews the ticket</span>}
-                  {course && <span className="text-[0.93rem] text-accent-ink">Booked on the {course.ticket} course, {dShort(course.date)}</span>}
+                  {r.planned.length > 0 && <span className="text-body">Planned here {r.planned.length > 3 ? `on ${plural(r.planned.length, "day")} from ${dShort(r.planned[0]!)}` : r.planned.map((d) => dShort(d)).join(", ")}: the office takes them off or renews the ticket</span>}
+                  {course && <span className="text-body text-accent-ink">Booked on the {course.ticket} course, {dShort(course.date)}</span>}
                 </li>
               );
             })}
@@ -774,7 +774,7 @@ export function ScaffoldSheet({ site, me, day, onClose }: { site: Project; me: P
   return (
     <Dialog open onClose={onClose} title="Scaffold inspections">
       <div className="grid gap-3">
-        <p className="text-[0.93rem] text-muted">Each scaffold and tower on {site.code} is inspected every 7 days and after any change. One tagged not safe stays "Do not use" until it is inspected safe.</p>
+        <p className="text-body text-muted">Each scaffold and tower on {site.code} is inspected every 7 days and after any change. One tagged not safe stays "Do not use" until it is inspected safe.</p>
         {list.length === 0 && <p>No scaffold or tower is standing on {site.code}.</p>}
         <ul className="grid gap-2" aria-label={`Scaffolds on ${site.code}`}>
           {list.map((s) => {
@@ -783,25 +783,25 @@ export function ScaffoldSheet({ site, me, day, onClose }: { site: Project; me: P
             const unsafe = scaffoldUnsafe(s);
             const late = due < day;
             return (
-              <li key={s.id} className="grid gap-1.5 rounded-lg border border-line bg-surface px-3 py-2.5">
+              <li key={s.id} className="grid gap-1.5 rounded-card border border-line bg-surface px-3 py-2.5">
                 <span className="flex items-baseline gap-2">
                   <span className="min-w-0 flex-1 font-medium">
                     {s.ref} {s.kind}
                   </span>
                   <Badge tone={unsafe || late ? "bad" : due <= addDays(day, 1) ? "warn" : "ok"}>{unsafe ? "Do not use" : late ? "Inspection overdue" : `Next by ${dShort(due)}`}</Badge>
                 </span>
-                <span className="text-[0.93rem] text-muted">{s.description}</span>
-                <span className="text-[0.93rem]">{last ? `Last inspected ${dShort(last.date)} by ${last.by}: ${last.result.toLowerCase()}` : "Not inspected yet"}</span>
+                <span className="text-body text-muted">{s.description}</span>
+                <span className="text-body">{last ? `Last inspected ${dShort(last.date)} by ${last.by}: ${last.result.toLowerCase()}` : "Not inspected yet"}</span>
                 {canInspect && open !== s.id && (
                   <Button size="lg" className="justify-self-start" onClick={() => { setOpen(s.id); setResult("Safe to use"); setNote(""); }}>
                     Record an inspection
                   </Button>
                 )}
                 {open === s.id && (
-                  <div className="grid gap-2 rounded-md bg-canvas p-2.5">
+                  <div className="grid gap-2 rounded-card bg-canvas p-2.5">
                     <Segmented label={`${s.ref} inspection result`} value={result} onChange={setResult} options={[{ value: "Safe to use", label: "Safe to use" }, { value: "Not safe to use", label: "Not safe" }]} />
                     <Field label="What was seen" hint={result === "Not safe to use" ? "Say what is wrong, so it can be put right." : "Optional."}>
-                      {(id) => <textarea id={id} rows={2} className="field text-[1.02rem]" value={note} onChange={(e) => setNote(e.target.value)} />}
+                      {(id) => <textarea id={id} rows={2} className="field text-title" value={note} onChange={(e) => setNote(e.target.value)} />}
                     </Field>
                     <div className="flex gap-2">
                       <Button size="lg" onClick={() => setOpen(null)}>
@@ -845,7 +845,7 @@ export function SubInvoiceSheet({ site, me, day, onClose }: { site: Project; me:
     <>
       <Dialog open onClose={onClose} title={startsOnSite(chain) ? "Invoices to approve" : "Subcontractor invoices"}>
         <div className="grid gap-3">
-          <p className="text-[0.93rem] text-muted">{startsOnSite(chain) ? `Invoices for ${site.code} waiting for your yes. Only the site knows the work was done or the goods arrived. ${chain === "site-md" ? "After you, the managing director approves them, then the office pays." : "Once you approve, the office pays them."}` : `Invoices subcontractors sent in for ${site.code}. Only the site knows the work was done, so they wait for the person running it or the managing director. Once approved, accounts pay them.`}</p>
+          <p className="text-body text-muted">{startsOnSite(chain) ? `Invoices for ${site.code} waiting for your yes. Only the site knows the work was done or the goods arrived. ${chain === "site-md" ? "After you, the managing director approves them, then the office pays." : "Once you approve, the office pays them."}` : `Invoices subcontractors sent in for ${site.code}. Only the site knows the work was done, so they wait for the person running it or the managing director. Once approved, accounts pay them.`}</p>
           {list.length === 0 && <p>Nothing waiting for approval on {site.code}.</p>}
           <ul className="grid gap-2" aria-label={`Subcontractor invoices for ${site.code}`}>
             {list.map((s) => {
@@ -853,16 +853,16 @@ export function SubInvoiceSheet({ site, me, day, onClose }: { site: Project; me:
               const sub = db.subcontractors.find((x) => x.id === s.subcontractorId);
               const flags = sub ? subInsuranceFlags(sub, day) : [];
               return (
-                <li key={s.id} className="grid gap-1 rounded-lg border border-line bg-surface px-3 py-2.5">
+                <li key={s.id} className="grid gap-1 rounded-card border border-line bg-surface px-3 py-2.5">
                   <span className="flex items-baseline gap-2">
                     <span className="min-w-0 flex-1 font-medium">{s.supplier}</span>
-                    <span className="tabular-nums">{money2(s.subtotal, region)}</span>
+                    <span className="font-mono">{money2(s.subtotal, region)}</span>
                   </span>
-                  <span className="text-[0.93rem] text-muted">
+                  <span className="text-body text-muted">
                     {s.invoiceNo}, {dShort(s.invoiceDate)}. Before VAT
                   </span>
-                  <span className="text-[0.93rem]">{s.lines.map((l) => l.description).join("; ")}</span>
-                  {flags.length > 0 && <span className="text-[0.93rem] text-bad">{flags.join(". ")}</span>}
+                  <span className="text-body">{s.lines.map((l) => l.description).join("; ")}</span>
+                  {flags.length > 0 && <span className="text-body text-bad">{flags.join(". ")}</span>}
                   {mine ? (
                     <span className="mt-1 flex gap-2">
                       <Button size="lg" onClick={() => setBox({ what: "back", s })}>
@@ -873,7 +873,7 @@ export function SubInvoiceSheet({ site, me, day, onClose }: { site: Project; me:
                       </Button>
                     </span>
                   ) : (
-                    <span className="text-[0.93rem] text-muted">Waiting for {approverWords(s, limit, db.projects, (id) => db.people.find((p) => p.id === id)?.name, chainOf(db.approvalLimits))}</span>
+                    <span className="text-body text-muted">Waiting for {approverWords(s, limit, db.projects, (id) => db.people.find((p) => p.id === id)?.name, chainOf(db.approvalLimits))}</span>
                   )}
                 </li>
               );

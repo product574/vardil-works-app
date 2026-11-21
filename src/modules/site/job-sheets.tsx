@@ -49,7 +49,7 @@ export function SnagsSheet({ site, me, onClose }: { site: Project; me: Person; o
   return (
     <Dialog open onClose={onClose} title="Snags">
       <div className="grid gap-3">
-        <p className="text-[0.93rem] text-muted">
+        <p className="text-body text-muted">
           {open.length === 0 ? `No snag is open on ${site.code}.` : `${plural(open.length, "snag")} open on ${site.code}.`} The final account is on hold while any snag is open.
         </p>
         {!adding && (
@@ -58,16 +58,16 @@ export function SnagsSheet({ site, me, onClose }: { site: Project; me: Person; o
           </Button>
         )}
         {adding && (
-          <div className="grid gap-2.5 rounded-lg border border-line-strong bg-surface p-3">
-            <Field label="What is wrong">{(id) => <input id={id} className="field text-[1.02rem]" value={what} onChange={(e) => setWhat(e.target.value)} />}</Field>
-            <Field label="Where on the job (optional)">{(id) => <input id={id} className="field text-[1.02rem]" value={where} onChange={(e) => setWhere(e.target.value)} />}</Field>
+          <div className="grid gap-2.5 rounded-card border border-line-strong bg-surface p-3">
+            <Field label="What is wrong">{(id) => <input id={id} className="field text-title" value={what} onChange={(e) => setWhat(e.target.value)} />}</Field>
+            <Field label="Where on the job (optional)">{(id) => <input id={id} className="field text-title" value={where} onChange={(e) => setWhere(e.target.value)} />}</Field>
             <div>
-              <p className="mb-1 text-[0.93rem] font-medium">Whose list it is from</p>
+              <p className="mb-1 text-body font-medium">Whose list it is from</p>
               <Segmented label="Whose list it is from" value={from} onChange={setFrom} options={[{ value: "own", label: "Our own walk-round" }, { value: "client", label: "The client's" }]} />
             </div>
             <Field label="Who is to fix it (optional)">
               {(id) => (
-                <select id={id} className="field text-[1.02rem]" value={fixBy} onChange={(e) => setFixBy(e.target.value)}>
+                <select id={id} className="field text-title" value={fixBy} onChange={(e) => setFixBy(e.target.value)}>
                   <option value="">Not decided yet</option>
                   {crew.length > 0 && (
                     <optgroup label="Our people on this job">
@@ -87,7 +87,7 @@ export function SnagsSheet({ site, me, onClose }: { site: Project; me: Person; o
               )}
             </Field>
             <div>
-              <p className="mb-1 text-[0.93rem] font-medium">Photo (optional)</p>
+              <p className="mb-1 text-body font-medium">Photo (optional)</p>
               <PickFile accept="image/*" what="photo of the snag" onFile={photo.pick} chosen={photo.proof?.name} />
               <p role="alert" className="text-bad">
                 {photo.error}
@@ -108,15 +108,15 @@ export function SnagsSheet({ site, me, onClose }: { site: Project; me: Person; o
         )}
         <ul className="grid gap-2" aria-label={`Snags on ${site.code}`}>
           {[...open, ...fixed].map((s) => (
-            <li key={s.id} className="grid gap-1.5 rounded-lg border border-line bg-surface px-3 py-2.5">
+            <li key={s.id} className="grid gap-1.5 rounded-card border border-line bg-surface px-3 py-2.5">
               <span className="flex items-baseline gap-2">
                 <span className="min-w-0 flex-1 font-medium">{s.what}</span>
                 <Badge tone={s.status === "Open" ? "warn" : "ok"}>{s.status}</Badge>
               </span>
-              <span className="text-[0.93rem] text-muted">
+              <span className="text-body text-muted">
                 {[s.where, s.from === "client" ? "The client's list" : "Our own walk-round", s.fixBy ? `To fix: ${s.fixBy}` : "Nobody down to fix it yet"].filter(Boolean).join(". ")}.
               </span>
-              {s.photo && <img src={s.photo.dataUrl} alt={`Photo of the snag: ${s.what}`} className="max-h-40 justify-self-start rounded-md border border-line" />}
+              {s.photo && <img src={s.photo.dataUrl} alt={`Photo of the snag: ${s.what}`} className="max-h-40 justify-self-start rounded-card border border-line" />}
               {s.status === "Open" ? (
                 <Button
                   size="lg"
@@ -129,7 +129,7 @@ export function SnagsSheet({ site, me, onClose }: { site: Project; me: Person; o
                   Mark fixed
                 </Button>
               ) : (
-                <span className="text-[0.93rem]">
+                <span className="text-body">
                   Fixed {s.fixedAt ? dShort(s.fixedAt.slice(0, 10)) : ""} by {s.fixedBy}
                 </span>
               )}
@@ -152,18 +152,18 @@ export function DeliveriesSheet({ site, me, day, onClose }: { site: Project; me:
   return (
     <Dialog open onClose={onClose} title="Orders and deliveries">
       <div className="grid gap-3">
-        <p className="text-[0.93rem] text-muted">What is on its way to {site.code}. Mark each one delivered when it arrives, so the office knows it is here before the invoice comes. To ask for something, use Make a request and choose Something to buy.</p>
+        <p className="text-body text-muted">What is on its way to {site.code}. Mark each one delivered when it arrives, so the office knows it is here before the invoice comes. To ask for something, use Make a request and choose Something to buy.</p>
         {coming.length === 0 && <p>Nothing is on order for {site.code}.</p>}
         <ul className="grid gap-2" aria-label={`On order for ${site.code}`}>
           {coming.map((o) => {
             const late = daysLate(o, day);
             return (
-              <li key={o.id} className="grid gap-1.5 rounded-lg border border-line bg-surface px-3 py-2.5">
+              <li key={o.id} className="grid gap-1.5 rounded-card border border-line bg-surface px-3 py-2.5">
                 <span className="flex items-baseline gap-2">
                   <span className="min-w-0 flex-1 font-medium">{o.description}</span>
                   <Badge tone={late > 0 ? "bad" : "neutral"}>{late > 0 ? `${plural(late, "day")} late` : o.dueOn === day ? "Due today" : `Due ${dShort(o.dueOn)}`}</Badge>
                 </span>
-                <span className="text-[0.93rem] text-muted">
+                <span className="text-body text-muted">
                   From {o.from}, ordered {dShort(o.orderedOn)}.{o.progress ? ` ${o.progress} here so far.` : ""}
                   {o.status === "Ready to collect" ? " Ready to collect." : ""}
                 </span>
@@ -184,12 +184,12 @@ export function DeliveriesSheet({ site, me, day, onClose }: { site: Project; me:
         </ul>
         {waiting.length + approved.length > 0 && (
           <section>
-            <h3 className="mb-1 text-[0.93rem] font-medium">Asked for, not ordered yet</h3>
-            <ul className="divide-y divide-line rounded-md border border-line bg-surface" aria-label="Asked for, not ordered yet">
+            <h3 className="mb-1 text-body font-medium">Asked for, not ordered yet</h3>
+            <ul className="divide-y divide-line rounded-card border border-line bg-surface" aria-label="Asked for, not ordered yet">
               {[...approved, ...waiting].map((s) => (
                 <li key={s.id} className="flex items-baseline gap-2 px-3 py-2">
                   <span className="min-w-0 flex-1">{s.what}</span>
-                  <span className="text-[0.87rem] text-muted">{s.status === "Approved" ? "Agreed, the office is ordering it" : "Waiting for a yes or no"}</span>
+                  <span className="text-detail text-muted">{s.status === "Approved" ? "Agreed, the office is ordering it" : "Waiting for a yes or no"}</span>
                 </li>
               ))}
             </ul>
@@ -197,12 +197,12 @@ export function DeliveriesSheet({ site, me, day, onClose }: { site: Project; me:
         )}
         {here.length > 0 && (
           <section>
-            <h3 className="mb-1 text-[0.93rem] font-medium">Delivered lately</h3>
-            <ul className="divide-y divide-line rounded-md border border-line bg-surface" aria-label="Delivered lately">
+            <h3 className="mb-1 text-body font-medium">Delivered lately</h3>
+            <ul className="divide-y divide-line rounded-card border border-line bg-surface" aria-label="Delivered lately">
               {here.map((o) => (
                 <li key={o.id} className="flex items-baseline gap-2 px-3 py-2">
                   <span className="min-w-0 flex-1">{o.description}</span>
-                  <span className="text-[0.87rem] text-muted">{dShort(o.deliveredOn!)}</span>
+                  <span className="text-detail text-muted">{dShort(o.deliveredOn!)}</span>
                 </li>
               ))}
             </ul>

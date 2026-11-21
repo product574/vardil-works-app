@@ -21,14 +21,14 @@ import { CompanyHolidays, MyCerts } from "./one-sheets";
 // the large buttons, the profile, and the sheets for a photo, extra work, a request, the driving
 // check and a reimbursement.
 
-export const BIG = "press flex min-h-16 w-full items-center gap-3 rounded-lg border border-line-strong bg-surface px-4 text-left text-[1.05rem] font-medium hover:border-accent hover:text-accent-ink";
+export const BIG = "press flex min-h-16 w-full items-center gap-3 rounded-card border border-line-strong bg-surface px-4 text-left text-title font-medium";
 export const longDate = (d: string, locale = "en-IE") => new Date(d + "T12:00:00Z").toLocaleDateString(locale, { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" });
 
 /** The round initials button at the top left of a phone. It opens the person's profile. */
 export function ProfileButton({ name, label, onClick }: { name: string; label: string; onClick: () => void }) {
   return (
-    <button type="button" aria-label={label} title={label} onClick={onClick} className="press -ml-1 grid size-11 shrink-0 place-items-center rounded-full hover:bg-white/15">
-      <span className="grid size-9 place-items-center rounded-full bg-white text-[0.87rem] font-semibold text-accent-ink">
+    <button type="button" aria-label={label} title={label} onClick={onClick} className="press -ml-1 grid size-11 shrink-0 place-items-center rounded-full">
+      <span className="grid size-9 place-items-center rounded-full border border-line bg-side text-detail font-medium">
         {name
           .split(" ")
           .map((w) => w[0])
@@ -48,9 +48,9 @@ export function ManagerCard({ manager, site, lang, onClose }: { manager: Person;
         <div className="flex items-center gap-3">
           <Avatar name={manager.name} size={48} />
           <div>
-            <p className="font-display text-[1.2rem] font-semibold">{manager.name}</p>
+            <h3 className="text-title font-semibold">{manager.name}</h3>
             <p className="text-muted">
-              {t.manager}, {site.code} {site.name}
+              {t.manager}, <span className="font-mono">{site.code}</span> {site.name}
             </p>
           </div>
         </div>
@@ -60,7 +60,7 @@ export function ManagerCard({ manager, site, lang, onClose }: { manager: Person;
           <dt className="text-muted">Email</dt>
           <dd className="break-all">{manager.email}</dd>
         </dl>
-        <a href={`tel:${manager.phone.replace(/\s/g, "")}`} className="press inline-flex min-h-12 items-center justify-center gap-2 rounded-md bg-accent-strong px-5 text-[1.05rem] font-medium text-white hover:brightness-110">
+        <a href={`tel:${manager.phone.replace(/\s/g, "")}`} className="press inline-flex min-h-12 items-center justify-center gap-2 rounded-card bg-accent-strong px-5 text-title font-medium text-white">
           <Phone size={20} /> {MORE[lang].callNow}
         </a>
       </div>
@@ -101,12 +101,12 @@ export function PhotoSheet({ site, me, lang, onClose }: { site: Project; me: Per
     >
       <div className="grid gap-3" lang={lang}>
         <PickFile accept="image/*" onFile={(f) => { setError(""); shrinkImage(f).then(setPicture).catch((e: Error) => { setPicture(null); setError(e.message); }); }} />
-        {!picture && <p className="text-[0.93rem] text-muted">{t.takeOrChoose}</p>}
+        {!picture && <p className="text-body text-muted">{t.takeOrChoose}</p>}
         <p role="alert" className="text-bad">
           {error}
         </p>
-        {picture && <img src={picture.dataUrl} alt="" className="max-h-44 rounded-md border border-line" />}
-        <Field label={t.caption}>{(id) => <input id={id} className="field h-11 text-[1.02rem]" value={caption} onChange={(e) => setCaption(e.target.value)} />}</Field>
+        {picture && <img src={picture.dataUrl} alt="" className="max-h-44 rounded-card border border-line" />}
+        <Field label={t.caption}>{(id) => <input id={id} className="field h-11 text-title" value={caption} onChange={(e) => setCaption(e.target.value)} />}</Field>
       </div>
     </Dialog>
   );
@@ -152,13 +152,13 @@ export function ExtraSheet({ site, me, lang, onClose }: { site: Project; me: Per
       <fieldset className="grid gap-2" lang={lang}>
         <legend className="mb-1 font-medium">{t.found}</legend>
         {EXTRAS.map((e, i) => (
-          <label key={e.en} className={cx("flex cursor-pointer items-start gap-2.5 rounded-lg border px-3 py-2.5", pick === i ? "border-accent bg-accent-soft" : "border-line-strong")}>
+          <label key={e.en} className={cx("flex cursor-pointer items-start gap-2.5 rounded-card border px-3 py-2.5", pick === i ? "is-picked border-accent bg-accent-soft" : "border-line-strong")}>
             <input type="radio" name="extra" className="mt-1" checked={pick === i} onChange={() => setPick(i)} />
             <span>{e[lang]}</span>
           </label>
         ))}
         <Field label={t.note} className="mt-2">
-          {(id) => <textarea id={id} rows={2} className="field text-[1.02rem]" value={note} onChange={(e) => setNote(e.target.value)} />}
+          {(id) => <textarea id={id} rows={2} className="field text-title" value={note} onChange={(e) => setNote(e.target.value)} />}
         </Field>
       </fieldset>
     </Dialog>
@@ -215,37 +215,37 @@ export function AskSheet({ site, me, lang, day, toManager, onClose }: { site: Pr
         </>
       }
     >
-      {!site && <p className="mb-3 text-[0.93rem] text-muted">A general request, not for one job: a course, kit for yourself, something for all your sites. It goes to the office for a yes or no.</p>}
+      {!site && <p className="mb-3 text-body text-muted">A general request, not for one job: a course, kit for yourself, something for all your sites. It goes to the office for a yes or no.</p>}
       <fieldset className="grid gap-2" lang={lang}>
         <legend className="mb-1 font-medium">{t.need}</legend>
         {kinds.map(([k, label]) => (
-          <label key={k} className={cx("flex cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2.5", kind === k ? "border-accent bg-accent-soft" : "border-line-strong")}>
+          <label key={k} className={cx("flex cursor-pointer items-center gap-2.5 rounded-card border px-3 py-2.5", kind === k ? "is-picked border-accent bg-accent-soft" : "border-line-strong")}>
             <input type="radio" name="kind" checked={kind === k} onChange={() => setKind(k)} />
             <span>{label}</span>
           </label>
         ))}
         <Field label={buying ? "What is to be bought" : t.what} className="mt-2">
-          {(id) => <textarea id={id} rows={2} className="field text-[1.02rem]" value={text} onChange={(e) => setText(e.target.value)} />}
+          {(id) => <textarea id={id} rows={2} className="field text-title" value={text} onChange={(e) => setText(e.target.value)} />}
         </Field>
         {buying && (
           <>
             <div>
-              <p className="mb-1 text-[0.93rem] font-medium">About how much, before VAT</p>
-              <NumInput label="About how much, before VAT" value={amount} onChange={setAmount} className="h-11 w-36 text-[1.02rem]" />
+              <p className="mb-1 text-body font-medium">About how much, before VAT</p>
+              <NumInput label="About how much, before VAT" value={amount} onChange={setAmount} className="h-11 w-36 text-title" />
             </div>
-            <Field label="Why it is needed">{(id) => <textarea id={id} rows={2} className="field text-[1.02rem]" value={reason} onChange={(e) => setReason(e.target.value)} />}</Field>
-            <p className="text-[0.93rem] text-muted">It goes to the managing director for a yes or no. After a yes the office orders it, and you mark it delivered under Orders and deliveries.</p>
+            <Field label="Why it is needed">{(id) => <textarea id={id} rows={2} className="field text-title" value={reason} onChange={(e) => setReason(e.target.value)} />}</Field>
+            <p className="text-body text-muted">It goes to the managing director for a yes or no. After a yes the office orders it, and you mark it delivered under Orders and deliveries.</p>
           </>
         )}
       </fieldset>
       {mine.length > 0 && (
         <section className="mt-4">
-          <h3 className="mb-1 text-[0.93rem] font-medium">Your general requests</h3>
-          <ul className="divide-y divide-line rounded-md border border-line bg-surface" aria-label="Your general requests">
+          <h3 className="mb-1 text-body font-medium">Your general requests</h3>
+          <ul className="divide-y divide-line rounded-card border border-line bg-surface" aria-label="Your general requests">
             {mine.map((r) => (
               <li key={r.id} className="px-3 py-2">
                 <span className="block">{r.description}</span>
-                <span className="block text-[0.87rem] text-muted">{state(r)}</span>
+                <span className="block text-detail text-muted">{state(r)}</span>
               </li>
             ))}
           </ul>
@@ -296,62 +296,62 @@ export function DrivingSheet({ me, day, onClose }: { me: Person; day: string; on
       }
     >
       <div className="grid gap-4" lang="en">
-        <div className="rounded-lg border border-line bg-surface px-3 py-2.5">
+        <div className="rounded-card border border-line bg-surface px-3 py-2.5">
           <div className="flex items-center gap-2">
-            <Truck size={20} className="text-accent-ink" />
+            <Truck size={20} className="text-muted" />
             <p className="flex-1 font-medium">{mine ? "Assigned vehicle" : "Which vehicle?"}</p>
-            <span className="text-[0.87rem] text-muted tabular-nums">
+            <span className="text-detail text-muted tabular-nums">
               {done}/{CHECK_ITEMS.length} checked
             </span>
           </div>
           {mine ? (
             <p className="mt-1">
-              {mine.reg}, {mine.make} {mine.model}
+              <span className="font-mono">{mine.reg}</span>, {mine.make} {mine.model}
             </p>
           ) : (
             <select aria-label="Vehicle" className="field mt-2 h-11" value={vehicleId} onChange={(e) => setVehicleId(e.target.value)}>
               <option value="">Choose the vehicle</option>
               {vehicles.map((v) => (
                 <option key={v.id} value={v.id}>
-                  {v.reg}, {v.make} {v.model}
+                  <span className="font-mono">{v.reg}</span>, {v.make} {v.model}
                 </option>
               ))}
             </select>
           )}
           {/* Tax, test or insurance out of date (Compliance, kept when the two chats were merged): do not drive it. */}
           {vehicle && vehicleBlocks(vehicle, day).length > 0 && (
-            <p role="status" className="mt-2 rounded-md bg-bad-soft px-2.5 py-2 text-bad">
+            <p role="status" className="mt-2 rounded-card bg-bad-soft px-2.5 py-2 text-bad">
               <span className="font-medium">Do not drive {vehicle.reg}.</span> Its {vehicleBlocks(vehicle, day).map((k) => (k === "tax" ? "motor tax" : k === "test" ? "test" : "insurance")).join(" and ")} {vehicleBlocks(vehicle, day).length === 1 ? "has" : "have"} run out. The office renews it in Fleet.
             </p>
           )}
           <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-line" aria-hidden>
-            <div className="h-full bg-accent transition-[width]" style={{ width: `${(done / CHECK_ITEMS.length) * 100}%` }} />
+            <div className="h-full bg-muted transition-[width]" style={{ width: `${(done / CHECK_ITEMS.length) * 100}%` }} />
           </div>
-          {last && <p className="mt-2 text-[0.87rem] text-muted">Already checked today at {last.at.slice(11, 16)}{last.defects.length ? `, ${plural(last.defects.length, "defect")} reported` : ", all OK"}.</p>}
+          {last && <p className="mt-2 text-detail text-muted">Already checked today at {last.at.slice(11, 16)}{last.defects.length ? `, ${plural(last.defects.length, "defect")} reported` : ", all OK"}.</p>}
         </div>
         {DRIVING_CHECK.map((sec, n) => (
           <fieldset key={sec.title} className="grid gap-2">
-            <legend className="mb-1 text-[0.87rem] font-semibold tracking-wide text-muted uppercase">
+            <legend className="mb-1 text-title font-semibold">
               {n + 1}. {sec.title}
             </legend>
             {sec.items.map((item) => {
               const a = answers[item];
               return (
-                <div key={item} className={cx("rounded-lg border px-3 py-2.5", a && !a.ok ? "border-bad bg-bad-soft/40" : a?.ok ? "border-line bg-surface" : "border-line-strong bg-surface")}>
+                <div key={item} className={cx("rounded-card border px-3 py-2.5", a && !a.ok ? "border-bad bg-bad-soft/40" : a?.ok ? "border-line bg-surface" : "border-line-strong bg-surface")}>
                   <div className="flex items-center gap-2">
                     <p className="min-w-0 flex-1">{item}</p>
                     <div className="flex shrink-0 gap-1.5" role="group" aria-label={item}>
-                      <button type="button" aria-pressed={a?.ok === true} onClick={() => set(item, { ok: true })} className={cx("press min-h-11 min-w-12 rounded-md px-2.5 text-[0.93rem] font-medium", a?.ok === true ? "bg-ok text-white" : "bg-canvas text-muted hover:text-ink")}>
+                      <button type="button" aria-pressed={a?.ok === true} onClick={() => set(item, { ok: true })} className={cx("press min-h-11 min-w-12 rounded-card px-2.5 text-body font-medium", a?.ok === true ? "bg-ok text-white" : "bg-canvas text-muted")}>
                         OK
                       </button>
-                      <button type="button" aria-pressed={a?.ok === false} onClick={() => set(item, { ok: false, note: a?.note ?? "" })} className={cx("press min-h-11 rounded-md px-2.5 text-[0.93rem] font-medium", a?.ok === false ? "bg-bad text-white" : "bg-canvas text-muted hover:text-ink")}>
+                      <button type="button" aria-pressed={a?.ok === false} onClick={() => set(item, { ok: false, note: a?.note ?? "" })} className={cx("press min-h-11 rounded-card px-2.5 text-body font-medium", a?.ok === false ? "bg-bad text-white" : "bg-canvas text-muted")}>
                         Defect
                       </button>
                     </div>
                   </div>
                   {a && !a.ok && (
                     <Field label="What is wrong?" className="mt-2">
-                      {(id) => <textarea id={id} rows={2} className="field text-[1.02rem]" value={a.note ?? ""} onChange={(e) => set(item, { ok: false, note: e.target.value })} />}
+                      {(id) => <textarea id={id} rows={2} className="field text-title" value={a.note ?? ""} onChange={(e) => set(item, { ok: false, note: e.target.value })} />}
                     </Field>
                   )}
                 </div>
@@ -382,7 +382,7 @@ export function ProfileSheet({ me, lang, day, onClose, simple }: { me: Person; l
         <div className="flex items-center gap-3">
           <Avatar name={me.name} size={48} />
           <div>
-            <p className="font-display text-[1.2rem] font-semibold">{me.name}</p>
+            <h3 className="text-title font-semibold">{me.name}</h3>
             <p className="text-muted">{me.trade}</p>
           </div>
         </div>
@@ -402,11 +402,11 @@ export function ProfileSheet({ me, lang, day, onClose, simple }: { me: Person; l
         </dl>
         {simple ? <MyCerts me={me} day={day} /> : <MyTickets me={me} lang={lang} day={day} />}
         <div lang="en">
-          <h3 className="mb-1 text-base">Holidays</h3>
+          <h3 className="mb-1 text-title font-semibold">Holidays</h3>
           {leave.length === 0 ? (
             <p className="text-muted">None booked.</p>
           ) : (
-            <ul className="divide-y divide-line rounded-md border border-line" aria-label="My holidays">
+            <ul className="divide-y divide-line rounded-card border border-line" aria-label="My holidays">
               {leave.map((h) => (
                 <li key={h.id} className="flex items-center gap-2 px-2.5 py-1.5">
                   <span className="flex-1">
@@ -421,7 +421,7 @@ export function ProfileSheet({ me, lang, day, onClose, simple }: { me: Person; l
           )}
           {asking ? (
             <form
-              className="mt-3 grid gap-2 rounded-lg border border-line bg-surface p-3"
+              className="mt-3 grid gap-2 rounded-card border border-line bg-surface p-3"
               onSubmit={(e) => {
                 e.preventDefault();
                 if (to < from) return;
@@ -436,7 +436,7 @@ export function ProfileSheet({ me, lang, day, onClose, simple }: { me: Person; l
                 <Field label="Last day off">{(id) => <input id={id} type="date" className="field h-11" min={from} value={to} onChange={(e) => setTo(e.target.value)} />}</Field>
               </div>
               <Field label="Reason (optional)">{(id) => <input id={id} className="field h-11" value={note} onChange={(e) => setNote(e.target.value)} />}</Field>
-              {to < from ? <p className="text-bad">The last day is before the first day.</p> : <p className="text-[0.93rem] text-muted">{plural(workingDays(from, to), "working day")}. The office approves or declines it.</p>}
+              {to < from ? <p className="text-bad">The last day is before the first day.</p> : <p className="text-body text-muted">{plural(workingDays(from, to), "working day")}. The office approves or declines it.</p>}
               <div className="flex justify-end gap-2">
                 <Button onClick={() => setAsking(false)}>Cancel</Button>
                 <Button type="submit" variant="primary" disabled={to < from}>
@@ -515,17 +515,17 @@ export function ExpenseSheet({ me, day, siteId, sites, onClose, toSiteManager }:
           <legend className="mb-1 font-medium">What was it for?</legend>
           <div className="flex flex-wrap gap-2">
             {EXPENSE_KINDS.map((k) => (
-              <button key={k} type="button" aria-pressed={kind === k} onClick={() => setKind(k)} className={cx("press min-h-11 rounded-lg border px-3", kind === k ? "border-accent bg-accent-soft font-medium text-accent-ink" : "border-line-strong")}>
+              <button key={k} type="button" aria-pressed={kind === k} onClick={() => setKind(k)} className={cx("press min-h-11 rounded-card border px-3", kind === k ? "border-accent bg-accent-soft font-medium text-accent-ink" : "border-line-strong")}>
                 {k}
               </button>
             ))}
           </div>
         </fieldset>
         <div className="grid grid-cols-2 gap-2">
-          <Field label={`Amount paid (${region === "UK" ? "£" : "€"}, with VAT)`}>{() => <NumInput label="Amount paid" className="h-11 w-full text-[1.02rem]" value={amount} onChange={setAmount} />}</Field>
+          <Field label={`Amount paid (${region === "UK" ? "£" : "€"}, with VAT)`}>{() => <NumInput label="Amount paid" className="h-11 w-full text-title" value={amount} onChange={setAmount} />}</Field>
           <Field label="Day paid">{(id) => <input id={id} type="date" className="field h-11" max={day} value={date} onChange={(e) => setDate(e.target.value)} />}</Field>
         </div>
-        <Field label="What did you buy?">{(id) => <input id={id} className="field h-11 text-[1.02rem]" value={what} placeholder="Diesel for the van" onChange={(e) => setWhat(e.target.value)} />}</Field>
+        <Field label="What did you buy?">{(id) => <input id={id} className="field h-11 text-title" value={what} placeholder="Diesel for the van" onChange={(e) => setWhat(e.target.value)} />}</Field>
         <Field label="For which site">
           {(id) => (
             <select id={id} className="field h-11" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
@@ -544,7 +544,7 @@ export function ExpenseSheet({ me, day, siteId, sites, onClose, toSiteManager }:
           <p role="alert" className="text-bad">
             {error}
           </p>
-          {receipt ? <img src={receipt.dataUrl} alt="The receipt" className="mt-2 max-h-40 rounded-md border border-line" /> : <p className="text-[0.93rem] text-muted">Take a photo of it, or hand the paper receipt in to the office.</p>}
+          {receipt ? <img src={receipt.dataUrl} alt="The receipt" className="mt-2 max-h-40 rounded-card border border-line" /> : <p className="text-body text-muted">Take a photo of it, or hand the paper receipt in to the office.</p>}
         </div>
       </div>
     </Dialog>
@@ -559,14 +559,14 @@ export function MyClaims({ me }: { me: Person }) {
   if (claims.length === 0) return null;
   return (
     <div lang="en">
-      <h3 className="mb-1 text-base">Reimbursements</h3>
-      <ul className="divide-y divide-line rounded-md border border-line" aria-label="My reimbursements">
+      <h3 className="mb-1 text-title font-semibold">Reimbursements</h3>
+      <ul className="divide-y divide-line rounded-card border border-line" aria-label="My reimbursements">
         {claims.map((x) => (
           <li key={x.id} className="flex items-center gap-2 px-2.5 py-1.5">
             <span className="min-w-0 flex-1">
               {x.kind}, {dShort(x.date)}
               {x.status === "Declined" && <DeclineNote note={x.declineNote} />}
-              {x.status === "Approved" && <span className="block text-[0.87rem] text-muted">{x.paidAt ? `Paid ${dShort(x.paidAt.slice(0, 10))}` : x.exportedAt ? `With the office for payment since ${dShort(x.exportedAt.slice(0, 10))}` : "On the office's list to pay"}</span>}
+              {x.status === "Approved" && <span className="block text-detail text-muted">{x.paidAt ? `Paid ${dShort(x.paidAt.slice(0, 10))}` : x.exportedAt ? `With the office for payment since ${dShort(x.exportedAt.slice(0, 10))}` : "On the office's list to pay"}</span>}
             </span>
             <span className="tabular-nums">{region === "UK" ? "£" : "€"}{x.amount.toFixed(2)}</span>
             <Badge tone={x.status === "Approved" ? "ok" : x.status === "Declined" ? "bad" : "accent"}>{x.status === "Approved" ? (x.paidAt ? "Paid" : x.exportedAt ? "Sent for payment" : "Approved") : x.status}</Badge>
@@ -593,8 +593,8 @@ function MyTickets({ me, lang, day }: { me: Person; lang: Language; day: string 
   const cert = person.certs.find((c) => c.id === sending);
   return (
     <div lang={lang}>
-      <h3 className="mb-1 text-base">{t.myTickets}</h3>
-      <ul className="divide-y divide-line rounded-md border border-line" aria-label={t.myTickets}>
+      <h3 className="mb-1 text-title font-semibold">{t.myTickets}</h3>
+      <ul className="divide-y divide-line rounded-card border border-line" aria-label={t.myTickets}>
         {sorted.map((c) => {
           const state = stateOf(c.expires, day);
           const blocks = stops.some((b) => b.ticket === c.name);
@@ -606,9 +606,9 @@ function MyTickets({ me, lang, day }: { me: Person; lang: Language; day: string 
                   {state === "expired" ? t.ranOut : t.runsOut} {short(c.expires)}
                 </Badge>
               </span>
-              {blocks && <span className="text-[0.93rem] text-bad">{t.cannotWork}</span>}
+              {blocks && <span className="text-body text-bad">{t.cannotWork}</span>}
               {c.sentPhoto ? (
-                <span className="text-[0.93rem] text-accent-ink">{t.cardWaiting}</span>
+                <span className="text-body text-accent-ink">{t.cardWaiting}</span>
               ) : (
                 state !== "ok" && (
                   <Button size="lg" className="justify-self-start" onClick={() => setSending(c.id)}>
@@ -659,11 +659,11 @@ function CardPhotoSheet({ me, certId, certName, lang, onClose }: { me: Person; c
       <div className="grid gap-3" lang={lang}>
         <p className="font-medium">{certName}</p>
         <PickFile accept="image/*" what="card" onFile={(f) => { setError(""); shrinkImage(f).then(setPicture).catch((e: Error) => { setPicture(null); setError(e.message); }); }} />
-        {!picture && <p className="text-[0.93rem] text-muted">{t.takeOrChoose}</p>}
+        {!picture && <p className="text-body text-muted">{t.takeOrChoose}</p>}
         <p role="alert" className="text-bad">
           {error}
         </p>
-        {picture && <img src={picture.dataUrl} alt="" className="max-h-44 rounded-md border border-line" />}
+        {picture && <img src={picture.dataUrl} alt="" className="max-h-44 rounded-card border border-line" />}
       </div>
     </Dialog>
   );

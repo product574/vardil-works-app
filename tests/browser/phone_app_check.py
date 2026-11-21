@@ -155,7 +155,7 @@ with sync_playwright() as p:
     pick.select_option(label=opt); pg.wait_for_timeout(300)
     if phone.get_by_role("button", name="Unlock with fingerprint").count(): phone.get_by_role("button", name="Unlock with fingerprint").click(); pg.wait_for_timeout(200)
     phone.get_by_role("region", name="My sites today").get_by_role("button").first.click(); pg.wait_for_timeout(300)
-    ok("everything: the site opens the whole job", all(phone.get_by_role("button", name=re.compile("^" + n)).count() > 0 for n in ["Timesheet", "Overtime time stamp", "Week ahead", "Month ahead", "Site instructions", "Who cannot work", "Scaffold inspections", "Subcontractor invoices", "Send a photo", "Report extra work", "Make a request"]))
+    ok("everything: the site opens the whole job", all(phone.get_by_role("button", name=re.compile("^" + n)).count() > 0 for n in ["Timesheet", "Overtime time stamp", "Week ahead", "Month ahead", "Site instructions", "Who cannot work", "Scaffold inspections", "Invoices to approve", "Send a photo", "Report extra work", "Make a request"]))
     pg.screenshot(path=S + "8b-job.png")
     phone.get_by_role("button", name=re.compile("^Week ahead")).click(); pg.wait_for_timeout(300)
     ok("everything: week ahead opens on the phone", pg.get_by_role("dialog").count() > 0)

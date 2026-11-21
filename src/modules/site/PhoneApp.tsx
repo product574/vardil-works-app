@@ -88,7 +88,7 @@ export function StandalonePhone() {
   const owner = everyone.find((p) => p.id === operativeId) ?? everyone[0];
   if (!owner) return null;
   return (
-    <div className="mx-auto grid min-h-dvh w-full max-w-[32rem] bg-canvas" style={{ paddingTop: "env(safe-area-inset-top)", paddingBottom: "env(safe-area-inset-bottom)" }} data-app="phone">
+    <div className="site-app mx-auto grid min-h-dvh w-full max-w-[32rem] bg-canvas" style={{ paddingTop: "env(safe-area-inset-top)", paddingBottom: "env(safe-area-inset-bottom)" }} data-app="phone">
       <PhoneApp key={owner.id} owner={owner} day={day} />
     </div>
   );
@@ -148,13 +148,13 @@ function SignIn({ owner, onStart, onIn }: { owner: Person; onStart: () => void; 
   };
   const head = (title: string, line?: string) => (
     <div>
-      <p className="text-[0.93rem] text-muted">{brand.brandName}</p>
-      <h2 className="font-display text-[1.45rem] leading-tight font-semibold">{title}</h2>
+      <p className="text-body text-muted">{brand.brandName}</p>
+      <h2 className="text-page font-semibold">{title}</h2>
       {line && <p className="mt-1 text-muted">{line}</p>}
     </div>
   );
   const err = error && (
-    <p role="alert" className="rounded-md bg-bad-soft px-3 py-2 text-bad">
+    <p role="alert" className="rounded-card bg-bad-soft px-3 py-2 text-bad">
       {error}
     </p>
   );
@@ -175,12 +175,12 @@ function SignIn({ owner, onStart, onIn }: { owner: Person; onStart: () => void; 
         }}
       >
         {head("Sign in", "With the mobile number your employer has for you.")}
-        <Field label="Mobile number">{(id) => <input id={id} className="field h-12 text-[1.1rem]" inputMode="tel" autoComplete="tel" value={number} onChange={(e) => setNumber(e.target.value)} />}</Field>
+        <Field label="Mobile number">{(id) => <input id={id} className="field h-12 text-title" inputMode="tel" autoComplete="tel" value={number} onChange={(e) => setNumber(e.target.value)} />}</Field>
         {err}
         <Button size="lg" variant="primary" type="submit" disabled={number.replace(/\D/g, "").length < 7}>
           Next
         </Button>
-        <p className="text-[0.87rem] text-muted">Only the office can change the number they have for you.</p>
+        <p className="text-detail text-muted">Only the office can change the number they have for you.</p>
       </form>
     );
 
@@ -200,11 +200,11 @@ function SignIn({ owner, onStart, onIn }: { owner: Person; onStart: () => void; 
         }}
       >
         {head(step.purpose === "setup" ? `Welcome, ${p.name.split(" ")[0]}` : "Reset your password", `We have texted a 6 digit code to ${maskPhone(p.phone)}. It lasts ${CODE_MINUTES} minutes.`)}
-        <p className="rounded-md border border-dashed border-line-strong bg-surface px-3 py-2 text-[0.93rem]" aria-label="Demo: the text message">
+        <p className="rounded-card border border-dashed border-line-strong bg-surface px-3 py-2 text-body" aria-label="Demo: the text message">
           <span className="text-muted">Demo, in place of the text: </span>
           <span className="font-medium tabular-nums">{step.shown}</span>
         </p>
-        <Field label="Code">{(id) => <input id={id} className="field h-12 text-[1.25rem] tracking-[0.3em] tabular-nums" inputMode="numeric" autoComplete="one-time-code" maxLength={7} value={secret} onChange={(e) => setSecret(e.target.value)} />}</Field>
+        <Field label="Code">{(id) => <input id={id} className="field h-12 text-title tracking-[0.3em] tabular-nums" inputMode="numeric" autoComplete="one-time-code" maxLength={7} value={secret} onChange={(e) => setSecret(e.target.value)} />}</Field>
         {err}
         <Button size="lg" variant="primary" type="submit" disabled={secret.replace(/\D/g, "").length !== 6}>
           Check code
@@ -241,7 +241,7 @@ function SignIn({ owner, onStart, onIn }: { owner: Person; onStart: () => void; 
           {(id) => <input id={id} type="password" className="field h-12" autoComplete="new-password" value={secret} onChange={(e) => setSecret(e.target.value)} />}
         </Field>
         <Field label="Type it again">{(id) => <input id={id} type="password" className="field h-12" autoComplete="new-password" value={again} onChange={(e) => setAgain(e.target.value)} />}</Field>
-        {secret && problem && <p className="text-[0.93rem] text-warn">{problem}</p>}
+        {secret && problem && <p className="text-body text-warn">{problem}</p>}
         {err}
         <Button size="lg" variant="primary" type="submit" disabled={busy || !secret || !again}>
           Save password
@@ -255,7 +255,7 @@ function SignIn({ owner, onStart, onIn }: { owner: Person; onStart: () => void; 
     return (
       <div className={SCREEN}>
         {head("Use fingerprint or Face ID?", "Then the app opens with a touch or a look. Your password still works if it does not.")}
-        <Fingerprint size={64} className="justify-self-center text-accent-ink" aria-hidden="true" />
+        <Fingerprint size={64} className="justify-self-center text-muted" aria-hidden="true" />
         <Button size="lg" variant="primary" onClick={() => { setPhoneBiometrics(p.id, true); onIn(p.id); }}>
           Turn on fingerprint
         </Button>
@@ -303,9 +303,9 @@ function Unlock({ me, onUnlock, onPassword }: { me: Person; onUnlock: () => void
   const brand = usePrefs((s) => s.brand);
   return (
     <div className={cx(SCREEN, "justify-items-center text-center")}>
-      <p className="text-[0.93rem] text-muted">{brand.brandName}</p>
-      <h2 className="font-display text-[1.45rem] font-semibold">{me.name}</h2>
-      <button type="button" className="press grid justify-items-center gap-2 rounded-xl border border-line-strong bg-surface px-8 py-6 text-accent-ink" onClick={onUnlock}>
+      <p className="text-body text-muted">{brand.brandName}</p>
+      <h2 className="text-page font-semibold">{me.name}</h2>
+      <button type="button" className="press grid justify-items-center gap-2 rounded-card border border-line bg-surface px-8 py-6" onClick={onUnlock}>
         <Fingerprint size={64} aria-hidden="true" />
         <span className="font-medium">Unlock with fingerprint</span>
       </button>
@@ -320,7 +320,7 @@ function Unlock({ me, onUnlock, onPassword }: { me: Person; onUnlock: () => void
 
 type Sheet = "week" | "hours" | "holidays" | "receipt" | "repair" | "tickets" | "ask" | "driving" | "licence" | "photo" | "extra" | "me" | "manager" | null;
 
-const TILE = "press grid min-h-24 content-center justify-items-center gap-1.5 rounded-xl border border-line-strong bg-surface px-2 py-3 text-center text-[1rem] font-medium hover:border-accent hover:text-accent-ink";
+const TILE = "press grid min-h-24 content-center justify-items-center gap-1.5 rounded-card border border-line bg-surface px-2 py-3 text-center text-title font-medium";
 
 function greeting() {
   const h = new Date().getHours();
@@ -330,15 +330,15 @@ function greeting() {
 function Header({ me, day, onMe }: { me: Person; day: string; onMe: () => void }) {
   const brand = usePrefs((s) => s.brand);
   return (
-    <div className="bg-accent-strong px-4 py-3 text-white">
+    <div className="border-b border-line bg-surface px-4 py-3">
       <div className="flex items-center gap-2">
         <ProfileButton name={me.name} label="Me" onClick={onMe} />
-        <p className="text-[0.93rem] opacity-90">{longDate(day)}</p>
+        <p className="text-body text-muted">{longDate(day)}</p>
       </div>
-      <p className="font-display text-[1.35rem] leading-tight font-semibold">
+      <h1 className="text-page font-semibold">
         {greeting()}, {me.name.split(" ")[0]}
-      </p>
-      <p className="text-[0.93rem] opacity-90">
+      </h1>
+      <p className="text-body">
         {me.kind === "Operative" ? me.trade : "Site manager"}, {brand.brandName}
       </p>
     </div>
@@ -358,9 +358,9 @@ function VanNotice({ me, day }: { me: Person; day: string }) {
   const R = REGION[region];
   const label = (k: "tax" | "test" | "insurance") => (k === "tax" ? R.roadTax : k === "test" ? R.vehicleTest : "Insurance");
   return (
-    <div className={cx("rounded-lg px-3 py-3", gone.length ? "bg-bad-soft text-bad" : "bg-warn-soft text-warn")} role="status">
+    <div className={cx("rounded-card px-3 py-3", gone.length ? "bg-bad-soft text-bad" : "bg-warn-soft text-warn")} role="status">
       <p className="font-medium">
-        Your van, {van.reg}: {gone.length ? `${gone.map(label).join(", ")} ran out` : due.map((k) => `${label(k)} due by ${dShort(van.compliance[k].expiryDate)}`).join(", ")}
+        Your van, <span className="font-mono">{van.reg}</span>: {gone.length ? `${gone.map(label).join(", ")} ran out` : due.map((k) => `${label(k)} due by ${dShort(van.compliance[k].expiryDate)}`).join(", ")}
       </p>
       {gone.length > 0 && <p className="mt-0.5">Do not drive it. Ring the office.</p>}
     </div>
@@ -373,7 +373,7 @@ function CannotWork({ me, day }: { me: Person; day: string }) {
   if (blocks.length === 0) return null;
   const booked = bookingFor(db.courses, me.id, blocks[0]!.ticket);
   return (
-    <div className="rounded-lg bg-bad-soft px-3 py-3 text-bad" role="status">
+    <div className="rounded-card bg-bad-soft px-3 py-3 text-bad" role="status">
       <p className="font-medium">{blocks.map((b) => (b.expires ? `${b.ticket} ran out ${dShort(b.expires)}` : `${b.ticket} missing`)).join(", ")}</p>
       <p className="mt-0.5">You cannot work on site until it is renewed. Send a photo of the new card from My tickets.</p>
       {booked && <p className="mt-0.5">Booked on the course on {dShort(booked.date)}</p>}
@@ -399,53 +399,53 @@ function Tiles({ me, operative, open, onSite }: { me: Person; operative: boolean
       <div className="grid grid-cols-2 gap-2.5">
         {operative && (
           <button type="button" className={TILE} onClick={() => open("week")}>
-            <CalendarBlank size={28} className="text-accent-ink" aria-hidden="true" /> My week
+            <CalendarBlank size={28} className="text-muted" aria-hidden="true" /> My week
           </button>
         )}
         {operative && (
           <button type="button" className={TILE} onClick={() => open("hours")}>
-            <Clock size={28} className="text-accent-ink" aria-hidden="true" />
+            <Clock size={28} className="text-muted" aria-hidden="true" />
             <span>My hours {waiting(claims)}</span>
           </button>
         )}
         <button type="button" className={TILE} onClick={() => open("holidays")}>
-          <SunHorizon size={28} className="text-accent-ink" aria-hidden="true" />
+          <SunHorizon size={28} className="text-muted" aria-hidden="true" />
           <span>Holidays {waiting(leave)}</span>
         </button>
         <button type="button" className={TILE} onClick={() => open("receipt")}>
-          <Receipt size={28} className="text-accent-ink" aria-hidden="true" />
+          <Receipt size={28} className="text-muted" aria-hidden="true" />
           <span>Receipt {waiting(receipts)}</span>
         </button>
         <button type="button" className={TILE} onClick={() => open("repair")}>
-          <Wrench size={28} className="text-accent-ink" aria-hidden="true" />
+          <Wrench size={28} className="text-muted" aria-hidden="true" />
           <span>Report a repair {waiting(repairs)}</span>
         </button>
         <button type="button" className={TILE} onClick={() => open("tickets")}>
-          <Certificate size={28} className="text-accent-ink" aria-hidden="true" /> My tickets
+          <Certificate size={28} className="text-muted" aria-hidden="true" /> My tickets
         </button>
         {operative && projectsOn && onSite && (
           <button type="button" className={TILE} onClick={() => open("photo")}>
-            <Camera size={28} className="text-accent-ink" aria-hidden="true" /> Send a photo
+            <Camera size={28} className="text-muted" aria-hidden="true" /> Send a photo
           </button>
         )}
         {operative && projectsOn && onSite && (
           <button type="button" className={TILE} onClick={() => open("extra")}>
-            <PlusCircle size={28} className="text-accent-ink" aria-hidden="true" /> Report extra work
+            <PlusCircle size={28} className="text-muted" aria-hidden="true" /> Report extra work
           </button>
         )}
         {fleetOn && (
           <button type="button" className={TILE} onClick={() => open("licence")}>
-            <IdentificationCard size={28} className="text-accent-ink" aria-hidden="true" /> Send a licence
+            <IdentificationCard size={28} className="text-muted" aria-hidden="true" /> Send a licence
           </button>
         )}
         <button type="button" className={TILE} onClick={() => open("ask")}>
-          <HandPalm size={28} className="text-accent-ink" aria-hidden="true" />
+          <HandPalm size={28} className="text-muted" aria-hidden="true" />
           <span>Make a request {waiting(general)}</span>
         </button>
       </div>
       {fleetOn && (
         <button type="button" className={cx(TILE, "grid-flow-col justify-start gap-3 text-left")} onClick={() => open("driving")}>
-          <Truck size={28} className="text-accent-ink" aria-hidden="true" />
+          <Truck size={28} className="text-muted" aria-hidden="true" />
           <span>
             Driving check
             <CheckLine me={me} day={day} />
@@ -474,40 +474,40 @@ function OperativeHome({ me, day }: { me: Person; day: string }) {
         <section className="grid gap-2" aria-label="Today">
           {site ? (
             <>
-              <div className="rounded-lg border border-line bg-surface px-3 py-3">
-                <p className="text-[0.93rem] text-muted">Today you are at</p>
+              <div className="rounded-card border border-line bg-surface px-3 py-3">
+                <p className="text-body text-muted">Today you are at</p>
                 <p className="font-medium">
-                  {site.code} {site.name}
+                  <span className="font-mono">{site.code}</span> {site.name}
                 </p>
                 {manager && (
                   <div className="mt-1.5 flex items-center gap-2">
-                    <button type="button" aria-label={`Site manager: ${manager.name}`} className="press min-w-0 flex-1 rounded text-left text-accent-ink underline decoration-line-strong underline-offset-2" onClick={() => setSheet("manager")}>
+                    <button type="button" aria-label={`Site manager: ${manager.name}`} className="text-link min-w-0 flex-1 text-left" onClick={() => setSheet("manager")}>
                       {manager.name}, site manager
                     </button>
-                    <a href={`tel:${manager.phone.replace(/\s/g, "")}`} className="press inline-flex min-h-10 items-center gap-1.5 rounded-md bg-accent-soft px-3 font-medium text-accent-ink">
+                    <a href={`tel:${manager.phone.replace(/\s/g, "")}`} className="press inline-flex min-h-10 items-center gap-1.5 rounded-card border border-line-strong bg-surface px-3 font-medium">
                       <Phone size={16} aria-hidden="true" /> Call
                     </a>
                   </div>
                 )}
               </div>
               {note && (
-                <div className="rounded-lg border-l-4 border-accent bg-surface px-3 py-3" aria-label="Today's instructions">
+                <div className="rounded-card border border-line bg-surface px-3 py-3" aria-label="Today's instructions">
                   <p className="font-medium">Today's instructions</p>
                   <p className="mt-1 leading-relaxed">{note.text}</p>
-                  <p className="mt-1.5 text-[0.87rem] text-muted">
+                  <p className="mt-1.5 text-detail text-muted">
                     {note.by}, {note.at.slice(11, 16)}
                   </p>
                 </div>
               )}
               {site.siteInstructions && (
-                <div className="rounded-lg bg-surface px-3 py-3">
+                <div className="rounded-card border border-line bg-surface px-3 py-3">
                   <p className="font-medium">Site instructions</p>
                   <p className="mt-1 leading-relaxed">{site.siteInstructions}</p>
                 </div>
               )}
             </>
           ) : (
-            <p className="rounded-lg border border-line bg-surface px-3 py-3 text-muted">You are not down for a site today. Your site manager will tell you where to go.</p>
+            <p className="rounded-card border border-line bg-surface px-3 py-3 text-muted">You are not down for a site today. Your site manager will tell you where to go.</p>
           )}
         </section>
         <Tiles me={me} operative open={setSheet} onSite={!!site} />
@@ -536,7 +536,7 @@ function ManagerHome({ me, day }: { me: Person; day: string }) {
       <div className="grid gap-3 px-4 py-4">
         <CannotWork me={me} day={day} />
         <section aria-label="My sites today">
-          <h3 className="mb-1.5 text-[0.93rem] font-medium text-muted">My sites today</h3>
+          <h3 className="mb-1.5 text-title font-semibold">My sites today</h3>
           {sites.length === 0 ? (
             <p className="text-muted">You are not running a site at the moment. The office sets your sites in Admin, Site access.</p>
           ) : (
@@ -545,11 +545,13 @@ function ManagerHome({ me, day }: { me: Person; day: string }) {
                 const st = siteToday(db, s.id, day);
                 return (
                   <li key={s.id}>
-                    <button type="button" className="press flex min-h-14 w-full items-center gap-2 rounded-lg border border-line-strong bg-surface px-3 py-2 text-left" onClick={() => setSiteOpen(s)}>
+                    <button type="button" className="press flex min-h-14 w-full items-center gap-2 rounded-card border border-line-strong bg-surface px-3 py-2 text-left" onClick={() => setSiteOpen(s)}>
                       <span className="min-w-0 flex-1">
-                        <span className="font-medium">{s.code}</span> {s.name}
-                        <span className="block text-[0.87rem] text-muted">{peopleLine(st)}</span>
-                        {s.siteManagerId !== me.id && <span className="block text-[0.87rem] text-muted">Run by {db.people.find((x) => x.id === s.siteManagerId)?.name}. Given to you by the office</span>}
+                        <span className="font-medium"><span className="font-mono">{s.code}</span> {s.name}</span>
+                        <span className="block text-detail text-muted">
+                          {peopleLine(st)}
+                          {s.siteManagerId !== me.id && `. Run by ${db.people.find((x) => x.id === s.siteManagerId)?.name}, given to you by the office`}
+                        </span>
                         <SiteBadges db={db} me={me} siteId={s.id} day={day} />
                       </span>
                       <Badge tone={st.state === "sent" ? "ok" : st.state === "todo" ? "warn" : "neutral"}>{st.state === "sent" ? "Sent" : st.state === "todo" ? "Timesheet to do" : "Nothing to mark"}</Badge>
@@ -562,7 +564,7 @@ function ManagerHome({ me, day }: { me: Person; day: string }) {
           )}
         </section>
         <section aria-label="Waiting for you">
-          <h3 className="mb-1.5 text-[0.93rem] font-medium text-muted">Waiting for you</h3>
+          <h3 className="mb-1.5 text-title font-semibold">Waiting for you</h3>
           <div className="grid gap-2">
             {(
               [
@@ -571,14 +573,14 @@ function ManagerHome({ me, day }: { me: Person; day: string }) {
                 ["crew", "Crew requests", w.crew],
               ] as const
             ).map(([k, label, n]) => (
-              <button key={k} type="button" className="press flex min-h-12 items-center gap-2 rounded-lg border border-line-strong bg-surface px-3 text-left" onClick={() => setApprove(k)}>
+              <button key={k} type="button" className="press flex min-h-12 items-center gap-2 rounded-card border border-line-strong bg-surface px-3 text-left" onClick={() => setApprove(k)}>
                 <span className="min-w-0 flex-1">{label}</span>
-                {n > 0 ? <Badge tone="accent">{n}</Badge> : <span className="text-[0.87rem] text-muted">None</span>}
+                {n > 0 ? <Badge tone="accent">{n}</Badge> : <span className="text-detail text-muted">None</span>}
               </button>
             ))}
           </div>
         </section>
-        <h3 className="-mb-1.5 text-[0.93rem] font-medium text-muted">For you</h3>
+        <h3 className="-mb-1.5 text-title font-semibold">For you</h3>
         <Tiles me={me} operative={false} open={setSheet} />
       </div>
       <Sheets me={me} day={day} site={null} sites={sites} sheet={sheet} close={() => setSheet(null)} />
@@ -648,11 +650,11 @@ function JobScreen({ site, me, day, onBack }: { site: Project; me: Person; day: 
   const blocked = cannotWork(db, site.id, day).length;
   const coming = ordersComing(db, site.id);
   const row = (k: JobSheet, label: string, Icon: typeof Clock, extra?: React.ReactNode, sub?: string) => (
-    <button key={k} type="button" className="press flex min-h-14 items-center gap-3 rounded-lg border border-line-strong bg-surface px-3 py-2 text-left hover:border-accent" onClick={() => setSheet(k)}>
-      <Icon size={22} className="shrink-0 text-accent-ink" aria-hidden="true" />
+    <button key={k} type="button" className="press flex min-h-14 items-center gap-3 rounded-card border border-line-strong bg-surface px-3 py-2 text-left" onClick={() => setSheet(k)}>
+      <Icon size={22} className="shrink-0 text-muted" aria-hidden="true" />
       <span className="min-w-0 flex-1 font-medium">
         {label}
-        {sub && <span className="block text-[0.87rem] font-normal text-muted">{sub}</span>}
+        {sub && <span className="block text-detail font-normal text-muted">{sub}</span>}
       </span>
       {extra}
     </button>
@@ -660,32 +662,32 @@ function JobScreen({ site, me, day, onBack }: { site: Project; me: Person; day: 
   const count = (n: number, tone: "accent" | "warn" | "bad" = "accent") => (n > 0 ? <Badge tone={tone}>{n}</Badge> : null);
   return (
     <div className="min-h-full w-full bg-canvas">
-      <div className="bg-accent-strong px-4 py-3 text-white">
-        <button type="button" onClick={onBack} className="press -ml-1 mb-1 inline-flex min-h-9 items-center gap-1 rounded px-1 text-[0.93rem] opacity-90 hover:opacity-100">
+      <div className="border-b border-line bg-surface px-4 py-3">
+        <button type="button" onClick={onBack} className="press -ml-1 mb-1 inline-flex min-h-9 items-center gap-1 rounded-card px-1 text-body">
           <ArrowLeft size={16} aria-hidden="true" /> All my sites
         </button>
-        <p className="font-display text-[1.35rem] leading-tight font-semibold">
-          {site.code} {site.name}
-        </p>
-        <p className="text-[0.93rem] opacity-90">
+        <h1 className="text-page font-semibold">
+          <span className="font-mono">{site.code}</span> {site.name}
+        </h1>
+        <p className="text-body text-muted">
           {site.location}. {peopleLine(st)}
         </p>
       </div>
       <div className="grid gap-2 px-4 py-4">
-        <button type="button" className="press flex min-h-14 items-center gap-3 rounded-lg border border-accent bg-accent-soft px-3 text-left font-medium text-accent-ink" onClick={() => setSheet("time")}>
+        <button type="button" className="press flex min-h-14 items-center gap-3 rounded-card bg-accent-strong px-3 text-left font-medium text-white" onClick={() => setSheet("time")}>
           <Clock size={22} aria-hidden="true" />
           <span className="flex-1">Timesheet</span>
-          <span className="text-[0.87rem] font-normal">{st.state === "sent" ? "Sent today" : st.state === "todo" ? "To do today" : ""}</span>
+          <span className="text-detail font-normal">{st.state === "sent" ? "Sent today" : st.state === "todo" ? "To do today" : ""}</span>
         </button>
         {projects && row("weekend", "Overtime time stamp", CalendarPlus, undefined, "Saturday, Sunday or a bank holiday")}
-        <h3 className="mt-2 text-[0.93rem] font-medium text-muted">Waiting for you</h3>
+        <h2 className="mt-2 text-title font-semibold">Waiting for you</h2>
         {row("overtime", "Overtime claims", Clock, count(w.overtime))}
         {row("receipts", "Reimbursements", Receipt, count(w.receipts))}
         {row("crew", "Crew requests", Tray, count(w.crew, "warn"))}
         {projects && row("subs", "Invoices to approve", Invoice, count(subsWaiting(db, site.id).length))}
         {projects && (
           <>
-            <h3 className="mt-2 text-[0.93rem] font-medium text-muted">The job</h3>
+            <h2 className="mt-2 text-title font-semibold">The job</h2>
             {row("week", "Week ahead", CalendarBlank)}
             {row("month", "Month ahead", CalendarDots)}
             {row("notes", "Site instructions", Megaphone, undefined, note ? "Up for today" : "Nothing up for today")}
@@ -743,15 +745,15 @@ function ReceiptsToApprove({ sites, me, day, onClose }: { sites: Project[]; me: 
           ) : (
             <ul className="grid gap-3" aria-label="Reimbursements waiting">
               {list.map((x) => (
-                <li key={x.id} className="grid gap-2 rounded-lg border border-line-strong bg-surface p-3">
+                <li key={x.id} className="grid gap-2 rounded-card border border-line-strong bg-surface p-3">
                   <p className="flex items-baseline gap-2">
                     <span className="min-w-0 flex-1 font-medium">{name(x.personId)}</span>
-                    <span className="font-medium tabular-nums">{money2(x.amount)}</span>
+                    <span className="font-mono font-medium">{money2(x.amount)}</span>
                   </p>
-                  <p className="text-[0.93rem] text-muted">
+                  <p className="text-body text-muted">
                     {x.kind}: {x.what}. {code(x.projectId)}, paid {dShort(x.date)}. Sent {when(x.createdAt, day)}.
                   </p>
-                  {x.receipt ? <img src={x.receipt.dataUrl} alt={`Receipt from ${name(x.personId)}`} className="max-h-40 justify-self-start rounded-md border border-line" /> : <p className="text-[0.87rem] text-muted">No photo of the receipt.</p>}
+                  {x.receipt ? <img src={x.receipt.dataUrl} alt={`Receipt from ${name(x.personId)}`} className="max-h-40 justify-self-start rounded-card border border-line" /> : <p className="text-detail text-muted">No photo of the receipt.</p>}
                   <div className="flex justify-end gap-2">
                     <Button size="lg" onClick={() => { setNote(""); setNo(x); }}>
                       Decline
@@ -766,10 +768,10 @@ function ReceiptsToApprove({ sites, me, day, onClose }: { sites: Project[]; me: 
           )}
           {answered.length > 0 && (
             <section>
-              <h3 className="mb-1 text-base">You answered</h3>
-              <ul className="divide-y divide-line rounded-md border border-line bg-surface" aria-label="Reimbursements you answered">
+              <h3 className="mb-1 text-title">You answered</h3>
+              <ul className="divide-y divide-line rounded-card border border-line bg-surface" aria-label="Reimbursements you answered">
                 {answered.map((x) => (
-                  <li key={x.id} className="flex items-center gap-2 px-3 py-2 text-[0.93rem]">
+                  <li key={x.id} className="flex items-center gap-2 px-3 py-2 text-body">
                     <span className="min-w-0 flex-1">
                       {name(x.personId)}, {money2(x.amount)}
                       {x.status === "Declined" && <DeclineNote note={x.declineNote} />}
@@ -906,13 +908,13 @@ function HolidaySheet({ me, day, onClose }: { me: Person; day: string; onClose: 
           <Field label="Last day off">{(id) => <input id={id} type="date" className="field h-11" min={from} value={to} onChange={(e) => setTo(e.target.value)} />}</Field>
         </div>
         <Field label="Reason (optional)">{(id) => <input id={id} className="field h-11" value={note} onChange={(e) => setNote(e.target.value)} />}</Field>
-        {to < from ? <p className="text-bad">The last day is before the first day.</p> : <p className="text-[0.93rem] text-muted">{plural(workingDays(from, to), "working day")}. You see the answer here.</p>}
+        {to < from ? <p className="text-bad">The last day is before the first day.</p> : <p className="text-body text-muted">{plural(workingDays(from, to), "working day")}. You see the answer here.</p>}
         <section>
-          <h3 className="mb-1 text-base">My holidays</h3>
+          <h3 className="mb-1 text-title">My holidays</h3>
           {leave.length === 0 ? (
             <p className="text-muted">None booked.</p>
           ) : (
-            <ul className="divide-y divide-line rounded-md border border-line bg-surface" aria-label="My holidays">
+            <ul className="divide-y divide-line rounded-card border border-line bg-surface" aria-label="My holidays">
               {leave.map((h) => (
                 <li key={h.id} className="flex items-center gap-2 px-3 py-2">
                   <span className="flex-1">
@@ -943,26 +945,26 @@ function MeSheet({ me, onClose }: { me: Person; onClose: () => void }) {
           <dt className="text-muted">Mobile</dt>
           <dd>
             {me.phone}
-            <span className="block text-[0.87rem] text-muted">Only the office can change it.</span>
+            <span className="block text-detail text-muted">Only the office can change it.</span>
           </dd>
           <dt className="text-muted">Email</dt>
           <dd className="break-all">{me.email}</dd>
           {me.sageNo && (
             <>
               <dt className="text-muted">Employee no.</dt>
-              <dd className="tabular-nums">{me.sageNo}</dd>
+              <dd className="font-mono">{me.sageNo}</dd>
             </>
           )}
         </dl>
-        <div className="flex items-center gap-3 rounded-lg border border-line bg-surface px-3 py-2.5">
-          <Fingerprint size={22} className="text-accent-ink" aria-hidden="true" />
+        <div className="flex items-center gap-3 rounded-card border border-line bg-surface px-3 py-2.5">
+          <Fingerprint size={22} className="text-muted" aria-hidden="true" />
           <span className="min-w-0 flex-1">
             Fingerprint or Face ID
-            <span className="block text-[0.87rem] text-muted">Opens the app without your password.</span>
+            <span className="block text-detail text-muted">Opens the app without your password.</span>
           </span>
           <Switch on={!!acc?.biometrics} label="Fingerprint or Face ID" onChange={() => setPhoneBiometrics(me.id, !acc?.biometrics)} />
         </div>
-        {acc?.signedInUntil && <p className="text-[0.93rem] text-muted">Signed in on this phone until {dShort(acc.signedInUntil.slice(0, 10))}. You stay signed in for {SESSION_DAYS} days.</p>}
+        {acc?.signedInUntil && <p className="text-body text-muted">Signed in on this phone until {dShort(acc.signedInUntil.slice(0, 10))}. You stay signed in for {SESSION_DAYS} days.</p>}
         <MyClaims me={me} />
         <Button
           size="lg"

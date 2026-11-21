@@ -68,9 +68,9 @@ export function Thumbs({ files, remove }: { files: PhoneFile[]; remove: (key: st
       {files.map((f, i) => (
         <li key={f.key} className="relative">
           {f.show ? (
-            <img src={f.show} alt={`Photo ${i + 1}`} className="size-[84px] rounded-lg border border-line object-cover" />
+            <img src={f.show} alt={`Photo ${i + 1}`} className="size-[84px] rounded-card border border-line object-cover" />
           ) : (
-            <span className="grid size-[84px] place-items-center rounded-lg border border-line bg-surface px-1 text-center text-[0.8125rem] text-muted">
+            <span className="grid size-[84px] place-items-center rounded-card border border-line bg-surface px-1 text-center text-detail text-muted">
               <FileText size={22} />
               PDF
             </span>
@@ -94,8 +94,8 @@ export function CheckLine({ me, day }: { me: Person; day: string }) {
   if (!van) return null;
   const done = checkToday(db.vehicleChecks, van.id, day);
   return (
-    <span lang="en" className={cx("block text-[0.87rem] font-normal", done?.defects.length ? "text-bad" : done ? "text-muted" : "text-warn")}>
-      {van.reg}: {done ? `done at ${done.at.slice(11, 16)}${done.defects.length ? ", defect reported" : ", all OK"}` : "not done yet today"}
+    <span lang="en" className={cx("block text-detail font-normal", done?.defects.length ? "text-bad" : done ? "text-muted" : "text-warn")}>
+      <span className="font-mono">{van.reg}</span>: {done ? `done at ${done.at.slice(11, 16)}${done.defects.length ? ", defect reported" : ", all OK"}` : "not done yet today"}
     </span>
   );
 }
@@ -149,8 +149,8 @@ export function DamageSheet({ me, onClose }: { me: Person; onClose: () => void }
     >
       <div className="grid gap-3" lang="en">
         {mine ? (
-          <p className="rounded-lg bg-surface px-3 py-2.5">
-            <span className="font-medium">{mine.reg}</span>, {mine.make} {mine.model}
+          <p className="rounded-card bg-surface px-3 py-2.5">
+            <span className="font-mono font-medium">{mine.reg}</span>, {mine.make} {mine.model}
           </p>
         ) : (
           <Field label="Which vehicle?">
@@ -159,22 +159,22 @@ export function DamageSheet({ me, onClose }: { me: Person; onClose: () => void }
                 <option value="">Choose the vehicle</option>
                 {vehicles.map((v) => (
                   <option key={v.id} value={v.id}>
-                    {v.reg}, {v.make} {v.model}
+                    <span className="font-mono">{v.reg}</span>, {v.make} {v.model}
                   </option>
                 ))}
               </select>
             )}
           </Field>
         )}
-        <p className="text-[0.93rem] text-muted">Say what happened and add photos. The office sees it straight away.</p>
+        <p className="text-body text-muted">Say what happened and add photos. The office sees it straight away.</p>
         <Field label="Where are you?">{(id) => <input id={id} className="field h-11" placeholder="e.g. Site entrance, Derrybawn Bridge" value={where} onChange={(e) => setWhere(e.target.value)} />}</Field>
         <Field label="What happened?">{(id) => <textarea id={id} rows={3} className="field" placeholder="What is damaged, and how it happened" value={note} onChange={(e) => setNote(e.target.value)} />}</Field>
         <div className="grid gap-2">
-          <p className="text-[0.93rem] font-medium">Photos ({photos.length} of 4)</p>
+          <p className="text-body font-medium">Photos ({photos.length} of 4)</p>
           <Thumbs files={photos} remove={(key) => setPhotos((ps) => ps.filter((p) => p.key !== key))} />
           {photos.length < 4 && <AddButtons onFiles={(l) => void add(l)} />}
           {photos.length < 4 && (
-            <button type="button" onClick={sample} className="press rounded-lg border border-dashed border-line-strong py-2.5 text-[0.93rem] font-medium text-muted">
+            <button type="button" onClick={sample} className="press rounded-card border border-dashed border-line-strong py-2.5 text-body font-medium text-muted">
               Add a sample picture (demo)
             </button>
           )}
@@ -236,20 +236,20 @@ export function LicenceSheet({ me, day, onClose }: { me: Person; day: string; on
       }
     >
       <div className="grid gap-3" lang="en">
-        <p className="text-[0.93rem] text-muted">A new licence goes on your record as soon as you send it, and the office checks it.</p>
+        <p className="text-body text-muted">A new licence goes on your record as soon as you send it, and the office checks it.</p>
         <div role="group" aria-label="Which licence" className="flex gap-2">
           {(["driving", "cpc"] as const).map((k) => (
-            <button key={k} type="button" aria-pressed={which === k} onClick={() => setWhich(k)} className={cx("press min-h-11 flex-1 rounded-lg font-medium", which === k ? "bg-accent-strong text-white" : "border border-line-strong bg-surface")}>
+            <button key={k} type="button" aria-pressed={which === k} onClick={() => setWhich(k)} className={cx("press min-h-11 flex-1 rounded-card font-medium", which === k ? "bg-accent-strong text-white" : "border border-line-strong bg-surface")}>
               {k === "cpc" ? "Driver CPC" : "Driving licence"}
             </button>
           ))}
         </div>
         <div className="grid gap-2">
-          <p className="text-[0.93rem] font-medium">The licence ({files.length} of 2, front and back)</p>
+          <p className="text-body font-medium">The licence ({files.length} of 2, front and back)</p>
           <Thumbs files={files.map((f) => ({ ...f, show: f.dataUrl && isPdf(f.dataUrl) ? "" : f.show }))} remove={(key) => setFiles((fs) => fs.filter((f) => f.key !== key))} />
           {files.length < 2 && <AddButtons pdf onFiles={(l) => void add(l)} />}
           {files.length === 0 && (
-            <button type="button" onClick={sample} className="press rounded-lg border border-dashed border-line-strong py-2.5 text-[0.93rem] font-medium text-muted">
+            <button type="button" onClick={sample} className="press rounded-card border border-dashed border-line-strong py-2.5 text-body font-medium text-muted">
               Use a sample licence (demo)
             </button>
           )}
