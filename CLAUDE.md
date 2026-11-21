@@ -56,6 +56,16 @@ neither yet in `main`), pushed to GitHub, and the artifact "Vardil Works master 
 from it. See "Finance and quick adds, 21 Nov" further down, and `docs/app-stores.md` for the phone
 app's road to the App Store and Google Play. Not merged into `main` until Oisin says.
 
+**Next, the real web app (talked through on 21 Nov, nothing built):** after this round Oisin asked
+about a download outside the stores, what a store app costs and how long it takes, how soon a
+client could be rolled out, and a web app first. He plans to start the real web app in a new chat:
+the version a client firm is onboarded to, with a real server, as a web app first and the store
+apps after it from the same code. The handover for that chat is the project doc
+`web-app/start-here.md` (what it means, what is already here to build on, the estimates he was
+given, and the questions to put to him first). It is kept separate from this demo (his decision
+of 20 Nov), so ask him where it lives before writing any code. See also "Before a real client
+build" under Security.
+
 ## Start here (handed over 16 Nov 2026)
 
 Aodhan built this with Claude up to the end of step 1. From 16 Nov his co-founder develops
