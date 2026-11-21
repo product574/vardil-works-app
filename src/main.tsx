@@ -6,6 +6,7 @@ import { router } from "./app/router";
 import { initStaff } from "./app/staff";
 import { DemoEnded } from "./app/AuthPages";
 import { applyLook, initWorkspace, noteVisit, useWorkspace } from "./app/workspace";
+import { initShared } from "./data/shared";
 import "./styles.css";
 
 function App() {
@@ -16,8 +17,10 @@ function App() {
 
 // Vardil staff are recognised before anything is drawn, so their extra department is in place on the first screen.
 // Then the client's look (20 Nov), which needs to know whether this is staff with a client's demo open.
-void Promise.all([initStaff(), initWorkspace()]).finally(() => {
+// Then the shared firm (21 Nov), loaded after the look so a client's look cannot rebuild it.
+void Promise.all([initStaff(), initWorkspace()]).finally(async () => {
   applyLook();
+  await initShared().catch(() => undefined);
   // A prospect whose demo is over sees only that (decision 210); anyone else, the demo, and their visit is noted.
   const ended = useWorkspace.getState().ended;
   if (!ended) noteVisit();

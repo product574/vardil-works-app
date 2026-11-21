@@ -20,11 +20,13 @@ import type { Announcement, AppRequest } from "@/lib/apps";
 import { DEFAULT_EMAIL, defaultDesign, type EmailTemplate, type InvoiceDesign } from "@/lib/invoices";
 import { REGION } from "@/lib/money";
 import { toast } from "@/ui/toast";
+import { linked } from "./linked";
 import { buildSeed, demoDay } from "./seed";
 import type { Db, DepartmentKey, ID, MdOverride, RoleKey } from "./types";
 
 /** Bump when the shape of Db or the sample data changes. Old saved sample data is thrown away, preferences are kept. */
 const DATA_VERSION = 31;
+const DATA_KEY = "cod.data";
 
 let storageFull = false;
 
@@ -39,6 +41,8 @@ const safeStorage = createJSONStorage(() => {
       getItem: (k: string) => window.localStorage.getItem(k),
       removeItem: (k: string) => window.localStorage.removeItem(k),
       setItem: (k: string, v: string) => {
+        // A screen linked to the shared firm keeps it on the server, not in the browser.
+        if (k === DATA_KEY && linked.on) return;
         try {
           window.localStorage.setItem(k, v);
           storageFull = false;
@@ -217,7 +221,8 @@ type DataState = {
 /** What in the brand the sample data is written with: a change to any of these needs fresh sample data. */
 export const lookKey = (b: Pick<Brand, "region" | "legalName" | "emailDomain">) => `${b.region}|${b.legalName}|${b.emailDomain}`;
 
-function freshSeed() {
+/** A new firm from the seed, written for this browser's brand, with today as the demo's day. */
+export function freshSeed() {
   const brand = usePrefs.getState().brand;
   return { ...buildSeed(dublinToday(), { emailDomain: brand.emailDomain, vatPct: REGION[brand.region].vatPct, region: brand.region, legalName: brand.legalName }), look: lookKey(brand) };
 }
@@ -230,10 +235,11 @@ export const useData = create<DataState>()(
         set((s) => {
           fn(s.db);
         }),
-      reset: () => set(() => freshSeed()),
+      // Linked to the shared firm, a reset is the server's (Vardil staff only); see src/data/shared.ts.
+      reset: () => (linked.on && linked.reset ? linked.reset() : set(() => freshSeed())),
     })),
     {
-      name: "cod.data",
+      name: DATA_KEY,
       version: DATA_VERSION,
       storage: safeStorage,
       partialize: (s) => ({ day: s.day, look: s.look, db: s.db }),
@@ -251,6 +257,8 @@ export const useData = create<DataState>()(
 
 /** After a client's look is applied: fresh sample data if it was written for another region or name. */
 export function matchDataToBrand() {
+  // The shared firm is the same for everyone, whatever this browser's look.
+  if (linked.on) return;
   if (useData.getState().look !== lookKey(usePrefs.getState().brand)) useData.getState().reset();
 }
 
