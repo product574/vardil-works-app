@@ -60,10 +60,42 @@ second). 905 tests pass in `npm test`; both type checks pass. A full local Supab
 Claude's session (its images are blocked), so Supabase itself, its REST interface and Realtime
 are not tested yet.
 
-**Next, in order:** the store loads the firm from `/api/data`, sends each change and picks up
-others' every few seconds (`src/data/store.ts`); the phone at /app with Cloudflare sign-in and
-"pick whose phone" (a picture first); Email and Team chat hidden; Reset demo data for Vardil staff
-only; then live on Supabase and Cloudflare, tried with two real phones and an office screen.
+**Built and live later on 21 Nov (same branch):** the store is linked. `src/data/link.ts` (the
+link, given a store: load, send each change 400 ms after it, poll every 4 seconds, a change not
+yet sent wins over an older copy coming in, a reset makes every screen start again; 8 tests in
+`link.test.ts`, two screens against the real `handleData`), `src/data/shared.ts` (the app's store
+handed to it, run from `main.tsx` before the first screen; only in the hosted build, and only when
+the server answers), `src/data/linked.ts` (the flag the store reads: while linked, the firm is not
+kept in the browser, not rebuilt for a new day or a client's look, and Reset demo data asks the
+server). 922 tests pass.
+
+**Where it is set up (21 Nov):**
+- **Supabase:** project `vardil-works-app` (ref `hffpbnwrkptbsqxcswel`, West EU Ireland) in the
+  "Product Supabase" organisation. The migration was run in the SQL Editor and checked: both tables
+  and all three functions have row level security on, and the public key reaches none of them.
+- **Cloudflare:** Pages project `vardil-works-app` in **Hello@vardil.com's Account** (moved there
+  from Product@vardil.com's, whose project was deleted, because Zero Trust is paid for in Hello's).
+  Production branch `main`, build `npm run build:cloudflare`, output `dist`. Settings, Production and
+  Preview: `SUPABASE_URL` (https://hffpbnwrkptbsqxcswel.supabase.co, no /rest/v1), the secret
+  `SUPABASE_SECRET_KEY`, `ACCESS_AUD` (8d08735802e9ff4c29d817f2caa2e04cee91c45343eac1df8460bf01b5598a28),
+  and `DEMO_FIRM`: `abc-demo` on Production, `abc-preview` on Preview, so trying a branch never
+  touches the shared demo. Team domain is `vardil` (the code's default). No D1 binding, so Ask AI and
+  Vardil HQ, Clients have no server here yet.
+- **Access:** application "Vardil Works app" on `vardil-works-app.pages.dev` and
+  `*.vardil-works-app.pages.dev`, policy "Vardil staff" (emails ending in @vardil.com), session 1
+  week, HttpOnly, SameSite Lax. Add a named email to let anyone else in.
+- **GitHub:** the Cloudflare Workers and Pages app on product574 had to be given this repository
+  (it only had the construction demo and Secure-All).
+- **Tried live** on `linked-site-app.vardil-works-app.pages.dev` in Oisin's Chrome: the first screen
+  set the firm up (5,804 records); a full load is 1.9 MB in 0.7 s; a to-do added in one tab showed
+  in a second within 4 seconds, and ticking it off there cleared it from the first (server version
+  3, written in his name). Not tried: a real phone, two people at once on one record.
+
+**Next, in order:** the phone at /app with Cloudflare sign-in and "pick whose phone" (a picture
+first); Email and Team chat hidden; Reset demo data for Vardil staff only (the server already
+refuses anyone else); then two real phones and an office screen; then merge into `main` at Oisin's
+word. The master demo carries on in its own chat: its latest work is on `finance-quick-adds`, not
+yet in its `main`; bring its changes across here when Oisin asks (same history, so a merge).
 
 ## This repository: the master demo (from 20 Nov 2026)
 
