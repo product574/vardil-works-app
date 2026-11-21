@@ -14,6 +14,7 @@
  * (what waits for a yes or no) and Settings (access, billing, holidays, the log, and the old
  * Settings screens: branding, region, about).
  */
+import { ACCOUNTS_EXPORT } from "@/lib/accounts-export";
 import { CurrencyEur, Gauge, Handshake, HardHat, type Icon, UserGear, UsersThree } from "@phosphor-icons/react";
 import { needsAccounts, partyOf, purchaseStage } from "@/lib/purchases";
 import { openRequestCount, overtimeClaimCount, waitingOnDirector } from "@/lib/requests";
@@ -76,7 +77,8 @@ export const APPS: App[] = [
       { key: "live", label: "Live projects", tabs: [t("projects", "/projects", "Live projects", { end: true })], also: ["/projects/"] },
       { key: "not-started", label: "Not started", tabs: [t("projects", "/projects/not-started", "Not started")] },
       { key: "resources-today", label: "Resources today", tabs: [t("projects", "/projects/resources", "Resources today")] },
-      { key: "completed", label: "Completed", tabs: [t("projects", "/projects/completed", "Completed")] },
+      // All projects took the place of Completed on 21 Nov: every job, with a look-up and filters.
+      { key: "all", label: "All projects", tabs: [t("projects", "/projects/all", "All projects")], also: ["/projects/completed"] },
       {
         key: "site",
         label: "Requests and variations",
@@ -180,7 +182,7 @@ export const APPS: App[] = [
           t("invoicing", "/invoicing/invoiced", "Unpaid", { count: (db, today) => db.salesInvoices.filter((i) => i.status === "Invoiced" && !!i.dueOn && i.dueOn < today).length, countTone: "bad" }),
           t("invoicing", "/invoicing/held", "On hold", { count: (db) => db.salesInvoices.filter((i) => i.status === "Held").length, countTone: "warn" }),
           t("invoicing", "/invoicing/queries", "Client queries", { count: (db) => db.invoiceQueries.filter((q) => q.status === "Open").length, countTone: "warn" }),
-          t("invoicing", "/invoicing/export", "Sage export"),
+          ...(ACCOUNTS_EXPORT ? [t("invoicing", "/invoicing/export", "Sage export")] : []),
           t("invoicing", "/invoicing/design", "Invoice design"),
           t("invoicing", "/invoicing/email", "Email template"),
         ],

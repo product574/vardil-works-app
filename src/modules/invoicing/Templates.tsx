@@ -1,15 +1,15 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
 import { useClientLook } from "@/app/workspace";
 import { actorName } from "@/data/actions";
 import { useInvoiceDesign, useInvoiceEmail, usePrefs } from "@/data/store";
 import { invoiceNo } from "@/lib/billing";
 import { DEFAULT_EMAIL, emailFor, type InvoiceDesign, PLACEHOLDERS, pdfName } from "@/lib/invoices";
+import { shrinkImage } from "@/lib/image";
 import { Button, Field, PageBody, PageHead, Panel, Section, Switch } from "@/ui";
+import { PickFile } from "@/ui/files";
 import { toast } from "@/ui/toast";
 import { downloadInvoicePdf, InvoicePaper, useInv, useInvoiceDoc } from "./shared";
 
-const LINK = "text-accent-ink underline-offset-2 hover:underline";
 
 /** The invoice the templates are previewed with: the newest one that has gone out, or failing that any. */
 function useSample() {
@@ -18,17 +18,17 @@ function useSample() {
   return { i, c: i ? client(i.clientId) : undefined, p: i ? project(i.projectId) : undefined };
 }
 
-const SHOWS: [keyof Pick<InvoiceDesign, "showLogo" | "showBank" | "showSite" | "rule">, string, string][] = [
-  ["showLogo", "Logo", "Your logo above the firm's name."],
+const SHOWS: [keyof Pick<InvoiceDesign, "showLogo" | "showBank" | "showSite">, string, string][] = [
+  ["showLogo", "Logo", "Your logo at the top right. Without it, the firm's name is printed there."],
   ["showBank", "Bank details", "Where to pay, under the terms."],
-  ["showSite", "Site and our reference", "The site address and the project code."],
-  ["rule", "Line in your colour", "A rule in the brand colour under the heading."],
+  ["showSite", "Site address", "The site's name and address, under the contract number."],
 ];
 
 /**
- * How every invoice from the firm looks: the firm's details, where to pay, the wording under the
- * totals and what is shown. The paper on the right redraws as each box changes, and the PDF is
- * drawn from the same design.
+ * What is printed on every invoice the firm sends, and nothing else (21 Nov): the logo, uploaded
+ * here as a picture, the title on the page, the firm's address and contact details, its VAT
+ * number, and where to pay. The layout is the one on Oldstone's own paper. The page on the right
+ * redraws as each box changes, and the PDF is drawn from the same design.
  */
 export function InvoiceDesignPage() {
   const { canEdit: may } = useInv();
@@ -40,6 +40,8 @@ export function InvoiceDesignPage() {
   const reset = usePrefs((s) => s.resetInvoiceDesign);
   const changed = usePrefs((s) => Object.keys(s.invoiceDesignEdits).length > 0);
   const logo = usePrefs((s) => s.brand.logoUrl);
+  const setBrand = usePrefs((s) => s.setBrand);
+  const [logoError, setLogoError] = useState("");
   const { i, c, p } = useSample();
   const doc = useInvoiceDoc(i, c, p);
   const text = (key: keyof InvoiceDesign, label: string, hint?: string, rows?: number) => (
@@ -57,7 +59,7 @@ export function InvoiceDesignPage() {
     <>
       <PageHead
         title="Invoice design"
-        note={look.set ? (look.staff ? "Set for this client in Vardil HQ, Clients. Change it there." : "What is printed on every invoice you send. It is set up for you by Vardil: to change anything on it, contact us.") : "What is printed on every invoice you send. Changes show on the right as you type and apply to every invoice from now on, on screen, in the client's portal and in the PDF."}
+        note={look.set ? (look.staff ? "Set for this client in Vardil HQ, Clients. Change it there." : "What is printed on every invoice you send. It is set up for you by Vardil: to change anything on it, contact us.") : "Only what is printed on the invoices you send: your logo, the title, your address and contact details, your VAT number and where to pay. Changes show on the right as you type and apply to every invoice from now on, on screen and in the PDF."}
         actions={
           <>
             {canEdit && changed && (
@@ -77,22 +79,50 @@ export function InvoiceDesignPage() {
       />
       <PageBody className="grid max-w-[92rem] grid-cols-1 items-start gap-5 xl:grid-cols-[minmax(20rem,0.8fr)_minmax(0,1.2fr)]">
         <div className="grid grid-cols-1 gap-5">
-          <Section title="Your details">
+          <Section title="Logo">
+            <Panel className="grid gap-2 px-4 py-4">
+              <div className="flex flex-wrap items-center gap-3">
+                {logo ? <img src={logo} alt="The logo on your invoices" className="h-12 w-auto max-w-[12rem] rounded border border-line bg-white object-contain p-1" /> : <span className="text-muted">No logo yet: the firm's name is printed instead.</span>}
+                {canEdit && (
+                  <>
+                    <PickFile
+                      accept="image/*"
+                      what="logo"
+                      onFile={(f) => {
+                        setLogoError("");
+                        shrinkImage(f, 480, 0.9)
+                          .then((pic) => {
+                            setBrand({ logoUrl: pic.dataUrl });
+                            toast("Logo changed, here and everywhere else it shows");
+                          })
+                          .catch((e: Error) => setLogoError(e.message));
+                      }}
+                    />
+                    {logo && (
+                      <Button variant="ghost" onClick={() => setBrand({ logoUrl: "" })}>
+                        Remove logo
+                      </Button>
+                    )}
+                  </>
+                )}
+              </div>
+              <p className="text-[0.87rem] text-muted">A picture from your computer or phone. A wide logo on a white or clear background prints best. It is the firm's one logo, so it changes in the top bar and on tender copies too.</p>
+              <p role="alert" className="text-bad">
+                {logoError}
+              </p>
+            </Panel>
+          </Section>
+          <Section title="On the page">
             <Panel className="grid gap-3 px-4 py-4">
+              {text("title", "Title on the page", "Printed top left in your colour. Most firms use Invoice; type your own, such as Credit Note, and the labels follow (Credit No., Total Credit).")}
               {text("address", "Address", "One line each: street, town, county.", 3)}
               <div className="grid gap-3 sm:grid-cols-2">
                 {text("phone", "Phone")}
                 {text("email", "Email for accounts")}
-                {text("vatNumber", "VAT number")}
-                {text("companyNumber", "Company number")}
+                {text("website", "Website")}
+                {text("vatNumber", "VAT number", "Printed at the foot of the page.")}
+                {text("companyNumber", "Company number", "Leave empty to leave it off.")}
               </div>
-              <p className="text-[0.93rem] text-muted">
-                The firm's name, colour and logo come from{" "}
-                <Link to="/settings" className={LINK}>
-                  Settings, Branding
-                </Link>
-                {logo ? "." : ". No logo has been added yet, so the name is printed instead."}
-              </p>
             </Panel>
           </Section>
           <Section title="Getting paid">

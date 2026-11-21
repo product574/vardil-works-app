@@ -12,6 +12,13 @@ import type { PurchaseRow } from "./purchases";
 
 /** The accounts package. One name, used wherever a screen says where invoices go. */
 export const PACKAGE = "Sage";
+/**
+ * Whether Finance exports client and supplier invoices to the accounts package. Off since 21 Nov
+ * (Oisin: the only Sage export is the hours, under Resources, Timesheet). While off, the Sage
+ * export tab, its address and every "In Sage" mark on an invoice are gone; the code and the
+ * stamps on the records stay. Set it to true to bring it all back.
+ */
+export const ACCOUNTS_EXPORT: boolean = false;
 
 export type ExportRow = { accountRef: string; clientName: string; invoiceNo: string; issuedOn: string; dueOn: string; details: string; net: number; vatPct: number; siteCode: string; /** Sales nominal code. 4000 when not given. */ nominal?: string };
 

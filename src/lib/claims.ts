@@ -72,3 +72,26 @@ export function claimSummary(rows: ClaimRow[]) {
   const issued = rows.filter((r) => r.state === "issued").length;
   return { issued, total: rows.length, toGo: rows.length - issued };
 }
+
+// ── Paid or not paid (21 Nov) ─────────────────────────────────────────────────
+
+/** Which invoices a Finance list shows: all of them, those sent and not paid, or those paid. */
+export type PaidShown = "all" | "unpaid" | "paid";
+
+/**
+ * Where a job stands on being paid, from its invoices to the client: how many have gone out, how
+ * many of those are paid, how many are past their due day, and what is still owed before VAT.
+ */
+export function paidState(invoices: Pick<SalesInvoice, "status" | "net" | "dueOn">[], today: string) {
+  const out = invoices.filter((i) => i.status === "Invoiced");
+  const paid = invoices.filter((i) => i.status === "Paid");
+  return {
+    sent: out.length + paid.length,
+    paid: paid.length,
+    unpaid: out.length,
+    overdue: out.filter((i) => !!i.dueOn && i.dueOn < today).length,
+    owed: Math.round(out.reduce((s, i) => s + i.net, 0) * 100) / 100,
+  };
+}
+/** Does a job belong under Not paid (something sent and not paid) or Paid (everything sent is paid)? */
+export const jobPaidShown = (st: ReturnType<typeof paidState>, shown: PaidShown) => shown === "all" || (shown === "unpaid" ? st.unpaid > 0 : st.sent > 0 && st.unpaid === 0);

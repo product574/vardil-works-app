@@ -1,3 +1,4 @@
+import { QuickAddButtons } from "./QuickAdd";
 import { ArrowCounterClockwise, ArrowLeft, GearSix, MagnifyingGlass, Moon, SignOut, Sun, UserSwitch } from "@phosphor-icons/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, Navigate, NavLink, Outlet, useLocation, useNavigate, useNavigationType, useRouteError } from "react-router-dom";
@@ -178,8 +179,10 @@ function TopBar() {
         <div className="flex-1" />
       )}
 
+      {/* A to-do or a file to be sorted, added from whatever screen you are on (21 Nov). Office screens only: the phone and the portal have their own. */}
+      {access.departments.length > 1 && role !== "operative" && role !== "client" && <QuickAddButtons className={away} />}
       <UtilityButtons className={away} />
-      <span className="hidden text-[0.93rem] text-muted xl:inline">{dWeekday(day)}</span>
+      <span className="hidden text-[0.93rem] text-muted 2xl:inline">{dWeekday(day)}</span>
       <button type="button" onClick={() => setTheme(theme === "dark" ? "light" : "dark")} aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"} className={cx("press grid size-9 place-items-center rounded-md text-muted hover:bg-accent-soft hover:text-accent-ink max-sm:hidden", away)}>
         {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
       </button>

@@ -6,16 +6,15 @@ const doc: InvoiceDoc = {
   title: "Invoice",
   number: "SI-10412",
   stamp: "",
-  seller: { name: "ABC Construction Ltd", address: ["Unit 4, Oranmore Business Park", "Oranmore", "Co. Galway"], contact: ["091 555 0100", "accounts@abcconstruction.example"], registration: ["VAT no. IE 0000000AB"] },
+  seller: { name: "ABC Construction Ltd", address: ["Unit 4, Oranmore Business Park", "Oranmore", "Co. Galway"], contact: ["091 555 0100", "accounts@abcconstruction.example"], registration: [["VAT Reg. Number", "IE 0000000AB"]] },
   billTo: ["Ardmullen Estate", "For the attention of Susan Kane", "Kilcolgan", "Co. Galway"],
-  facts: [["Invoice date", "18 November 2026"], ["Due", "18 December 2026"], ["Site", "Ardmullen House, Kilcolgan, Co. Galway"]],
-  lines: [{ description: "Stage payment 1: render removal and first coats", qty: "1", unit: "item", rate: "€41,250.00", amount: "€41,250.00" }],
+  facts: [["Invoice No.", "SI-10412"], ["Date", "18 November 2026"], ["Due", "18 December 2026"], ["Site", "Ardmullen House, Kilcolgan, Co. Galway"]],
+  lines: [{ description: "Stage payment 1: render removal and first coats", amount: "€41,250.00" }],
   totals: [{ label: "Subtotal", value: "€41,250.00" }, { label: "VAT at 13.5%", value: "€5,568.75" }, { label: "Total due", value: "€46,818.75", strong: true }],
   notes: ["Payment within 30 days of the invoice date by bank transfer, quoting the invoice number."],
   bank: ["Sample Bank", "IBAN IE00 SAMP 0000 0000 0000 00"],
   footer: "Thank you for your business.",
   showLogo: true,
-  rule: true,
 };
 const text = (bytes: Uint8Array) => Array.from(bytes, (b) => String.fromCharCode(b)).join("");
 const hex = (s: string) => encode(s).map((b) => b.toString(16).padStart(2, "0")).join("");
@@ -69,8 +68,12 @@ describe("the invoice PDF", () => {
   });
   it("prints the number, the client, each line and the total", () => {
     for (const piece of ["SI-10412", "Ardmullen Estate", "Stage payment 1: render removal and first coats", "€46,818.75", "IBAN IE00 SAMP 0000 0000 0000 00", "Thank you for your business."]) expect(s, piece).toContain(`<${hex(piece)}>`);
-    // The rule under the heading is in the brand colour.
+    // The title, the two headings and the VAT number at the foot are in the brand colour; the headings are underlined in it.
+    expect(s).toContain(`0.27 0.51 0.71 rg`);
     expect(s).toContain("0.27 0.51 0.71 RG");
+    for (const piece of ["Invoice", "Description", "Amount", "VAT Reg. Number", "IE 0000000AB", "Invoice No.:", "Total due:"]) expect(s, piece).toContain(`<${hex(piece)}>`);
+    // No quantity, unit or rate columns any more.
+    for (const gone of ["QTY", "UNIT", "RATE"]) expect(s).not.toContain(`<${hex(gone)}>`);
   });
   it("runs onto more pages when there are many lines, and numbers them", () => {
     const long = invoicePdf({ ...doc, lines: Array.from({ length: 70 }, (_, i) => ({ ...doc.lines[0]!, description: `Line ${i + 1}` })) }, { accent: "#4682B4" });

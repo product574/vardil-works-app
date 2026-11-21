@@ -10,3 +10,4 @@ dist-access
 .wrangler
 __pycache__
 tests/functions/shots/
+dist-phone

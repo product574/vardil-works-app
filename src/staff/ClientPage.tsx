@@ -16,6 +16,8 @@ import { toast } from "@/ui/toast";
 const HEX = /^#[0-9a-f]{6}$/i;
 
 const TEXT_FIELDS: { key: keyof InvoiceDesign; label: string; rows?: number; wide?: boolean }[] = [
+  { key: "title", label: "Title on the page (Invoice, Credit Note)" },
+  { key: "website", label: "Website" },
   { key: "address", label: "Address", rows: 3, wide: true },
   { key: "phone", label: "Phone" },
   { key: "email", label: "Accounts email" },
@@ -27,11 +29,10 @@ const TEXT_FIELDS: { key: keyof InvoiceDesign; label: string; rows?: number; wid
   { key: "terms", label: "Payment terms", rows: 2, wide: true },
   { key: "footer", label: "Last line", wide: true },
 ];
-const SWITCHES: { key: "showLogo" | "showBank" | "showSite" | "rule"; label: string }[] = [
+const SWITCHES: { key: "showLogo" | "showBank" | "showSite"; label: string }[] = [
   { key: "showLogo", label: "Logo on the invoice" },
   { key: "showBank", label: "Bank details" },
-  { key: "showSite", label: "Site address and project code" },
-  { key: "rule", label: "A line in their colour under the heading" },
+  { key: "showSite", label: "Site address" },
 ];
 
 /** The region's starting paper for this look: what every field shows until it is changed. */

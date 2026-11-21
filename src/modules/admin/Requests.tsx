@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { useAccess } from "@/data/access";
-import { decideCert, decideExpense, decideHoliday, decideOvertimeClaim, decideSiteRequest, decideSpend, markExpensePaid, moveRepair, undoExpensePaid } from "@/data/actions";
+import { decideCert, decideExpense, decideHoliday, decideOvertimeClaim, decideSiteRequest, decideSpend, markExpensePaid, moveRepair, stepInOnCrewRequest, undoExpensePaid } from "@/data/actions";
 import { useState } from "react";
 import { useData, useDay, usePrefs } from "@/data/store";
 import type { CertSubmission, Db, Expense, OvertimeClaim } from "@/data/types";
@@ -10,7 +10,7 @@ import { dFull, dShort, plural, when } from "@/lib/format";
 import { money0, money2 } from "@/lib/money";
 import { type Approver, approverWords, chainOf, mayApprove } from "@/lib/purchases";
 import { ApproveDialog, SendBackDialog } from "@/modules/invoicing/purchase-shared";
-import { directorQueue, recentlyDecided } from "@/lib/requests";
+import { directorQueue, firstStepOf, recentlyDecided, withSiteManagers, withSiteManagersCount } from "@/lib/requests";
 import { Badge, Button, type DeclineAsk, DeclineDialog, DeclineNote, Dialog, Empty, Field, NumInput, PageBody, PageHead, Panel, Section } from "@/ui";
 import { toast } from "@/ui/toast";
 
@@ -55,6 +55,10 @@ export function RequestsBody({ embedded }: { embedded?: boolean }) {
   const canPay = canAnswer || access.may("exportPayroll");
   const canCerts = access.may("manageStaff");
   const [claimBox, setClaimBox] = useState<OvertimeClaim | null>(null);
+  // Still on a site manager's step (21 Nov): not counted above or on the dashboard, and listed at the foot for whoever may step in.
+  const early = withSiteManagers(db);
+  const earlyCount = withSiteManagersCount(early);
+  const [showEarly, setShowEarly] = useState(false);
   const [certBox, setCertBox] = useState<CertSubmission | null>(null);
   const [payBox, setPayBox] = useState<Expense | null>(null);
   // Supplier invoices waiting for the managing director: Invoicing's rule and limit (merged 19 Nov).
@@ -518,6 +522,127 @@ export function RequestsBody({ embedded }: { embedded?: boolean }) {
           </Section>
         )}
         {invBox && boxInv && (invBox.what === "approve" ? <ApproveDialog s={boxInv} onClose={(done) => { setInvBox(null); if (done) toast(`${boxInv.supplier} ${boxInv.invoiceNo} approved into job costs. It is on To be paid`); }} /> : <SendBackDialog s={boxInv} onClose={() => setInvBox(null)} />)}
+
+        {!embedded && canAnswer && earlyCount > 0 && (
+          <Section title={`Still with a site manager (${earlyCount})`} aside="Not waiting for you yet. They reach your list once the site manager has said yes; you can step in on any of them now">
+            <Panel>
+              <button type="button" aria-expanded={showEarly} onClick={() => setShowEarly(!showEarly)} className="press flex w-full items-center gap-2 px-3 py-2.5 text-left font-medium text-accent-ink">
+                {showEarly ? "Hide them" : `Show the ${earlyCount} and step in`}
+              </button>
+              {showEarly && (
+                <div className="overflow-x-auto border-t border-line">
+                  <table className="tbl" aria-label="Still with a site manager">
+                    <thead>
+                      <tr>
+                        <th>What</th>
+                        <th>Site</th>
+                        <th>Waiting on</th>
+                        <th />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {access.apps.on("invoicing") &&
+                        early.invoices.map((s) => {
+                          const site = project(s.allocations[0]?.projectId ?? null);
+                          return (
+                            <tr key={s.id}>
+                              <td>
+                                <span className="font-medium">Invoice from {s.supplier}</span>
+                                <span className="block text-[0.87rem] text-muted">
+                                  {s.invoiceNo}, {money2(s.total, region)} with VAT
+                                </span>
+                              </td>
+                              <td>{site ? `${site.code} ${site.name}` : "-"}</td>
+                              <td>{approverWords(s, limit, db.projects, (id) => person(id)?.name, chainOf(db.approvalLimits)).replace(/, then the managing director$/, "")}</td>
+                              <td className="text-right whitespace-nowrap">
+                                {mayApprove(s, approver, limit, db.projects, chainOf(db.approvalLimits)) ? (
+                                  <>
+                                    <Button size="sm" variant="ghost" aria-label={`Send back: ${s.supplier} ${s.invoiceNo}`} onClick={() => setInvBox({ what: "back", id: s.id })}>
+                                      Send back
+                                    </Button>{" "}
+                                    <Button size="sm" aria-label={`Step in and approve: ${s.supplier} ${s.invoiceNo}`} onClick={() => setInvBox({ what: "approve", id: s.id })}>
+                                      Step in and approve
+                                    </Button>
+                                  </>
+                                ) : (
+                                  <span className="text-[0.93rem] text-muted">For whoever approves invoices of any size</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      {early.site.map((r) => {
+                        const site = project(r.projectId);
+                        return (
+                          <tr key={r.id}>
+                            <td>
+                              <span className="font-medium">{r.description}{r.quantity > 1 ? ` x ${r.quantity}` : ""}</span>
+                              <span className="block text-[0.87rem] text-muted">Request from {r.requestedBy}, {when(r.createdAt, day)}</span>
+                            </td>
+                            <td>{site ? `${site.code} ${site.name}` : "-"}</td>
+                            <td>{person(site?.siteManagerId ?? "")?.name ?? "The site manager"}</td>
+                            {yesNo(
+                              true,
+                              (note) => { stepInOnCrewRequest(r.id, false, note); toast(`Turned down ahead of the site manager: ${r.description}`); },
+                              () => { const out = stepInOnCrewRequest(r.id, true); toast(out === "planned" ? `Agreed ahead of the site manager: ${r.description}. They are on the plan for ${site?.code} that day` : `Agreed ahead of the site manager: ${r.description}`); },
+                              r.description,
+                            )}
+                          </tr>
+                        );
+                      })}
+                      {early.claims.map((c) => {
+                        const p = person(c.personId);
+                        const site = project(c.projectId);
+                        return (
+                          <tr key={c.id}>
+                            <td>
+                              <span className="font-medium">Overtime for {p?.name}</span>
+                              <span className="block text-[0.87rem] text-muted">
+                                {c.hours} hours on {dFull(c.date)}
+                              </span>
+                            </td>
+                            <td>{site ? `${site.code} ${site.name}` : "-"}</td>
+                            <td>{person(firstStepOf(c, db.projects) ?? "")?.name ?? "The site manager"}</td>
+                            <td className="text-right whitespace-nowrap">
+                              <Button size="sm" variant="ghost" aria-label={`Decline: overtime for ${p?.name}`} onClick={() => setNo({ title: "Decline this overtime claim?", about: `${p?.name}, ${c.hours} hours on ${dFull(c.date)}.`, run: (note) => { const problem = decideOvertimeClaim(c.id, false, { note }); toast(problem ?? `Overtime declined for ${p?.name}, ahead of the site manager`); } })}>
+                                Decline
+                              </Button>{" "}
+                              <Button size="sm" aria-label={`Approve: overtime for ${p?.name}`} onClick={() => setClaimBox(c)}>
+                                Approve
+                              </Button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      {early.expenses.map((x) => {
+                        const p = person(x.personId);
+                        const site = project(x.projectId);
+                        return (
+                          <tr key={x.id}>
+                            <td>
+                              <span className="font-medium">Reimbursement for {p?.name}</span>
+                              <span className="block text-[0.87rem] text-muted">
+                                {x.kind}, {money2(x.amount, region)}. {x.what}
+                              </span>
+                            </td>
+                            <td>{site ? `${site.code} ${site.name}` : "-"}</td>
+                            <td>{person(firstStepOf(x, db.projects) ?? "")?.name ?? "The site manager"}</td>
+                            {yesNo(
+                              true,
+                              (note) => { decideExpense(x.id, false, note); toast(`Reimbursement declined for ${p?.name}, ahead of the site manager`); },
+                              () => { decideExpense(x.id, true); toast(`Reimbursement approved for ${p?.name}, ahead of the site manager. It is on Ready to be paid`); },
+                              `reimbursement for ${p?.name}`,
+                            )}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </Panel>
+          </Section>
+        )}
 
         {!embedded && decided.length > 0 && <Decided db={db} day={day} items={decided} />}
         <DeclineDialog ask={no} onClose={() => setNo(null)} />

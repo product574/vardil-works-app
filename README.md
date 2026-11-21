@@ -467,3 +467,18 @@ yet; the test uses a stand-in.
 
 On your own computer, put `VITE_STAFF=1` in `.env.local` to see it with `npm run dev`. Never set it
 for `npm run build:preview`: that file can be opened by anyone it is shared with.
+
+## The phone app for the App Store and Google Play
+
+The phone app (operatives and site managers) can be built on its own and packaged with Capacitor:
+
+```
+npm run build:phone
+```
+
+```
+npm run app:sync
+```
+
+The projects are in `ios/` and `android/`. The steps, the accounts Vardil needs, the GitHub
+workflow that makes the builds, and what is not done yet are in `docs/app-stores.md`.

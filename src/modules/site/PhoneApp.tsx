@@ -74,6 +74,26 @@ export function PhoneAppView() {
   );
 }
 
+/**
+ * The app on its own, with nothing of the office around it (21 Nov): what the packaged iPhone and
+ * Android app shows, built with `npm run build:phone`. It opens on the sign-in by mobile number,
+ * for whoever last used this phone. It fills the screen and keeps clear of the notch and the
+ * home bar. Still sample data kept on the phone: the real server comes before the public stores.
+ */
+export function StandalonePhone() {
+  const db = useData((s) => s.db);
+  const day = useDay();
+  const operativeId = usePrefs((s) => s.operativeId);
+  const everyone = db.people.filter(onPhoneApp).sort((a, b) => a.name.localeCompare(b.name));
+  const owner = everyone.find((p) => p.id === operativeId) ?? everyone[0];
+  if (!owner) return null;
+  return (
+    <div className="mx-auto grid min-h-dvh w-full max-w-[32rem] bg-canvas" style={{ paddingTop: "env(safe-area-inset-top)", paddingBottom: "env(safe-area-inset-bottom)" }} data-app="phone">
+      <PhoneApp key={owner.id} owner={owner} day={day} />
+    </div>
+  );
+}
+
 const nowStampLocal = nowStamp;
 
 /** One phone: signed in or not, then the home screen for whoever is signed in. */

@@ -50,6 +50,12 @@ from `more-ways-in` at 9d30814 (that round not yet in `main`, so this one carrie
 GitHub, and the artifact "Vardil Works master demo" republished from it. See "Sales and Admin,
 21 Nov" further down. Not merged into `main` until Oisin says.
 
+**Finance and quick adds, 21 Nov (later still):** decisions 259 to 273, built on the branch
+`finance-quick-adds` from `sales-and-admin` at f177637 (so it carries the two rounds before it,
+neither yet in `main`), pushed to GitHub, and the artifact "Vardil Works master demo" republished
+from it. See "Finance and quick adds, 21 Nov" further down, and `docs/app-stores.md` for the phone
+app's road to the App Store and Google Play. Not merged into `main` until Oisin says.
+
 ## Start here (handed over 16 Nov 2026)
 
 Aodhan built this with Claude up to the end of step 1. From 16 Nov his co-founder develops
@@ -537,6 +543,28 @@ made an app). Ten question buttons in three rounds, the Admin one with sketches:
 | 257 | The old Settings | Branding, Region and About this demo are tabs of Admin, Settings (his pick). Their addresses (/settings...) are unchanged, and the account menu's Settings still opens Branding, now inside Admin. Who may open them is unchanged (the settings department) |
 | 258 | Questions for the onboarding form | How long a lost tender stays before the archive (90 days in the demo), and whether a job's estimated margin may be typed over once it came from a tender |
 
+Decisions made by Oisin on the master demo, later still on 21 Nov 2026 (his list, with two
+pictures: the Send invoice box, and Oldstone's own "Credit Note" paper). Seventeen question buttons
+in five rounds; he picked the recommended answer each time unless it says otherwise:
+
+| # | Question | Decision |
+|---|---|---|
+| 259 | Sage in Finance | "The sage export should only be in the Projects under timesheets": the accounts export is out of Finance (the Sage export tab, "In Sage" on the invoice lists and pages, "Export to Sage now"). The hours export for Sage Payroll stays where it was, Resources, Timesheet, Payroll export. The code is kept behind one constant, `ACCOUNTS_EXPORT` in `src/lib/accounts-export.ts` (false); `/invoicing/export` goes to Finance |
+| 260 | Profit by job | Bars, a row per project (his pick): money in above money out. Money in is solid for what the client has paid, lighter for invoiced and not paid yet, and an empty dashed outline for what is still on the contract (his pick: paid and invoiced shown apart). A row opens the job: Money in (each invoice, paid or not), then Money out (wages by person, costs by heading). The table is kept as a second view, Bars or Table |
+| 261 | The attachment in the Send box | A card under the message (his pick): a small picture of the page, the file's name, Preview (the whole page as the client will open it, with the number and due date it will go out under) and Download |
+| 262 | The invoice paper | Oldstone's layout, for everyone (his pick): the title top left in the firm's colour, the logo or the firm's name top right; who it is to, the firm's address and its contact details in three columns; the number, date, due date, contract number and site on the right; Description and Amount only (his pick), with a line's quantity and rate written into its description; Subtotal, VAT and Total; payment terms and bank details; VAT and company numbers at the foot. The screen and the PDF are drawn from the same `InvoiceDoc` |
+| 263 | Invoice design | Only what is needed to send an invoice: Logo (upload a picture, shrunk in the page; it is the firm's one logo, his pick, so it changes the top bar too; Remove logo), On the page (title, address, phone, email, website, VAT number, company number), Getting paid (bank details, terms, last line), What is shown (logo, bank details, site address). The coloured rule switch went |
+| 264 | "Credit Note" | His answer, typed: "a credit note is the invoice that is sent to the client". So it is Oldstone's name for the invoice, not a credit against one: a title box, set to Invoice (his pick). Whatever is typed heads the page, and the labels follow ("Credit Note" gives "Credit No." and "Total Credit"; `paperTitle`, `titleStem` in `lib/invoices.ts`). Per client in Vardil HQ too |
+| 265 | The managing director steps in | "Managing director can give approval above the lower ranks if he wants and goes into it manually but it does not come onto his dashboard until it passes the steps to get to him." Everything with steps (his pick): invoices from suppliers and subcontractors, crew requests still with a site manager, and overtime claims and receipts waiting on a site manager. His dashboard and Admin, Requests count only what has reached him. Admin, Requests ends with "Still with a site manager (n)", shut until he opens it, where he can step in on any of them; the box says whose step is skipped, and the invoice's history and the Activity log say "ahead of the site manager's step" (`SupplierInvoice.aheadOfSite`, `SiteRequest.steppedInBy`) |
+| 266 | A to-do from any screen | In the top bar (his pick), beside the search, on every office screen: What, By when (the next working day to start), For (mine, or a colleague's, his pick), and "Link it to this screen", which keeps the screen it was added from. The Dashboard's To do shows who it is from, "Open" and the screen, and a second list, Given to others, which shows when they tick it off. On a phone the bar has one plus button, which asks which |
+| 267 | A file to be sorted, from any screen | The second button in the top bar (his pick: quick add from any screen): pick the project (live jobs, then the archive), choose or photograph the file. It waits in Files, To be sorted, listed under that project's name until someone puts it in a folder; the filing suggestion starts from that project. To be sorted is grouped by project, "No project yet" last, with its own Add file |
+| 268 | All projects | In place of Completed: every job, with a look-up (code, name, client, place, site manager) and four filters (his pick: all four): Status (All, Live, Not started, Finished), Handover (sent or not), Site manager, Final account on hold. Finished jobs show a Handover column with Draft handover. The filters are remembered. `/projects/completed` opens it on Finished |
+| 269 | Files | Live projects first, then "Archive: finished jobs", shut until opened. The search box searches every project, live and archived, by file or project name, and marks what comes from the archive |
+| 270 | Paid or not paid | Mid-round: "make a way of marking the status invoives whether they are paid or not in the right section". Three places (his picks): Payment claims has a Paid column per job and Mark paid or Undo paid on each invoice under it; every invoice list has an All, Not paid, Paid switch (client invoices, suppliers, subcontractors); and a project's Costs tab ends with its invoices in and out, each marked, with Mark paid for whoever handles invoices |
+| 271 | The phone app on the App Store and Play Store | Vardil has a registered company and nothing else yet (no Apple Developer account, no Google Play account, no Mac). Test builds first (his pick): today's phone app packaged for TestFlight and Play internal testing; a public listing after the real server. Built: the phone app as a build of its own (`npm run build:phone`), Capacitor 8 projects in `ios/` and `android/`, a stand-in icon, a GitHub workflow, and `docs/app-stores.md` with the steps only Vardil can take. To confirm before the first upload: the app's permanent id (`com.vardil.site`) and its name ("Vardil Site") |
+| 272 | Built as defaults, for him to confirm | Each row of bars is scaled to its own job (the contract, or the costs if they have passed it), so a small job's bars are as wide as a big one's. An overtime claim or receipt on a site goes to that site's manager first in every set-up, and reaches the managing director's list only through "Still with a site manager". A to-do given to someone else cannot be changed by them, only ticked off |
+| 273 | Questions for the onboarding form | What the firm calls the paper it sends a client (Invoice, Credit Note, Payment Claim); whether lines show quantities and rates; who may step in ahead of a site manager; who may give a to-do to whom; who marks invoices paid; whether accounts want an export to their accounts package at all |
+
 Standing preferences (these come from Aodhan and are not optional):
 
 - UK English. No em dashes or en dashes anywhere: code comments, interface text, notes, chat.
@@ -581,6 +609,8 @@ npm test             # run all tests
 npm run typecheck    # types only (the app, then the server functions)
 npm run hash-password -- "a password"   # for local-mode login, see .env.example
 npm run build:preview   # one self-contained HTML file in dist-preview/, for a quick look without a server
+npm run build:phone     # the phone app on its own, into dist-phone/ (what the iPhone and Android apps hold)
+npm run app:sync        # build:phone, then copy it into ios/ and android/ (Capacitor). See docs/app-stores.md
 sh tests/browser/run_all.sh   # every browser suite (needs the site built and served, see the file)
 python3 tests/functions/fn_check.py   # Ask AI's server function in Cloudflare's local runtime (needs dist-access and Wrangler)
 ```
@@ -2337,6 +2367,100 @@ Customers, Admin's Settings, the phone's bar.
   tender lists by name.
 - A customer's margins are a plain average of their jobs, so a small job counts as much as a big
   one. Reports, Gross margin weights by revenue.
+- A real phone, Safari and Firefox, the hosted build behind Cloudflare.
+
+## Finance and quick adds, 21 Nov (decisions 259 to 273)
+
+Branch `finance-quick-adds`, from `sales-and-admin` at f177637. DATA_VERSION 31.
+
+**Built.**
+
+- **The invoice paper** (`lib/invoices.ts`, `invoicing/shared.tsx`, `lib/pdf.ts`): `InvoiceDoc` is
+  now `{ title, number, stamp, seller: { name, address, contact, registration }, billTo, facts,
+  lines: { description, amount }[], totals, notes, bank, footer, showLogo }`. `InvoiceDesign`
+  gains `title` and `website`; `paperTitle`, `titleStem` and `asSent` (a draft as it will go out)
+  are new. `InvoicePaper` and the PDF's `layout()` both draw Oldstone's layout from it.
+- **The Send box** (`AttachedInvoice` in `invoicing/shared.tsx`): the card, the Preview box and
+  Download. The picture on the card is the page itself drawn at one sixth of its size.
+- **Invoice design** (`invoicing/Templates.tsx`): Logo by upload (`PickFile`, `shrinkImage`, saved
+  as `brand.logoUrl`), On the page, Getting paid, What is shown. Vardil HQ's client page has the
+  title and website too (`DESIGN_TEXT` in `lib/apps.ts`, `staff/ClientPage.tsx`).
+- **Sage out of Finance**: `ACCOUNTS_EXPORT` (false) hides the tab (`app/apps.ts`), the sidebar
+  group (`departments.ts`), the screen (`SageExport.tsx` sends you to Finance), and the "In Sage"
+  marks in `ClientInvoices.tsx`, `InvoicePage.tsx` and `Purchases.tsx`.
+- **Profit by job** (`profit/Profitability.tsx`; rules `moneyIn` and `jobBars` in
+  `lib/profitability.ts`): `BarKey`, `JobBarRow` (the whole row is a button), and the job's box
+  opening with a Money in table before Money out.
+- **Paid or not paid**: `PaidSwitch` in `invoicing/shared.tsx`; `paidState` and `jobPaidShown` in
+  `lib/claims.ts`; `invoicing/Claims.tsx` (the Paid column, Mark paid and Undo paid under a job);
+  `ClientInvoices.tsx` and `Purchases.tsx` (the switch); `projects/JobInvoices.tsx` at the foot of
+  a project's Costs tab.
+- **All projects** (`projects/AllProjects.tsx`, rules in `lib/project-filter.ts`): the look-up and
+  the four filters, kept with `useScreenState("all-projects")`. `Completed` is now a redirect.
+- **Files** (`files/Files.tsx`): Live projects, then the archive; the search across both; To be
+  sorted grouped under each project's name. `FileItem.forProjectId`, `addLooseFile`, and rule 0
+  of `suggestFiling` in `lib/filing.ts`.
+- **The managing director's steps** (`lib/requests.ts`): `firstStepOf`, `withSiteManagers`,
+  `withSiteManagersCount`; `directorQueue` leaves out overtime claims and receipts that have a
+  site manager's step first. `lib/boxes.ts` takes `director` and counts only
+  `waitingForDirector` for him. Admin, Requests has the step-in section; `stepInOnCrewRequest`
+  and `approvePurchase` (which marks `aheadOfSite`) in actions; `ApproveDialog` says whose step
+  is skipped.
+- **Quick adds** (`app/QuickAdd.tsx`, in the top bar from `Shell.tsx`): `QuickAddButtons`,
+  `QuickTodoDialog`, `QuickFileDialog`, `screenName`. `addTodo` takes `to`, `from` and `forName`;
+  `todoOwner`, `todosFor`, `todosGivenBy` in `lib/renewals.ts`; the Dashboard's To do panel uses
+  them. `Todo.from`, `Todo.forName`.
+- **Sample data**: one loose file for C722 (a stone sample photo), a to-do from Tadhg Morrissey
+  for the managing director linked to C722, and one the managing director gave Maeve Quirke.
+- **The phone app as an app of its own**: `StandalonePhone` in `site/PhoneApp.tsx`,
+  `src/phone/main.tsx` and `PhoneOnly.tsx`; `phoneEntry` in `vite.config.ts` swaps the entry when
+  `VITE_APP=phone` (`npm run build:phone`, into `dist-phone/`, 1.4 MB, none of the office
+  screens in it). `capacitor.config.ts`; `ios/` and `android/` (Capacitor 8.6, iOS 15 and Android
+  7 upward, target API 36); camera and photo wording in `ios/App/App/Info.plist`; the Android
+  upload key read from the build's environment in `android/app/build.gradle`;
+  `.github/workflows/phone-app.yml` (run by hand; Android always, iPhone to TestFlight once
+  `IOS_READY` is set); `docs/app-stores.md`. `index.html` has `viewport-fit=cover`, which changes
+  nothing on the web.
+
+**Tested.** 877 automated tests in 88 files (new: `src/lib/project-filter.test.ts`,
+`src/lib/finance-quick-adds.test.ts`, `src/data/finance-quick-adds.test.ts`; `invoices`, `pdf`, `overview` and
+`snapshot` tests changed), both type checks. New browser suite
+`tests/browser/finance_quick_check.py`, 110 checks, all passing, no console errors: the Send box's
+card, its small picture, Preview with the number it will go out under, the page's headings and
+totals, Download PDF and the PDF read back with pdftotext; Invoice design's sections, a logo
+uploaded onto the paper and the top bar, the title box turning the page into a Credit Note and
+back, Remove logo; no Sage tab, column or address in Finance and Payroll export still under
+Timesheet; the bars (a row per live site, the outline, paid and invoiced inside it, the key), a
+job's box, finished jobs, the table; Mark paid with its confirm box and Undo on Payment claims,
+the switch on all four lists, a project's Costs tab; All projects (counts against the records,
+each filter, the look-up, Clear, remembered, the old address); Files (live first, the archive
+shut, the search finding an archived job and file); a file added from the top bar waiting under
+its project's name; a to-do refused when empty, linked to the screen, given to accounts, seen
+on her list as from the managing director and ticked off; the dashboard counting only invoices
+that have reached him, the step-in list, the warning, the approval marked ahead of the site
+manager and on To be paid; phone width on six screens, the one plus button; dark mode with the
+paper staying white; and the phone-only build served from `dist-phone` (its own first screen, no
+office frame, code then password then the tiles, no request leaving it, none of the office
+screens in its files). `master_check.py` 47 of 47, `easier_check.py` 70 of 70 (Completed is All
+projects), `ways_in_check.py` 67 of 67, `sales_admin_check.py` 59 of 59. Screenshots read by
+eye: the Send box, the preview, the PDF, the bars, All projects, Admin's step-in list, the
+dashboard, the top bar on a phone, the phone app's first screen and home.
+
+**Not tested, and known gaps.**
+
+- **No iPhone or Android app has been built.** An Android build needs Google's tools, which the
+  build machine here could not download, and an iPhone build needs a Mac with Xcode 26. The
+  workflow and the Gradle signing lines are written and not run.
+- The packaged app is today's demo phone: sample data kept on the phone, a code shown on screen
+  in place of a text, and a stand-in for fingerprint. It opens as the demo's operative. Right for
+  test builds, not for a public listing (see `docs/app-stores.md`).
+- The app icon is drawn from the demo's favicon, not Vardil's mark.
+- The 28 older browser suites and `csp_check.py`, as before.
+- Ask AI was not tried with the model; its summary still has an "exported to accounts" column
+  for client invoices, and knows nothing yet of to-dos given to others or the step-in list.
+- Client invoices still have a status "Held" and an export stamp in the records; only the
+  screens changed.
+- A to-do given to someone has no notice beyond their Dashboard.
 - A real phone, Safari and Firefox, the hosted build behind Cloudflare.
 
 ## Build status

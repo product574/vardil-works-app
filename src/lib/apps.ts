@@ -86,7 +86,7 @@ export type ClientLook = {
   design: LookDesign;
 };
 
-const DESIGN_TEXT = ["address", "phone", "email", "vatNumber", "companyNumber", "bankName", "iban", "bic", "terms", "footer"] as const;
+const DESIGN_TEXT = ["title", "address", "phone", "email", "website", "vatNumber", "companyNumber", "bankName", "iban", "bic", "terms", "footer"] as const;
 const DESIGN_SWITCH = ["showLogo", "showBank", "showSite", "rule"] as const;
 /** Written out here rather than imported, so the server's own build needs nothing from the page's. */
 export type LookDesign = Partial<Record<(typeof DESIGN_TEXT)[number], string> & Record<(typeof DESIGN_SWITCH)[number], boolean>>;

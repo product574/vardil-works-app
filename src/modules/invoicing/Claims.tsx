@@ -1,7 +1,9 @@
 import { CaretDown, CaretRight } from "@phosphor-icons/react";
 import { Fragment, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { CLAIM_LABEL, CLAIM_TONE, claimRows, claimsDue, claimSummary, monthOf } from "@/lib/claims";
+import { unmarkInvoicePaid } from "@/data/actions";
+import type { SalesInvoice } from "@/data/types";
+import { CLAIM_LABEL, CLAIM_TONE, claimRows, claimsDue, claimSummary, jobPaidShown, monthOf, type PaidShown, paidState } from "@/lib/claims";
 import { dFull, dShort, plural } from "@/lib/format";
 import { money0, money2 } from "@/lib/money";
 import { invoiceNo } from "@/lib/billing";
@@ -10,7 +12,7 @@ import { daysBetween } from "@/lib/status";
 import { Badge, Button, cx, PageBody, PageHead, Panel } from "@/ui";
 import { toast } from "@/ui/toast";
 import { DraftInvoiceDialog } from "./ClientInvoices";
-import { useInv } from "./shared";
+import { ClientPaidDialog, PaidSwitch, useInv } from "./shared";
 
 const monthName = (d: string) => new Date(`${monthOf(d)}-01T12:00:00Z`).toLocaleDateString("en-IE", { month: "long", timeZone: "UTC" });
 
@@ -26,8 +28,13 @@ export function PaymentClaims() {
   const navigate = useNavigate();
   const [open, setOpen] = useState<string | null>(null);
   const [drafting, setDrafting] = useState<string | null>(null);
-  const rows = claimRows(db, day);
-  const sum = claimSummary(rows);
+  const [paying, setPaying] = useState<SalesInvoice | null>(null);
+  const [paidShown, setPaidShown] = useState<PaidShown>("all");
+  const every = claimRows(db, day);
+  const sum = claimSummary(every);
+  const stateOf = (projectId: string) => paidState(db.salesInvoices.filter((i) => i.projectId === projectId), day);
+  const rows = every.filter((r) => jobPaidShown(stateOf(r.project.id), paidShown));
+  const paidCounts = { unpaid: every.filter((r) => jobPaidShown(stateOf(r.project.id), "unpaid")).length, paid: every.filter((r) => jobPaidShown(stateOf(r.project.id), "paid")).length };
   const due = claimsDue(day, db.bankHolidays);
   const left = daysBetween(day, due);
   const money = access.seeValues;
@@ -43,6 +50,10 @@ export function PaymentClaims() {
           <Figure label="Still to go out" value={String(sum.toGo)} tone={sum.toGo ? "bad" : "ok"} />
           <Figure label="Due out by" value={dShort(due)} tone={left <= 5 && sum.toGo ? "bad" : undefined} />
         </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <PaidSwitch value={paidShown} onChange={setPaidShown} counts={paidCounts} />
+          <span className="text-[0.93rem] text-muted">{paidShown === "unpaid" ? "Jobs with an invoice sent and not paid yet." : paidShown === "paid" ? "Jobs where every invoice sent has been paid." : "Open a job to mark its invoices paid."}</span>
+        </div>
         <Panel className="overflow-x-auto">
           <table className="tbl" aria-label={`Payment claims for ${monthName(day)}`}>
             <thead>
@@ -53,6 +64,7 @@ export function PaymentClaims() {
                 {money && <th className="num">Claimed to date</th>}
                 {money && <th className="num">Left to claim</th>}
                 <th>{monthName(day)} claim</th>
+                <th>Paid</th>
                 <th aria-label="Actions" />
               </tr>
             </thead>
@@ -61,6 +73,7 @@ export function PaymentClaims() {
                 const p = r.project;
                 const c = client(p.clientId);
                 const isOpen = open === p.id;
+                const pay = stateOf(p.id);
                 const invoices = db.salesInvoices.filter((i) => i.projectId === p.id).sort((a, b) => (b.issuedOn ?? "9999").localeCompare(a.issuedOn ?? "9999"));
                 return (
                   <Fragment key={p.id}>
@@ -89,6 +102,20 @@ export function PaymentClaims() {
                           </span>
                         )}
                       </td>
+                      <td>
+                        {pay.sent === 0 ? (
+                          <span className="text-muted">Nothing sent yet</span>
+                        ) : (
+                          <>
+                            <Badge tone={pay.unpaid === 0 ? "ok" : pay.overdue ? "bad" : "warn"}>{pay.unpaid === 0 ? "All paid" : `${pay.unpaid} not paid`}</Badge>
+                            <span className="mt-0.5 block text-[0.87rem] text-muted">
+                              {pay.paid} of {pay.sent} paid
+                              {pay.unpaid > 0 && money ? `, ${money0(pay.owed, region)} owed` : ""}
+                              {pay.overdue > 0 ? `, ${pay.overdue} late` : ""}
+                            </span>
+                          </>
+                        )}
+                      </td>
                       <td className="text-right whitespace-nowrap">
                         {r.state === "to-issue" || r.state === "final" ? (
                           canEdit && (
@@ -108,7 +135,7 @@ export function PaymentClaims() {
                     {isOpen && (
                       <tr className="bg-side">
                         <td />
-                        <td colSpan={money ? 6 : 4} className="pt-0">
+                        <td colSpan={money ? 7 : 5} className="pt-0">
                           {invoices.length === 0 ? (
                             <p className="py-1 text-muted">Nothing invoiced on {p.code} yet.</p>
                           ) : (
@@ -116,14 +143,35 @@ export function PaymentClaims() {
                               {invoices.map((i) => {
                                 const st = stageOf(i, day);
                                 return (
-                                  <li key={i.id}>
-                                    <Link to={`/invoicing/client/${i.ref}`} className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 px-3 py-1.5 hover:bg-accent-soft">
-                                      <span className="w-24 font-medium">{invoiceNo(i)}</span>
-                                      <span className="min-w-0 flex-1 basis-56">{i.description}</span>
-                                      <span className="w-24 text-[0.93rem] text-muted">{i.issuedOn ? dShort(i.issuedOn) : "Not sent"}</span>
-                                      {money && <span className="w-28 text-right tabular-nums">{money2(i.net, region)}</span>}
-                                      <Badge tone={STAGE_TONE[st]}>{STAGE_LABEL[st]}</Badge>
+                                  <li key={i.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-1.5">
+                                    <Link to={`/invoicing/client/${i.ref}`} className="w-24 font-medium text-accent-ink underline-offset-2 hover:underline">
+                                      {invoiceNo(i)}
                                     </Link>
+                                    <span className="min-w-0 flex-1 basis-56">{i.description}</span>
+                                    <span className="w-24 text-[0.93rem] text-muted">{i.issuedOn ? dShort(i.issuedOn) : "Not sent"}</span>
+                                    {money && <span className="w-28 text-right tabular-nums">{money2(i.net, region)}</span>}
+                                    <Badge tone={STAGE_TONE[st]}>{st === "paid" && i.paidOn ? `Paid ${dShort(i.paidOn)}` : STAGE_LABEL[st]}</Badge>
+                                    {/* Paid or not, marked right here (21 Nov): the same confirm box and Undo as on the invoice list. */}
+                                    <span className="w-24 text-right">
+                                      {canEdit && (st === "sent" || st === "overdue") && (
+                                        <Button size="sm" onClick={() => setPaying(i)} aria-label={`Mark ${invoiceNo(i)} paid`}>
+                                          Mark paid
+                                        </Button>
+                                      )}
+                                      {canEdit && st === "paid" && (
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          aria-label={`Undo paid for ${invoiceNo(i)}`}
+                                          onClick={() => {
+                                            unmarkInvoicePaid(i.id);
+                                            toast(`${invoiceNo(i)} is not paid again`);
+                                          }}
+                                        >
+                                          Undo paid
+                                        </Button>
+                                      )}
+                                    </span>
                                   </li>
                                 );
                               })}
@@ -137,7 +185,7 @@ export function PaymentClaims() {
               })}
             </tbody>
           </table>
-          {rows.length === 0 && <p className="px-3 py-3 text-muted">No live or finished jobs to claim on this month.</p>}
+          {rows.length === 0 && <p className="px-3 py-3 text-muted">{every.length === 0 ? "No live or finished jobs to claim on this month." : paidShown === "unpaid" ? "Nothing sent is waiting to be paid." : "No job has everything paid yet."}</p>}
         </Panel>
         <p className="text-[0.93rem] text-muted">
           A claim counts as issued once it has been sent to the client this month. Live jobs are claimed every month; a finished job needs its final account.{" "}
@@ -146,6 +194,7 @@ export function PaymentClaims() {
           </Link>
         </p>
       </PageBody>
+      <ClientPaidDialog invoice={paying} onClose={() => setPaying(null)} />
       <DraftInvoiceDialog
         open={!!drafting}
         projectId={drafting ?? undefined}

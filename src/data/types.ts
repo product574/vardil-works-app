@@ -301,6 +301,8 @@ export type SiteRequest = {
   dealtBy?: string;
   /** A named person asked for on one day, from the planner on the site manager's phone. */
   personId?: ID;
+  /** The managing director answered it himself before the site manager passed it on (21 Nov). */
+  steppedInBy?: string;
 };
 
 /**
@@ -708,7 +710,12 @@ export type Driver = { id: ID; name: string; phone: string; email: string; trade
 
 /** A to-do on the Dashboard: what and when. A renewal put on the list carries the vehicle and which renewal it is. */
 /** `complianceKey` and `to`: a Compliance row put on the list (merged 19 Nov), ticked off once it is renewed, and where it opens. */
-export type Todo = { id: ID; title: string; due: Day; vehicleId?: ID; item?: "tax" | "test" | "insurance"; complianceKey?: string; to?: string; createdAt: Stamp; createdBy: string; doneAt?: Stamp; doneBy?: string };
+/**
+ * One thing on someone's to-do list. `forName` (21 Nov) is whose list it is on when the person who
+ * added it gave it to a colleague; without it, it is on the list of whoever added it. `to` is the
+ * screen it was added from, to open again, and `from` that screen's name in words.
+ */
+export type Todo = { id: ID; title: string; due: Day; vehicleId?: ID; item?: "tax" | "test" | "insurance"; complianceKey?: string; to?: string; from?: string; forName?: string; createdAt: Stamp; createdBy: string; doneAt?: Stamp; doneBy?: string };
 
 // ── Files ─────────────────────────────────────────────────────────────────────
 
@@ -730,6 +737,8 @@ export type FileItem = {
   id: ID;
   /** Null means the general "to be sorted" area, in the Files section. */
   projectId: ID | null;
+  /** Added for this project from the top bar (21 Nov) and not put in a folder yet: it waits in To be sorted under the project's name. */
+  forProjectId?: ID;
   folder: string;
   name: string;
   kind: FileKind;
@@ -841,6 +850,8 @@ export type SupplierInvoice = {
   readStatus: "not_read" | "needs_review" | "confirmed";
   lines: { description: string; amount: number }[];
   allocations: Allocation[];
+  /** Approved by the managing director while it was still waiting on the site manager's step (21 Nov). */
+  aheadOfSite?: boolean;
   /** Who approved it into job costs, and when. */
   confirmedBy?: string;
   confirmedAt?: Stamp;

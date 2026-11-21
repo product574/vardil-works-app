@@ -4,7 +4,7 @@
  * folder with the reason, for a person to accept or change.
  */
 
-export type FilingInput = { name: string; kind: string; addedBy: string };
+export type FilingInput = { name: string; kind: string; addedBy: string; forProjectId?: string };
 export type FilingContext = {
   projects: { id: string; code: string; name: string; description: string; status: string }[];
   /** People and the live sites they are on. */
@@ -32,6 +32,9 @@ const list = (xs: string[]) => (xs.length < 2 ? xs.join("") : `${xs.slice(0, -1)
 
 export function suggestFiling(f: FilingInput, ctx: FilingContext): Filing {
   const category = f.kind === "drawing" ? "Drawings" : (FOLDER_RULES.find(([re]) => re.test(f.name))?.[1] ?? "Correspondence");
+  // 0. Whoever added it said which project it is for (the top bar's Add file, 21 Nov): only its folder is left to pick.
+  const said = f.forProjectId ? ctx.projects.find((p) => p.id === f.forProjectId) : undefined;
+  if (said) return { projectId: said.id, category, why: `${f.addedBy} added it for ${said.code}. It needs its folder` };
   const live = ctx.projects.filter((p) => p.status === "Live");
   const code = (id: string) => ctx.projects.find((p) => p.id === id)?.code ?? "";
 

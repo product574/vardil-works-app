@@ -214,10 +214,13 @@ export const billingEmail = (c: Pick<Client, "billingEmail" | "contactEmail"> | 
 
 /** How every invoice from the firm looks. Edited on Invoicing, Invoice design; kept with the branding. */
 export type InvoiceDesign = {
+  /** The word printed at the top of the page (21 Nov): "Invoice", or a firm's own, such as "Credit Note". The labels follow it. */
+  title: string;
   /** One line each: street, town, county. */
   address: string;
   phone: string;
   email: string;
+  website: string;
   vatNumber: string;
   companyNumber: string;
   bankName: string;
@@ -230,17 +233,30 @@ export type InvoiceDesign = {
   showBank: boolean;
   /** The site address and our project code, under the client's own order number. */
   showSite: boolean;
-  /** A rule in the brand colour under the heading. */
+  /** No longer printed (21 Nov: the layout has no rule under the heading). Kept so saved designs still load. */
   rule: boolean;
 };
+
+/** The title as it prints: what the firm typed, or "Invoice". */
+export const paperTitle = (design: Pick<InvoiceDesign, "title">) => design.title.trim() || "Invoice";
+/**
+ * The word the labels are built from: "Credit Note" gives "Credit" ("Credit No.", "Total Credit"),
+ * as on Oldstone's own paper; anything else is used whole ("Invoice No.").
+ */
+export function titleStem(title: string) {
+  const words = title.trim().split(/\s+/).filter(Boolean);
+  return words.length > 1 && /^note$/i.test(words.at(-1)!) ? words.slice(0, -1).join(" ") : words.join(" ") || "Invoice";
+}
 
 /** Starting values, all invented. Each region has its own address and number formats. */
 export function defaultDesign(region: Region, emailDomain: string): InvoiceDesign {
   const uk = region === "UK";
   return {
+    title: "Invoice",
     address: uk ? "Unit 4, Lakeland Business Park\nKendal\nCumbria LA9 0XX" : "Unit 4, Oranmore Business Park\nOranmore\nCo. Galway H91 XX00",
     phone: uk ? "01539 555 0100" : "091 555 0100",
     email: `accounts@${emailDomain}`,
+    website: `www.${emailDomain}`,
     vatNumber: uk ? "GB 000 0000 00" : "IE 0000000AB",
     companyNumber: uk ? "00000000" : "000000",
     bankName: "Sample Bank",
@@ -257,22 +273,24 @@ export function defaultDesign(region: Region, emailDomain: string): InvoiceDesig
 
 /** Everything printed on one invoice, already in words, so the screen and the PDF cannot differ. */
 export type InvoiceDoc = {
+  /** The word at the top of the page, in the firm's colour. */
   title: string;
   number: string;
   /** PAID, DRAFT or nothing. */
   stamp: "" | "Paid" | "Draft";
-  seller: { name: string; address: string[]; contact: string[]; registration: string[] };
+  /** The firm: its name and address in one block, phone, email and website in another, and what prints at the foot (VAT and company numbers). */
+  seller: { name: string; address: string[]; contact: string[]; registration: [string, string][] };
   billTo: string[];
-  /** Label and value: invoice date, due date, order number, our reference, site. */
+  /** Label and value, the number first: "Invoice No.", date, due, contract number, the client's order, site. */
   facts: [string, string][];
-  lines: { description: string; qty: string; unit: string; rate: string; amount: string }[];
+  /** Description and amount only (21 Nov). A line priced by quantity says so in its description. */
+  lines: { description: string; amount: string }[];
   totals: { label: string; value: string; strong?: boolean }[];
   /** Notes typed on the invoice, then the payment terms. */
   notes: string[];
   bank: string[];
   footer: string;
   showLogo: boolean;
-  rule: boolean;
 };
 
 const qtyText = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2).replace(/0$/, ""));
@@ -283,41 +301,54 @@ export function invoiceDoc(a: { invoice: SalesInvoice; client: Client | undefine
   const { invoice: i, client, project, design, region } = a;
   const issued = i.status === "Invoiced" || i.status === "Paid";
   const terms = client?.termsDays ?? 30;
+  const title = paperTitle(design);
+  const stem = titleStem(title);
   const facts: [string, string][] = [
-    ["Invoice date", issued ? longDate(i.issuedOn) : "On sending"],
+    [`${stem} No.`, invoiceNo(i)],
+    ["Date", issued ? longDate(i.issuedOn) : "On sending"],
     ["Due", issued ? longDate(i.dueOn) : `${terms} days from sending`],
   ];
+  if (project) facts.push(["Contract No.", project.code]);
   if (i.poNumber) facts.push(["Your order", i.poNumber]);
-  if (design.showSite && project) {
-    facts.push(["Our reference", project.code]);
-    facts.push(["Site", [project.name, project.location, county(project.county, region)].filter(Boolean).join(", ")]);
-  }
+  if (design.showSite && project) facts.push(["Site", [project.name, project.location, county(project.county, region)].filter(Boolean).join(", ")]);
   const lines = printedLines(i);
   const vat = vatOf(i);
+  const plainInvoice = /^invoice$/i.test(title);
   return {
-    title: "Invoice",
+    title,
     number: invoiceNo(i),
     stamp: i.status === "Paid" ? "Paid" : issued ? "" : "Draft",
     seller: {
       name: a.company,
       address: design.address.split("\n").map((s) => s.trim()).filter(Boolean),
-      contact: [design.phone, design.email].filter(Boolean),
-      registration: [design.vatNumber && `${REGION[region].vatLabel} no. ${design.vatNumber}`, design.companyNumber && `Company no. ${design.companyNumber}`].filter((s): s is string => !!s),
+      contact: [design.phone, design.email, design.website].map((s) => s.trim()).filter(Boolean),
+      registration: [
+        [`${REGION[region].vatLabel} Reg. Number`, design.vatNumber.trim()],
+        ["Company No.", design.companyNumber.trim()],
+      ].filter((r): r is [string, string] => !!r[1]),
     },
     billTo: [client?.name ?? "", client ? `For the attention of ${client.contactName}` : "", ...(client?.address ?? "").split(",").map((s) => s.trim()), county(client?.county, region)].filter(Boolean),
     facts,
-    lines: lines.map((l) => ({ description: l.description, qty: qtyText(l.qty), unit: l.unit, rate: money2(l.rate, region), amount: money2(lineTotal(l), region) })),
+    // One amount a line. A line priced by quantity keeps its working in the description, so nothing is lost with the columns.
+    lines: lines.map((l) => ({ description: l.qty === 1 ? l.description : `${l.description} (${qtyText(l.qty)} ${l.unit} at ${money2(l.rate, region)})`, amount: money2(lineTotal(l), region) })),
     totals: [
       { label: "Subtotal", value: money2(i.net, region) },
       { label: `${REGION[region].vatLabel} at ${i.vatPct}%`, value: money2(vat, region) },
-      { label: i.status === "Paid" ? "Total paid" : "Total due", value: money2(r2(i.net + vat), region), strong: true },
+      { label: plainInvoice ? (i.status === "Paid" ? "Total paid" : "Total due") : `Total ${stem}`, value: money2(r2(i.net + vat), region), strong: true },
     ],
     notes: [...(i.notes ?? "").split("\n").map((s) => s.trim()).filter(Boolean), fill(design.terms, { terms: String(terms) })].filter(Boolean),
     bank: design.showBank ? [design.bankName, design.iban && `IBAN ${design.iban}`, design.bic && `BIC ${design.bic}`].filter((s): s is string => !!s) : [],
     footer: design.footer,
     showLogo: design.showLogo,
-    rule: design.rule,
   };
+}
+
+/**
+ * The invoice as it will go when a draft is sent: with the number, date and due day it takes at
+ * that moment, so the attachment can be looked at before Send is pressed (21 Nov).
+ */
+export function asSent<T extends Pick<SalesInvoice, "status" | "issuedOn" | "dueOn" | "accountsNo">>(i: T, number: string, today: string, dueOn: string): T {
+  return i.status === "To invoice" || i.status === "Held" ? { ...i, status: "Invoiced", accountsNo: number, issuedOn: today, dueOn } : i;
 }
 
 /** The file name of an invoice's PDF: "SI-10412 ABC Construction.pdf". */

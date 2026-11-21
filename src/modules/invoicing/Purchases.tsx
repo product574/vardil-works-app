@@ -4,7 +4,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { readSupplierInvoice, reopenSupplierInvoice, sendForApproval, setApprovalLimit, takeBackPurchase, unmarkPurchasePaid } from "@/data/actions";
 import { usePrefs } from "@/data/store";
 import type { CostCategoryKey, Db, PayChain, SupplierInvoice } from "@/data/types";
-import { PACKAGE } from "@/lib/accounts-export";
+import { ACCOUNTS_EXPORT, PACKAGE } from "@/lib/accounts-export";
 import { dFull, dShort, plural, tOf } from "@/lib/format";
 import { allocationBalance, jobRefMatches, suggestCategory } from "@/lib/job-costs";
 import { money0, money2, r2 } from "@/lib/money";
@@ -15,6 +15,8 @@ import { Button, cx, Dialog, Empty, NumInput, PageBody, PageHead, Panel, Section
 import { toast } from "@/ui/toast";
 import { AddInvoiceDialog } from "./AddInvoice";
 import { ApproveDialog, CopyLink, PaidDialog, PurchaseBadge, SendBackDialog, usePurchases } from "./purchase-shared";
+import { PaidSwitch } from "./shared";
+import type { PaidShown } from "@/lib/claims";
 import { PORTAL } from "@/lib/apps";
 
 // Money out: invoices from suppliers and subcontractors. Each is checked, approved into job
@@ -72,7 +74,11 @@ function PurchaseQueue({ party }: { party: Party }) {
     setGoTo(null);
     navigate(purchaseAddress(added));
   }, [added, navigate]);
-  const mine = db.supplierInvoices.filter((s) => partyOf(s) === party);
+  const [paidShown, setPaidShown] = useState<PaidShown>("all");
+  const every = db.supplierInvoices.filter((s) => partyOf(s) === party);
+  // Paid is paid; Not paid is everything still to be paid, whatever step it is at. A credit note is neither.
+  const inShown = (s: SupplierInvoice, shown: PaidShown) => shown === "all" || (shown === "paid" ? purchaseStage(s) === "paid" : purchaseStage(s) !== "paid" && purchaseStage(s) !== "credit");
+  const mine = every.filter((s) => inShown(s, paidShown));
   const siteOf = (s: SupplierInvoice) => project(s.allocations[0]?.projectId) ?? db.projects.find((p) => !!s.jobRef && jobRefMatches(s.jobRef, p.code));
   const live = (s: SupplierInvoice) => (siteOf(s)?.status === "Live" ? 0 : 1);
   const all =
@@ -81,8 +87,8 @@ function PurchaseQueue({ party }: { party: Party }) {
       : [...mine].sort((a, b) => live(a) - live(b) || (siteOf(b)?.code ?? "").localeCompare(siteOf(a)?.code ?? "") || a.supplier.localeCompare(b.supplier) || b.receivedAt.localeCompare(a.receivedAt));
   const heading = (s: SupplierInvoice) => (party === "supplier" ? GROUP[RANK[purchaseStage(s)]]! : siteOf(s) ? `${siteOf(s)!.code} ${siteOf(s)!.name}` : "No site yet");
   const open = all.find((s) => s.id === params.get("inv")) ?? all[0];
-  const todo = mine.filter(needsAccounts).length;
-  const waiting = mine.filter((s) => purchaseStage(s) === "approve").length;
+  const todo = every.filter(needsAccounts).length;
+  const waiting = every.filter((s) => purchaseStage(s) === "approve").length;
   return (
     <>
       <PageHead
@@ -111,7 +117,10 @@ function PurchaseQueue({ party }: { party: Party }) {
       )}
       <PageBody className="grid max-w-[92rem] grid-cols-1 items-start gap-4 lg:grid-cols-[15rem_minmax(0,1fr)]">
         <Panel>
-          <ul className="max-h-56 divide-y divide-line overflow-y-auto lg:max-h-[calc(100dvh-17rem)]" aria-label={party === "supplier" ? "Supplier invoices" : "Subcontractor invoices, by site"}>
+          <div className="border-b border-line px-2 py-2 [&>[role=tablist]]:flex-wrap">
+            <PaidSwitch value={paidShown} onChange={setPaidShown} counts={{ unpaid: every.filter((s) => inShown(s, "unpaid")).length, paid: every.filter((s) => inShown(s, "paid")).length }} />
+          </div>
+          <ul className="max-h-56 divide-y divide-line overflow-y-auto lg:max-h-[calc(100dvh-20rem)]" aria-label={party === "supplier" ? "Supplier invoices" : "Subcontractor invoices, by site"}>
             {all.map((s, i) => (
               <li key={s.id}>
                 {(i === 0 || heading(all[i - 1]!) !== heading(s)) && (
@@ -132,7 +141,7 @@ function PurchaseQueue({ party }: { party: Party }) {
               </li>
             ))}
           </ul>
-          {all.length === 0 && <Empty title="No invoices here yet">Press Add invoice to put the first one in.</Empty>}
+          {all.length === 0 && <Empty title={paidShown === "all" ? "No invoices here yet" : paidShown === "paid" ? "None paid yet" : "Nothing waiting to be paid"}>{paidShown === "all" ? "Press Add invoice to put the first one in." : "Press All to see every invoice."}</Empty>}
         </Panel>
         {open && <PurchaseDetail key={`${open.id}|${purchaseStage(open)}`} s={open} pin={() => setParams({ inv: open.id }, { replace: true })} />}
       </PageBody>
@@ -175,9 +184,9 @@ function PurchaseDetail({ s, pin }: { s: SupplierInvoice; pin: () => void }) {
     `Arrived ${viaWords(s)} on ${dFull(s.receivedAt.slice(0, 10))}${s.fileNo ? `, filed as ${s.fileNo}` : ""}`,
     s.sentBack && `Sent back by ${s.sentBack.by} on ${dFull(s.sentBack.at.slice(0, 10))}`,
     s.askedAt && `${s.via === "portal" ? "Sent in by" : "Checked by"} ${s.askedBy} on ${dFull(s.askedAt.slice(0, 10))}`,
-    s.confirmedAt && `Approved by ${s.confirmedBy} on ${dFull(s.confirmedAt.slice(0, 10))}`,
+    s.confirmedAt && `Approved by ${s.confirmedBy} on ${dFull(s.confirmedAt.slice(0, 10))}${s.aheadOfSite ? ", ahead of the site manager's step" : ""}`,
     s.paidOn && `Paid on ${dFull(s.paidOn)} by ${s.paidBy}${s.paidRef ? `, ${s.paidRef}` : ""}`,
-    s.exportedAt && `Went to ${PACKAGE} on ${dFull(s.exportedAt.slice(0, 10))}`,
+    ACCOUNTS_EXPORT && s.exportedAt && `Went to ${PACKAGE} on ${dFull(s.exportedAt.slice(0, 10))}`,
   ].filter((t): t is string => !!t);
 
   return (
@@ -407,7 +416,7 @@ function PurchaseDetail({ s, pin }: { s: SupplierInvoice; pin: () => void }) {
               {(stage === "pay" || stage === "credit") && (
                 <>
                   <p className="mr-auto max-w-[60ch] text-[0.93rem] text-muted">
-                    Approved by {s.confirmedBy} on {dFull(s.confirmedAt?.slice(0, 10))}. It is {credit ? "off" : "in"} the job costs of {codes}.{s.exportedAt ? ` ${PACKAGE} has had it since ${dShort(s.exportedAt.slice(0, 10))}.` : ""}
+                    Approved by {s.confirmedBy} on {dFull(s.confirmedAt?.slice(0, 10))}. It is {credit ? "off" : "in"} the job costs of {codes}.{ACCOUNTS_EXPORT && s.exportedAt ? ` ${PACKAGE} has had it since ${dShort(s.exportedAt.slice(0, 10))}.` : ""}
                   </p>
                   {(canEdit || mine) && !s.exportedAt && (
                     <Button
@@ -668,7 +677,7 @@ export function ToPay() {
               value={tab}
               onChange={(v) => setParams(v === "paid" ? { show: "paid" } : {})}
               options={[
-                { value: "pay", label: "To be paid", count: owed.count },
+                { value: "pay", label: "Not paid", count: owed.count },
                 { value: "paid", label: "Paid", count: db.supplierInvoices.filter((s) => purchaseStage(s) === "paid").length },
               ]}
             />
@@ -695,7 +704,7 @@ export function ToPay() {
                   <th>Approved</th>
                   <th>{tab === "pay" ? "To be paid by" : "Paid"}</th>
                   <th className="num">Total with VAT</th>
-                  <th>In {PACKAGE}</th>
+                  {ACCOUNTS_EXPORT && <th>In {PACKAGE}</th>}
                   <th aria-label="Actions" />
                 </tr>
               </thead>
@@ -734,7 +743,7 @@ export function ToPay() {
                       {money2(s.total, region)}
                       <span className="block text-[0.87rem] font-normal text-muted">{money2(s.subtotal, region)} before VAT</span>
                     </td>
-                    <td className="whitespace-nowrap">{s.exportedAt ? dShort(s.exportedAt.slice(0, 10)) : <span className="text-muted">Not yet</span>}</td>
+                    {ACCOUNTS_EXPORT && <td className="whitespace-nowrap">{s.exportedAt ? dShort(s.exportedAt.slice(0, 10)) : <span className="text-muted">Not yet</span>}</td>}
                     <td className="text-right whitespace-nowrap">
                       {canEdit &&
                         (tab === "pay" ? (

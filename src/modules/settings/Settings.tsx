@@ -227,7 +227,7 @@ export function About() {
             <dl>
               <Fact label="Today in the demo">{new Date(day + "T12:00:00Z").toLocaleDateString("en-IE", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC" })}</Fact>
               <Fact label="Set up for">
-                {brand.region === "UK" ? "United Kingdom" : "Ireland"}, exporting to {PACKAGE}
+                {brand.region === "UK" ? "United Kingdom" : "Ireland"}, with hours exported to {PACKAGE} Payroll
               </Fact>
               <Fact label="In it">
                 {db.projects.length} projects, {db.people.filter((p) => p.active).length} people, {db.quotes.length} quotes, {db.plant.length} items of plant, {db.vehicles.filter((v) => v.active).length} vehicles, {db.files.length} files

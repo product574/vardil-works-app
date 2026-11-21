@@ -182,3 +182,41 @@ export function profitState(netPct: number | null): "none" | "loss" | "thin" | "
   if (netPct < 0) return "loss";
   return netPct < THIN_PROFIT_PCT ? "thin" : "ok";
 }
+
+// ── Money in and out as bars (21 Nov) ─────────────────────────────────────────
+
+type Inv = { projectId: string; status: string; net: number };
+
+/** Money in on a job so far, before VAT: what the client has paid, and what is invoiced and not paid yet. */
+export type MoneyIn = { paid: number; unpaid: number; invoiced: number };
+export function moneyIn(projectId: string, invoices: Inv[]): MoneyIn {
+  const of = (status: string) => r2(invoices.filter((i) => i.projectId === projectId && i.status === status).reduce((s, i) => s + i.net, 0));
+  const paid = of("Paid");
+  const unpaid = of("Invoiced");
+  return { paid, unpaid, invoiced: r2(paid + unpaid) };
+}
+
+/**
+ * The bars of one job (Oisin, 21 Nov). Money in is drawn inside an empty outline as long as the
+ * contract value: the solid part is paid, the lighter part invoiced and not paid, and the empty
+ * rest is still to invoice. Money out is one bar under it. Every length is a share of the
+ * longest thing on the row (the contract, as a rule; the costs when they have passed it), so the
+ * two bars can be read against each other.
+ */
+export function jobBars(value: number | null, inn: MoneyIn, out: number) {
+  const contract = Math.max(value ?? 0, 0);
+  const scale = Math.max(contract, inn.invoiced, out, 1);
+  const pc = (n: number) => Math.round((Math.max(n, 0) / scale) * 1000) / 10;
+  return {
+    paid: pc(inn.paid),
+    unpaid: pc(inn.unpaid),
+    contract: pc(contract),
+    out: pc(out),
+    /** What is on the contract and not on an invoice yet. */
+    toInvoice: r2(Math.max(contract - inn.invoiced, 0)),
+    /** Invoiced so far less what it has cost so far: under zero, the costs are ahead of the money asked for. */
+    ahead: r2(inn.invoiced - out),
+    /** The costs have passed the whole contract value. */
+    over: contract > 0 && out > contract,
+  };
+}

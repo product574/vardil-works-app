@@ -30,13 +30,15 @@ export function directorQueue(db: Db, opts: { crewToOffice?: boolean } = {}): Di
     leave: db.holidays.filter((h) => h.status === "Requested").sort((a, b) => a.from.localeCompare(b.from)),
     // Requests still with a site manager have not been asked of the office yet.
     site: db.requests.filter((r) => (opts.crewToOffice ? r.status === "Open" : withOffice(r)) && !r.decision).sort((a, b) => a.neededFrom.localeCompare(b.neededFrom)),
-    claims: db.overtimeClaims.filter((c) => c.status === "Waiting").sort((a, b) => a.date.localeCompare(b.date)),
+    // An operative's claim for a site is the site manager's to answer first (21 Nov): it is not asked of the office until then.
+    claims: db.overtimeClaims.filter((c) => c.status === "Waiting" && !firstStepOf(c, db.projects)).sort((a, b) => a.date.localeCompare(b.date)),
     repairs: db.repairs.filter((r) => r.status === "Reported").sort((a, b) => a.at.localeCompare(b.at)),
     certs: db.certSubmissions.filter((c) => c.status === "Waiting").sort((a, b) => a.sentAt.localeCompare(b.sentAt)),
     toPay: notPaid(db.expenses),
     spend: db.spendRequests.filter((s) => s.status === "Waiting").sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
     // Reimbursements claimed from the site phone (17 Nov), oldest first.
-    expenses: db.expenses.filter((x) => x.status === "Waiting").sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
+    // The same goes for a receipt claimed for a site: the site manager approves it on his phone, and it goes to Ready to be paid.
+    expenses: db.expenses.filter((x) => x.status === "Waiting" && !firstStepOf(x, db.projects)).sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
     // Supplier invoices checked by accounts and over the limit they may approve, so waiting for
     // the managing director (Invoicing's rule, decision 76; shown here too since the two chats
     // were merged, 19 Nov). The same invoices are on Invoicing, To approve. Oldest first.
@@ -57,6 +59,35 @@ export function waitingForDirector(db: Pick<Db, "supplierInvoices" | "approvalLi
   if (chain === "site") return waiting.filter((s) => approveStep(s) === "final" && !s.siteStep);
   return waiting.filter((s) => partyOf(s) === "supplier" && s.subtotal > limit);
 }
+
+// ── Still with a site manager (Oisin, 21 Nov) ────────────────────────────────
+// "Managing director can give approval above the lower ranks if he wants and goes into it
+// manually but it does not come onto his dashboard until it passes the steps to get to him."
+// So what is still on an earlier step is left out of his queue and every count made from it, and
+// listed apart, at the foot of Admin, Requests, where he can step in.
+
+/**
+ * The site manager whose yes comes first on an overtime claim or a receipt: whoever runs the site
+ * it is for. Nobody when it is not for a site, the site has no manager, or it is the site
+ * manager's own (that goes straight to the office).
+ */
+export function firstStepOf(item: { projectId: string | null; personId: string }, projects: Pick<Project, "id" | "siteManagerId">[]): string | null {
+  const site = item.projectId ? projects.find((p) => p.id === item.projectId) : undefined;
+  return site?.siteManagerId && site.siteManagerId !== item.personId ? site.siteManagerId : null;
+}
+
+export type WithSiteManagers = { invoices: SupplierInvoice[]; site: SiteRequest[]; claims: OvertimeClaim[]; expenses: Expense[] };
+
+/** Everything still waiting on a site manager's step, oldest first: what the managing director may step in on. */
+export function withSiteManagers(db: Pick<Db, "supplierInvoices" | "requests" | "overtimeClaims" | "expenses" | "projects">): WithSiteManagers {
+  return {
+    invoices: db.supplierInvoices.filter((s) => purchaseStage(s) === "approve" && approveStep(s) === "site").sort((a, b) => (a.askedAt ?? "").localeCompare(b.askedAt ?? "")),
+    site: db.requests.filter((r) => withSite(r) && !r.decision).sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
+    claims: db.overtimeClaims.filter((c) => c.status === "Waiting" && !!firstStepOf(c, db.projects)).sort((a, b) => a.date.localeCompare(b.date)),
+    expenses: db.expenses.filter((x) => x.status === "Waiting" && !!firstStepOf(x, db.projects)).sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
+  };
+}
+export const withSiteManagersCount = (w: WithSiteManagers) => w.invoices.length + w.site.length + w.claims.length + w.expenses.length;
 
 /** Everything waiting, as one list of ids, for counts. */
 export function waitingOnDirector(db: Db, opts: { crewToOffice?: boolean } = {}): string[] {

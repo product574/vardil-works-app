@@ -2,6 +2,7 @@
  * The map of the whole app: every department in the bottom bar, and the short sidebar each
  * one shows. Adding a screen means adding a line here and a route in router.tsx.
  */
+import { ACCOUNTS_EXPORT } from "@/lib/accounts-export";
 import { AddressBook, Browsers, CalendarDots, ChartBar, ChartLineUp, ChatsCircle, DeviceMobile, EnvelopeSimple, FolderOpen, Gauge, GearSix, Handshake, HardHat, type Icon, Receipt, ShieldCheck, Truck, UserGear, UsersThree, Van } from "@phosphor-icons/react";
 import type { Brand } from "@/config/brand";
 import { totalUnread } from "@/lib/chat";
@@ -94,7 +95,6 @@ export const DEPARTMENTS: Department[] = [
         { to: "/projects/resources", label: "Resources today" },
         { to: "/projects/all", label: "All projects" },
         { to: "/projects/extras", label: "Variations and snagging", count: (db) => db.projects.filter((p) => p.invoiceHold).length, countTone: "warn" },
-        { to: "/projects/completed", label: "Completed" },
       ] },
       { label: "Site", items: [
         { to: "/projects/requests", label: "Requests", count: (db, _today, me) => openRequestCount(db, me) },
@@ -218,9 +218,9 @@ export const DEPARTMENTS: Department[] = [
         { to: "/invoicing/to-pay", label: "To be paid", count: (db) => db.supplierInvoices.filter((i) => purchaseStage(i) === "pay").length },
         { to: "/invoicing/costs", label: "Job costs" },
       ] },
-      { label: "Sage", items: [
+      ...((ACCOUNTS_EXPORT ? [{ label: "Sage", items: [
         { to: "/invoicing/export", label: "Sage export", count: (db) => db.salesInvoices.filter((i) => i.issuedOn && !i.exportedAt).length + db.supplierInvoices.filter((i) => i.readStatus === "confirmed" && !i.exportedAt).length },
-      ] },
+      ] }] : []) as NavGroup[]),
       { label: "Set-up", items: [
         { to: "/invoicing/design", label: "Invoice design" },
         { to: "/invoicing/email", label: "Email template" },

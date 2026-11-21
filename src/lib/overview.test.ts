@@ -5,7 +5,7 @@ import type { Db } from "@/data/types";
 import { approvalClient, rankApprovals } from "./approvals";
 import { recordsOverview, ticketWords } from "./overview";
 import { dueWords, outstanding, portalFeed } from "./portal";
-import { directorQueue, recentlyDecided, waitingOnDirector } from "./requests";
+import { directorQueue, firstStepOf, recentlyDecided, waitingOnDirector, withSiteManagers, withSiteManagersCount } from "./requests";
 
 // Monday 16 Nov 2026, the day Aodhan asked for the new overview.
 const DAY = "2026-11-16";
@@ -129,11 +129,27 @@ describe("requests waiting for the managing director's yes or no", () => {
 
   it("gathers leave, site requests, spending and supplier invoices over the sign-off limit", () => {
     const q = directorQueue(db);
-    expect([q.leave.length, q.site.length, q.spend.length, q.invoices.length, q.expenses.length]).toEqual([3, 4, 3, 2, 2]);
-    // Since 19 Nov the phone's own wait here too: two overtime claims, a repair reported, a
-    // certificate to check, and two approved reimbursements to mark paid.
-    expect([q.claims.length, q.repairs.length, q.certs.length, q.toPay.length]).toEqual([2, 1, 1, 2]);
-    expect(waitingOnDirector(db)).toHaveLength(20);
+    // Since 21 Nov what is still on a site manager's step is not asked of the managing director yet:
+    // one of the two receipts (the other is a site manager's own, so it is the office's) and both
+    // overtime claims are with Eoin Brosnan first.
+    expect([q.leave.length, q.site.length, q.spend.length, q.invoices.length, q.expenses.length]).toEqual([3, 4, 3, 2, 1]);
+    // Since 19 Nov the phone's own wait here too: a repair reported, a certificate to check, and
+    // two approved reimbursements to mark paid.
+    expect([q.claims.length, q.repairs.length, q.certs.length, q.toPay.length]).toEqual([0, 1, 1, 2]);
+    expect(waitingOnDirector(db)).toHaveLength(17);
+    // They are listed apart, for him to step in on: four invoices on the site step, two crew
+    // requests, the two overtime claims and the receipt.
+    const early = withSiteManagers(db);
+    expect([early.invoices.length, early.site.length, early.claims.length, early.expenses.length]).toEqual([4, 2, 2, 1]);
+    expect(withSiteManagersCount(early)).toBe(9);
+    // Nothing is in both lists.
+    const mine = new Set(waitingOnDirector(db));
+    expect([...early.invoices, ...early.site, ...early.claims, ...early.expenses].some((x) => mine.has(x.id))).toBe(false);
+    // A site manager's own receipt has no step before the office; nor has one that is not for a site.
+    const sm = db.projects[0]!.siteManagerId;
+    expect(firstStepOf({ projectId: db.projects[0]!.id, personId: sm }, db.projects)).toBeNull();
+    expect(firstStepOf({ projectId: null, personId: "p-101" }, db.projects)).toBeNull();
+    expect(firstStepOf({ projectId: db.projects[0]!.id, personId: "p-101" }, db.projects)).toBe(sm);
     // The two site requests already dealt with were agreed first.
     expect(db.requests.filter((r) => r.status === "Done").every((r) => r.decision === "Approved")).toBe(true);
   });

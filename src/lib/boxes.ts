@@ -11,7 +11,7 @@ import { dShort, plural } from "./format";
 import { owedOut, purchaseStage } from "./purchases";
 import { quoteTotal } from "./quotes";
 import { tenderWinRate } from "./reports";
-import { withOffice } from "./requests";
+import { waitingForDirector, withOffice } from "./requests";
 import { lastWeekStart, payrollStage } from "./payroll";
 import { daysBetween } from "./status";
 import { r2 } from "./money";
@@ -23,7 +23,8 @@ export type Bar = { label: string; parts: { label: string; value: number; tone: 
 export type Line = { text: string; to: string; tone: Tone };
 export type Box = { figures: Figure[]; bar: Bar; lines: Line[] };
 
-type Opts = { money: (n: number) => string; seeValues: boolean };
+/** `director`: the person looking gives the last yes on invoices, so only those that have reached that step are counted for them (21 Nov). */
+type Opts = { money: (n: number) => string; seeValues: boolean; director?: boolean };
 
 const OUT = new Set(["Sent", "Queried"]);
 const PRICING = new Set(["Draft", "Awaiting approval"]);
@@ -117,11 +118,12 @@ export function financeBox(db: Db, today: string, o: Opts): Box {
   const overdue = db.salesInvoices.filter((i) => i.status === "Invoiced" && !!i.dueOn && i.dueOn < today);
   const overdueValue = r2(overdue.reduce((s, i) => s + i.net * (1 + i.vatPct / 100), 0));
   const owed = owedOut(db.supplierInvoices, today);
-  const waiting = db.supplierInvoices.filter((s) => purchaseStage(s) === "approve").length;
+  // Nothing reaches the managing director's dashboard until it has passed the steps before his: an invoice still with a site manager is not counted for him.
+  const waiting = o.director ? waitingForDirector(db).length : db.supplierInvoices.filter((s) => purchaseStage(s) === "approve").length;
   const lines: Line[] = [
     ...(c.toGo ? [{ text: `${plural(c.toGo, "payment claim")} to issue by ${dShort(due)}`, to: "/invoicing/claims", tone: daysBetween(today, due) <= 5 ? ("bad" as Tone) : ("warn" as Tone) }] : []),
     ...(overdue.length ? [{ text: `${plural(overdue.length, "client invoice")} overdue${o.seeValues ? `, ${o.money(overdueValue)}` : ""}`, to: "/invoicing/invoiced", tone: "bad" as Tone }] : []),
-    ...(waiting ? [{ text: `${plural(waiting, "invoice")} from suppliers and subcontractors waiting for approval`, to: "/invoicing/approve", tone: "warn" as Tone }] : []),
+    ...(waiting ? [{ text: `${plural(waiting, "invoice")} from suppliers and subcontractors waiting for ${o.director ? "your approval" : "approval"}`, to: "/invoicing/approve", tone: "warn" as Tone }] : []),
   ];
   return {
     figures: [

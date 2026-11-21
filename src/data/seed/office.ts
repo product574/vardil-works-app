@@ -84,6 +84,10 @@ export function seedFiles(r: Rng, today: string, projects: Project[], meta: Map<
     ["Scanned document 0042.pdf", "pdf", -4, "Office scanner"],
   ];
   if (withLoose) for (const [name, kind, d, by] of loose) add({ projectId: null, folder: "General to be sorted", name, kind, category: "Unclassified", sizeKb: r.int(80, 2400), modified: workdays(today, d), addedBy: by, source: "Email" });
+  // One added from the top bar for a named project (21 Nov), so To be sorted opens with a file under a project's name.
+  // No random number is drawn for it, so nothing after it in the sample data moves.
+  const dunmoy = projects.find((p) => p.code === "C722");
+  if (withLoose && dunmoy) add({ projectId: null, forProjectId: dunmoy.id, folder: "General to be sorted", name: "Stone sample, east elevation.jpg", kind: "image", category: "Unclassified", sizeKb: 640, modified: today, addedBy: names.get(dunmoy.siteManagerId) ?? "Site manager", source: "Upload" });
 
   return files;
 }

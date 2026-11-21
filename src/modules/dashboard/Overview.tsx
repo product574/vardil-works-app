@@ -3,15 +3,15 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { APPS, type AppKey } from "@/app/apps";
 import { useAccess } from "@/data/access";
-import { actorName, addTodo, setTodoDone } from "@/data/actions";
+import { actorName, setTodoDone } from "@/data/actions";
 import { useData, useDay, usePrefs } from "@/data/store";
-import { addDays } from "@/lib/dates";
 import { dFull, dLong, plural } from "@/lib/format";
 import { money0 } from "@/lib/money";
 import { type Box as BoxData, financeBox, projectsBox, resourcesBox, salesBox, type Tone } from "@/lib/boxes";
 import { waitingOnDirector } from "@/lib/requests";
-import { todoLate } from "@/lib/renewals";
-import { Button, cx, Dialog, Field, PageBody, PageHead, Panel, Section } from "@/ui";
+import { todoLate, todosFor, todosGivenBy } from "@/lib/renewals";
+import { QuickTodoDialog } from "@/app/QuickAdd";
+import { Button, cx, PageBody, PageHead, Panel, Section } from "@/ui";
 import { toast } from "@/ui/toast";
 import { ApprovalsPanel } from "./ApprovalsPanel";
 import { RequestsBody } from "@/modules/admin/Requests";
@@ -27,7 +27,7 @@ export function Overview() {
   const day = useDay();
   const region = usePrefs((s) => s.brand.region);
   const access = useAccess();
-  const opts = { money: (n: number) => money0(n, region), seeValues: access.seeValues };
+  const opts = { money: (n: number) => money0(n, region), seeValues: access.seeValues, director: access.may("approveInvoices") };
   const appOpen = (key: AppKey) => APPS.find((a) => a.key === key)!.sections.flatMap((sec) => sec.tabs).find((t) => access.can(t.dept));
   const live = db.projects.filter((p) => p.status === "Live").length;
   const onSite = new Set(db.attendance.filter((a) => a.date === day).map((a) => a.personId)).size;
@@ -153,7 +153,9 @@ function TodoPanel() {
   const me = actorName(db);
   const [adding, setAdding] = useState(false);
   const [showDone, setShowDone] = useState(false);
-  const mine = db.todos.filter((t) => t.createdBy === me);
+  // A to-do is on the list of whoever it was given to, or whoever added it (21 Nov).
+  const mine = todosFor(db.todos, me);
+  const given = todosGivenBy(db.todos, me).sort((a, b) => Number(!!a.doneAt) - Number(!!b.doneAt) || a.due.localeCompare(b.due)).slice(0, 8);
   const open = mine.filter((t) => !t.doneAt).sort((a, b) => a.due.localeCompare(b.due));
   const done = mine.filter((t) => t.doneAt).sort((a, b) => b.doneAt!.localeCompare(a.doneAt!)).slice(0, 5);
   const late = open.filter((t) => todoLate(t, day)).length;
@@ -181,6 +183,7 @@ function TodoPanel() {
               <span className="min-w-0 flex-1">
                 <span className="block">{t.title}</span>
                 <span className={cx("text-[0.87rem]", todoLate(t, day) ? "font-medium text-bad" : "text-muted")}>{todoLate(t, day) ? "Was due" : "Due"} {dFull(t.due)}</span>
+                {t.createdBy !== me && <span className="ml-2 text-[0.87rem] text-muted">from {t.createdBy}</span>}
                 {t.vehicleId ? (
                   <Link to={`/fleet/vehicles/${t.vehicleId}`} className="ml-2 text-[0.87rem] font-medium text-accent-ink hover:underline">
                     Open the vehicle
@@ -188,15 +191,29 @@ function TodoPanel() {
                 ) : (
                   t.to && (
                     <Link to={t.to} className="ml-2 text-[0.87rem] font-medium text-accent-ink hover:underline">
-                      Open it
+                      {t.from ? `Open ${t.from}` : "Open it"}
                     </Link>
                   )
                 )}
               </span>
             </li>
           ))}
-          {open.length === 0 && <li className="px-4 py-2 text-muted">Nothing on your list. Add a job here, or use "To-do" on a renewal in Fleet or a row in Compliance.</li>}
+          {open.length === 0 && <li className="px-4 py-2 text-muted">Nothing on your list. Add one here, or with the To-do button at the top of any screen.</li>}
         </ul>
+        {given.length > 0 && (
+          <div className="border-t border-line px-4 py-2">
+            <p className="text-[0.93rem] font-medium">Given to others</p>
+            <ul aria-label="To-dos you gave to others" className="mt-1 grid gap-1">
+              {given.map((t) => (
+                <li key={t.id} className="flex flex-wrap items-baseline gap-x-2 text-[0.93rem]">
+                  <span className={cx("min-w-0", t.doneAt && "text-muted line-through")}>{t.title}</span>
+                  <span className="text-[0.87rem] text-muted">for {t.forName}</span>
+                  {t.doneAt ? <span className="text-[0.87rem] text-ok">Done</span> : <span className={cx("text-[0.87rem]", todoLate(t, day) ? "font-medium text-bad" : "text-muted")}>{todoLate(t, day) ? "was due" : "due"} {dFull(t.due)}</span>}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         {done.length > 0 && (
           <div className="border-t border-line px-4 py-2">
             <button type="button" className="text-[0.93rem] font-medium text-accent-ink hover:underline" onClick={() => setShowDone((v) => !v)}>
@@ -217,29 +234,7 @@ function TodoPanel() {
           </div>
         )}
       </Panel>
-      {adding && <AddTodo onClose={() => setAdding(false)} />}
+      {adding && <QuickTodoDialog plain onClose={() => setAdding(false)} />}
     </Section>
-  );
-}
-
-function AddTodo({ onClose }: { onClose: () => void }) {
-  const day = useDay();
-  const [title, setTitle] = useState("");
-  const [due, setDue] = useState(addDays(day, 7));
-  const [error, setError] = useState("");
-  const save = () => {
-    if (!title.trim()) return setError("Say what needs doing.");
-    addTodo({ title, due });
-    toast("Added to To do");
-    onClose();
-  };
-  return (
-    <Dialog open onClose={onClose} title="Add to To do" footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={save}>Add</Button></>}>
-      <div className="grid gap-3">
-        <Field label="What">{(id) => <input id={id} className="field" value={title} onChange={(e) => { setTitle(e.target.value); setError(""); }} placeholder="Book 231-G-4471 in for its service" />}</Field>
-        <Field label="Due">{(id) => <input id={id} type="date" className="field" value={due} onChange={(e) => e.target.value && setDue(e.target.value)} />}</Field>
-        <p role="alert" className="min-h-6 text-bad">{error}</p>
-      </div>
-    </Dialog>
   );
 }

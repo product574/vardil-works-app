@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Client, InvoiceQuery, Project, SalesInvoice } from "@/data/types";
-import { agedDebt, billedSoFar, billingEmail, DEFAULT_EMAIL, defaultDesign, doneNotBilled, draftStarts, dueWords, emailFor, exportRowOf, fill, firstName, invoiceDoc, leftToBill, linesNet, matches, nextAccountsNo, openQuery, pdfName, printedLines, routeWords, salesNominal, shows, stageOf, threadFor, inAgeBucket } from "./invoices";
+import { agedDebt, asSent, billedSoFar, billingEmail, DEFAULT_EMAIL, defaultDesign, doneNotBilled, draftStarts, dueWords, emailFor, exportRowOf, fill, firstName, invoiceDoc, leftToBill, linesNet, matches, nextAccountsNo, paperTitle, titleStem, openQuery, pdfName, printedLines, routeWords, salesNominal, shows, stageOf, threadFor, inAgeBucket } from "./invoices";
 
 const today = "2026-11-18";
 const inv = (over: Partial<SalesInvoice>): SalesInvoice => ({ id: "inv-1", ref: "INV-5201", projectId: "pr-C720", clientId: "c-02", description: "Stage payment 1: render removal and first coats", net: 1000, vatPct: 13.5, status: "To invoice", ...over });
@@ -130,7 +130,9 @@ describe("the invoice as a document", () => {
     const d = invoiceDoc({ invoice: inv({ poNumber: "PO-7781" }), client, project, design, company: "ABC Construction Ltd", region: "IE", today });
     expect(d.stamp).toBe("Draft");
     expect(d.number).toBe("INV-5201");
-    expect(d.facts).toContainEqual(["Invoice date", "On sending"]);
+    expect(d.facts[0]).toEqual(["Invoice No.", "INV-5201"]);
+    expect(d.facts).toContainEqual(["Date", "On sending"]);
+    expect(d.facts).toContainEqual(["Contract No.", project.code]);
     expect(d.facts).toContainEqual(["Due", "30 days from sending"]);
     expect(d.facts).toContainEqual(["Your order", "PO-7781"]);
     expect(d.facts).toContainEqual(["Site", "Ardmullen House, Kilcolgan, Co. Galway"]);
@@ -140,11 +142,35 @@ describe("the invoice as a document", () => {
     const d = invoiceDoc({ invoice: inv({ status: "Invoiced", accountsNo: "SI-10412", issuedOn: "2026-11-18", dueOn: "2026-12-18" }), client, project, design, company: "ABC Construction Ltd", region: "IE", today });
     expect(d.stamp).toBe("");
     expect(d.number).toBe("SI-10412");
-    expect(d.facts[0]).toEqual(["Invoice date", "18 November 2026"]);
+    expect(d.facts.slice(0, 2)).toEqual([["Invoice No.", "SI-10412"], ["Date", "18 November 2026"]]);
+    expect(d.title).toBe("Invoice");
+    expect(d.seller.contact).toEqual(["091 555 0100", "accounts@abcconstruction.example", "www.abcconstruction.example"]);
     expect(d.totals).toEqual([{ label: "Subtotal", value: "€1,000.00" }, { label: "VAT at 13.5%", value: "€135.00" }, { label: "Total due", value: "€1,135.00", strong: true }]);
     expect(d.notes.at(-1)).toBe("Payment within 30 days of the invoice date by bank transfer, quoting the invoice number.");
     expect(d.bank).toEqual(["Sample Bank", "IBAN IE00 SAMP 0000 0000 0000 00", "BIC SAMPIE2D"]);
-    expect(d.seller.registration).toEqual(["VAT no. IE 0000000AB", "Company no. 000000"]);
+    expect(d.seller.registration).toEqual([["VAT Reg. Number", "IE 0000000AB"], ["Company No.", "000000"]]);
+  });
+  it("prints a description and an amount a line, keeping the working of a line priced by quantity", () => {
+    const d = invoiceDoc({ invoice: inv({ lines: [{ id: "l1", description: "Lime repointing", qty: 42, unit: "m2", rate: 85 }, { id: "l2", description: "Scaffold adaptation", qty: 1, unit: "item", rate: 600 }], net: 4170 }), client, project, design, company: "ABC", region: "IE", today });
+    expect(d.lines).toEqual([{ description: "Lime repointing (42 m2 at €85.00)", amount: "€3,570.00" }, { description: "Scaffold adaptation", amount: "€600.00" }]);
+  });
+  it("takes the firm's own title, and the labels follow it: a Credit Note has a Credit No. and a Total Credit", () => {
+    const d = invoiceDoc({ invoice: inv({ status: "Invoiced", accountsNo: "1714", issuedOn: "2026-02-05", dueOn: "2026-03-07" }), client, project, design: { ...design, title: "Credit Note" }, company: "ABC", region: "IE", today });
+    expect(d.title).toBe("Credit Note");
+    expect(d.facts[0]).toEqual(["Credit No.", "1714"]);
+    expect(d.totals.at(-1)!.label).toBe("Total Credit");
+    expect(titleStem("Payment claim")).toBe("Payment claim");
+    expect(paperTitle({ title: "  " })).toBe("Invoice");
+  });
+  it("shows a draft as it will go: numbered, dated today and due on the client's terms", () => {
+    const draft = inv({});
+    const d = invoiceDoc({ invoice: asSent(draft, "SI-10413", today, "2026-12-20"), client, project, design, company: "ABC", region: "IE", today });
+    expect(d.stamp).toBe("");
+    expect(d.number).toBe("SI-10413");
+    expect(d.facts).toContainEqual(["Due", "20 December 2026"]);
+    // One already sent goes again exactly as it was.
+    const sent = inv({ status: "Invoiced", accountsNo: "SI-10412", issuedOn: "2026-11-18", dueOn: "2026-12-18" });
+    expect(asSent(sent, "SI-99999", today, "2027-01-01")).toBe(sent);
   });
   it("follows the design: no bank details, no site, and the UK writes a county plainly", () => {
     const d = invoiceDoc({ invoice: inv({ status: "Paid" }), client, project, design: { ...design, showBank: false, showSite: false }, company: "ABC", region: "UK", today });

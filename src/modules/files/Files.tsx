@@ -1,4 +1,5 @@
-import { Blueprint, DownloadSimple, EnvelopeSimple, FileDoc, FilePdf, FileXls, FilmStrip, Folder, Image as ImageIcon } from "@phosphor-icons/react";
+import { QuickFileDialog } from "@/app/QuickAdd";
+import { Blueprint, CaretDown, CaretRight, DownloadSimple, Plus, EnvelopeSimple, FileDoc, FilePdf, FileXls, FilmStrip, Folder, Image as ImageIcon } from "@phosphor-icons/react";
 import { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useAccess } from "@/data/access";
@@ -8,6 +9,7 @@ import type { Db, FileCategory, FileItem, FileKind, PhotoStage } from "@/data/ty
 import { type FilingContext, suggestFiling } from "@/lib/filing";
 import { dFull, dShort, plural } from "@/lib/format";
 import { isPdf, PROOF_LIMIT_KB, shrinkImage } from "@/lib/image";
+import { isFinished } from "@/lib/project-filter";
 import { Badge, Button, cx, Dialog, Empty, Field, PageBody, PageHead, Panel, Segmented } from "@/ui";
 import { PickFile } from "@/ui/files";
 import { toast } from "@/ui/toast";
@@ -67,17 +69,26 @@ export function ProjectFiles() {
   const [adding, setAdding] = useState(false);
   const [view, setView] = useState<FileItem | null>(null);
   const projects = access.scope(db.projects).filter((p) => db.files.some((f) => f.projectId === p.id)).sort((a, b) => b.code.localeCompare(a.code));
+  // Live jobs (and those about to start) come first; finished ones are the archive under them (21 Nov). The search goes through both.
+  const live = projects.filter((p) => !isFinished(p.status));
+  const archive = projects.filter((p) => isFinished(p.status));
+  const [archiveOpen, setArchiveOpen] = useState(false);
   const project = projects.find((p) => p.code === params.get("project")) ?? projects.find((p) => p.status === "Live") ?? projects[0];
+  // An archived job that is open (from a link, or a search) shows the archive it is in.
+  const showArchive = archiveOpen || (!!project && archive.some((p) => p.id === project.id));
   const folder = FOLDERS.find((f) => f === params.get("folder"));
   const mine = db.files.filter((f) => f.projectId === project?.id);
   const inFolder = mine.filter((f) => f.category === folder).sort((a, b) => b.modified.localeCompare(a.modified));
   const ids = new Set(projects.map((p) => p.id));
   const term = q.trim().toLowerCase();
   const found = term ? db.files.filter((f) => f.projectId && ids.has(f.projectId) && `${f.name} ${f.caption ?? ""}`.toLowerCase().includes(term)).slice(0, 60) : [];
+  // The same box looks a job up by its code or name, live or archived.
+  const foundProjects = term ? projects.filter((p) => `${p.code} ${p.name}`.toLowerCase().includes(term)) : [];
+  const archivedIds = new Set(archive.map((p) => p.id));
   const code = (id: string | null) => db.projects.find((p) => p.id === id)?.code ?? "";
   const unsorted = db.files.filter((f) => f.projectId === null).length;
 
-  const table = (rows: FileItem[], withPlace: boolean) => (
+  const table = (rows: FileItem[], withPlace: boolean, markArchive = false) => (
     <table className="tbl">
       <thead>
         <tr>
@@ -100,6 +111,7 @@ export function ProjectFiles() {
                 <Link to={`/files?project=${code(f.projectId)}&folder=${encodeURIComponent(f.category)}`} className="text-accent-ink underline-offset-2 hover:underline" onClick={() => setQ("")}>
                   {code(f.projectId)} / {f.category}
                 </Link>
+                {markArchive && f.projectId && archivedIds.has(f.projectId) && <span className="ml-1.5 text-[0.8rem] text-muted">Archive</span>}
               </td>
             )}
             <td className="num whitespace-nowrap">{size(f.sizeKb)}</td>
@@ -115,12 +127,14 @@ export function ProjectFiles() {
   return (
     <>
       <PageHead title="Project files" note={`${db.files.filter((f) => f.projectId && ids.has(f.projectId)).length} files across ${plural(projects.length, "project")}. Every project has the same folders, so anyone can find a drawing or a certificate without asking.`} actions={project && <Button onClick={() => setAdding(true)}>Add a file</Button>}>
-        <input type="search" aria-label="Search all files" placeholder="Search every project by file name" className="field mt-3 max-w-sm" value={q} onChange={(e) => setQ(e.target.value)} />
+        <input type="search" aria-label="Search all files" placeholder="Search every project, live and archived, by file or project name" className="field mt-3 max-w-sm" value={q} onChange={(e) => setQ(e.target.value)} />
       </PageHead>
       <PageBody className="grid max-w-6xl items-start gap-5 lg:grid-cols-[17rem_minmax(0,1fr)]">
         <Panel>
-          <ul className="max-h-56 divide-y divide-line overflow-y-auto lg:max-h-[calc(100dvh-19rem)]" aria-label="Projects">
-            {projects.map((p) => (
+          <div className="max-h-56 overflow-y-auto lg:max-h-[calc(100dvh-19rem)]">
+            <p className="bg-side px-3 py-1 text-[0.87rem] font-medium text-muted">Live projects ({live.length})</p>
+            <ul className="divide-y divide-line" aria-label="Live projects">
+              {live.map((p) => (
               <li key={p.id}>
                 <button type="button" aria-current={!term && p.id === project?.id} onClick={() => { setQ(""); setParams({ project: p.code }); }} className={cx("press flex w-full items-baseline gap-2 px-3 py-1.5 text-left", !term && p.id === project?.id ? "bg-accent-soft" : "hover:bg-accent-soft/60")}>
                   <span className="font-medium">{p.code}</span>
@@ -128,8 +142,30 @@ export function ProjectFiles() {
                   <span className="text-[0.87rem] text-muted">{db.files.filter((f) => f.projectId === p.id).length}</span>
                 </button>
               </li>
-            ))}
-          </ul>
+              ))}
+            </ul>
+            {archive.length > 0 && (
+              <>
+                <button type="button" aria-expanded={showArchive} onClick={() => setArchiveOpen(!showArchive)} className="press flex w-full items-center gap-2 border-t border-line bg-side px-3 py-1.5 text-left text-[0.87rem] font-medium text-muted hover:text-ink">
+                  {showArchive ? <CaretDown size={14} weight="bold" /> : <CaretRight size={14} weight="bold" />}
+                  <span className="flex-1">Archive: finished jobs ({archive.length})</span>
+                </button>
+                {showArchive && (
+                  <ul className="divide-y divide-line" aria-label="Archive, finished jobs">
+                    {archive.map((p) => (
+              <li key={p.id}>
+                <button type="button" aria-current={!term && p.id === project?.id} onClick={() => { setQ(""); setParams({ project: p.code }); }} className={cx("press flex w-full items-baseline gap-2 px-3 py-1.5 text-left", !term && p.id === project?.id ? "bg-accent-soft" : "hover:bg-accent-soft/60")}>
+                  <span className="font-medium">{p.code}</span>
+                  <span className="min-w-0 flex-1 truncate">{p.name}</span>
+                  <span className="text-[0.87rem] text-muted">{db.files.filter((f) => f.projectId === p.id).length}</span>
+                </button>
+              </li>
+                    ))}
+                  </ul>
+                )}
+              </>
+            )}
+          </div>
           <Link to="/files/unsorted" className="flex items-baseline gap-2 border-t border-line px-3 py-2 text-accent-ink hover:bg-accent-soft/60">
             <span className="flex-1 font-medium">To be sorted</span>
             <span className="text-[0.87rem]">{unsorted}</span>
@@ -139,8 +175,21 @@ export function ProjectFiles() {
         <div className="grid min-w-0 gap-3">
           {term ? (
             <>
-              <p className="text-muted">{found.length === 0 ? `Nothing is called anything like "${q.trim()}".` : `${plural(found.length, "file")} matching "${q.trim()}"${found.length === 60 ? " (first 60 shown)" : ""}.`}</p>
-              {found.length > 0 && <Panel className="overflow-x-auto">{table(found, true)}</Panel>}
+              {foundProjects.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2" aria-label="Projects found">
+                  <span className="text-muted">{plural(foundProjects.length, "project")}:</span>
+                  {foundProjects.map((p) => (
+                    <button key={p.id} type="button" onClick={() => { setQ(""); setParams({ project: p.code }); }} className="press rounded-md border border-line-strong bg-surface px-2.5 py-1 text-[0.93rem] hover:bg-accent-soft">
+                      <span className="font-medium">{p.code}</span> {p.name}
+                      {archivedIds.has(p.id) && <span className="ml-1.5 text-[0.8rem] text-muted">Archive</span>}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <p className="text-muted">
+                {found.length === 0 ? `No file is called anything like "${q.trim()}"` : `${plural(found.length, "file")} matching "${q.trim()}"${found.length === 60 ? " (first 60 shown)" : ""}`}, across live projects and the archive.
+              </p>
+              {found.length > 0 && <Panel className="overflow-x-auto">{table(found, true, true)}</Panel>}
             </>
           ) : !project ? (
             <Panel>
@@ -359,9 +408,18 @@ export function ToBeSorted() {
       return { f, s: s.projectId && !mine.has(s.projectId) ? { ...s, projectId: null, why: `${s.why}, which is not one of your projects` } : s };
     });
   const [picked, setPicked] = useState<Record<string, { projectId?: string; category?: FileCategory }>>({});
-  const live = db.projects.filter((p) => mine.has(p.id) && (p.status === "Live" || p.status === "Not started")).sort((a, b) => a.code.localeCompare(b.code));
+  const [adding, setAdding] = useState(false);
+  const [view, setView] = useState<FileItem | null>(null);
+  // Every job can be filed into, live ones first: a file added for a finished job from the top bar belongs with it too.
+  const live = db.projects.filter((p) => mine.has(p.id)).sort((a, b) => Number(isFinished(a.status)) - Number(isFinished(b.status)) || a.code.localeCompare(b.code));
   const choice = (id: string, s: { projectId: string | null; category: string }) => ({ projectId: picked[id]?.projectId ?? s.projectId ?? "", category: picked[id]?.category ?? (s.category as FileCategory) });
   const ready = rows.filter(({ f, s }) => choice(f.id, s).projectId);
+  // Listed under each project's name (21 Nov): the project a file was added for or is suggested for, then those with none.
+  const nameOf = (id: string | null) => {
+    const p = id ? db.projects.find((x) => x.id === id) : undefined;
+    return p ? `${p.code} ${p.name}` : "";
+  };
+  const groups = [...new Set(rows.map(({ s }) => s.projectId))].sort((a, b) => (a === null ? 1 : b === null ? -1 : nameOf(a).localeCompare(nameOf(b))));
   const code = (id: string) => db.projects.find((p) => p.id === id)?.code ?? "";
   return (
     <>
@@ -369,17 +427,22 @@ export function ToBeSorted() {
         title="To be sorted"
         note={rows.length === 0 ? "Nothing is waiting. Whatever arrives by email without a home lands here." : `${plural(rows.length, "file")} arrived without a home. Each has been read and given a suggested project and folder; change either before filing.`}
         actions={
-          ready.length > 0 && (
-            <Button
-              variant="primary"
-              onClick={() => {
-                for (const { f, s } of ready) fileIt(f.id, choice(f.id, s).projectId, choice(f.id, s).category);
-                toast(`${plural(ready.length, "file")} filed`);
-              }}
-            >
-              File the {ready.length} with a project
+          <>
+            <Button onClick={() => setAdding(true)}>
+              <Plus size={16} /> Add file
             </Button>
-          )
+            {ready.length > 0 && (
+              <Button
+                variant="primary"
+                onClick={() => {
+                  for (const { f, s } of ready) fileIt(f.id, choice(f.id, s).projectId, choice(f.id, s).category);
+                  toast(`${plural(ready.length, "file")} filed`);
+                }}
+              >
+                File the {ready.length} with a project
+              </Button>
+            )}
+          </>
         }
       />
       <PageBody>
@@ -399,19 +462,25 @@ export function ToBeSorted() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map(({ f, s }) => {
+                {groups.flatMap((g) => [
+                  <tr key={`g-${g}`} className="bg-side">
+                    <th colSpan={6} scope="colgroup" className="py-1.5 text-left text-[0.93rem] font-medium">
+                      {g ? nameOf(g) : "No project yet"} <span className="font-normal text-muted">({rows.filter(({ s }) => s.projectId === g).length})</span>
+                    </th>
+                  </tr>,
+                  ...rows.filter(({ s }) => s.projectId === g).map(({ f, s }) => {
                   const c = choice(f.id, s);
                   return (
                     <tr key={f.id}>
                       <td className="max-w-[18rem]">
-                        <FileName f={f} onOpen={() => undefined} />
+                        <FileName f={f} onOpen={setView} />
                         <span className="block pl-[26px] text-[0.87rem] text-muted">
                           {size(f.sizeKb)}, {f.modified === day ? "today" : dShort(f.modified)}
                         </span>
                       </td>
                       <td>{f.addedBy}</td>
                       <td>
-                        {s.projectId ? <Badge tone="accent">{code(s.projectId)} / {s.category}</Badge> : <Badge tone="warn">Needs a project</Badge>}
+                        {s.projectId ? <Badge tone="accent">{code(s.projectId)} / {f.forProjectId ? "folder to pick" : s.category}</Badge> : <Badge tone="warn">Needs a project</Badge>}
                         <span className="mt-0.5 block text-[0.87rem] text-muted">{s.why}</span>
                       </td>
                       <td>
@@ -445,12 +514,16 @@ export function ToBeSorted() {
                       </td>
                     </tr>
                   );
-                })}
+                  }),
+                ])}
               </tbody>
             </table>
           )}
         </Panel>
+        <p className="mt-2 max-w-[80ch] text-[0.93rem] text-muted">A file can be added from any screen with the File button in the top bar: pick its project there and it is listed here under that project's name until its folder is picked.</p>
       </PageBody>
+      {adding && <QuickFileDialog onClose={() => setAdding(false)} />}
+      <FileViewer f={view} onClose={() => setView(null)} />
     </>
   );
 }

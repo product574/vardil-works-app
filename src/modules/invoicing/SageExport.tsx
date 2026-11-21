@@ -1,9 +1,9 @@
 import { DownloadSimple } from "@phosphor-icons/react";
 import { useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, Navigate, useSearchParams } from "react-router-dom";
 import { markExported, markPurchasesExported } from "@/data/actions";
 import type { SalesInvoice, SupplierInvoice } from "@/data/types";
-import { buildPurchaseExport, buildSalesExport, exportTotals, PACKAGE, purchaseTable, purchaseTotals, salesTable } from "@/lib/accounts-export";
+import { ACCOUNTS_EXPORT, buildPurchaseExport, buildSalesExport, exportTotals, PACKAGE, purchaseTable, purchaseTotals, salesTable } from "@/lib/accounts-export";
 import { invoiceNo } from "@/lib/billing";
 import { dFull, dShort, plural, tOf } from "@/lib/format";
 import { exportRowOf, SALES_NOMINALS } from "@/lib/invoices";
@@ -32,6 +32,8 @@ export function AccountsExport() {
   const [params, setParams] = useSearchParams();
   const [shown, setShown] = useState<Shown>("all");
   const book: Book = params.get("book") === "purchases" ? "purchases" : "sales";
+  // Out of Finance since 21 Nov: an old link lands on the client invoices.
+  if (!ACCOUNTS_EXPORT) return <Navigate to="/invoicing" replace />;
 
   // Sales day book: every client invoice that has been sent.
   const rowOf = (i: SalesInvoice) => exportRowOf(i, client(i.clientId), project(i.projectId));

@@ -318,6 +318,9 @@ export function buildFleet(today: string, R: Rng, people: Person[], attendance: 
   const test = vehicles.find((v) => v.reg === "212-D-18834")!;
   todos.push({ id: "td-2", title: `Book the CVRT, ${test.reg}`, due: addDays(today, 1), vehicleId: test.id, item: "test", createdAt: at(workdays(today, -2), "15:40"), createdBy: "Aidan King" });
   todos.push({ id: "td-3", title: "Ask Oranmore Commercials about the fleet tyre discount on November invoices", due: addDays(today, 7), createdAt: at(workdays(today, -3), "11:20"), createdBy: "Aidan King" });
+  // To-dos between people (21 Nov): one given to the managing director from a job's page, and one he gave to accounts.
+  todos.push({ id: "td-4", title: "Agree the cornice variation on Dunmoy Courthouse with the architect", due: addDays(today, 1), to: "/projects/C722?tab=extras", from: "C722 Dunmoy Courthouse", forName: "Aidan King", createdAt: at(workdays(today, -1), "16:20"), createdBy: "Tadhg Morrissey" });
+  todos.push({ id: "td-5", title: "Send Ballyfinn Heritage Trust a statement of what is outstanding", due: addDays(today, 3), to: "/invoicing/invoiced", from: "Finance, Money in", forName: "Maeve Quirke", createdAt: at(workdays(today, -1), "09:35"), createdBy: "Aidan King" });
 
   const garageNotes: GarageNote[] = [
     { id: "gn-1", garageId: "g-01", at: at(workdays(today, -1), "10:42"), by: "Pat Scully", text: "Rang Brian. They are closed from 23 Dec to 2 Jan. Book anything urgent before the 19th." },

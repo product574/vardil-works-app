@@ -9,7 +9,7 @@ import { useData, useDay, usePrefs } from "@/data/store";
 import type { Allocation, SupplierInvoice } from "@/data/types";
 import { dFull } from "@/lib/format";
 import { money2 } from "@/lib/money";
-import { approvalBy, approveLabel, type Approver, approverWords, chainOf, mayApprove, partyOf, payBy, PURCHASE_LABEL, PURCHASE_TONE, purchaseStage } from "@/lib/purchases";
+import { approvalBy, approveLabel, approveStep, type Approver, approverWords, chainOf, mayApprove, partyOf, payBy, PURCHASE_LABEL, PURCHASE_TONE, purchaseStage } from "@/lib/purchases";
 import { subInsuranceFlags } from "@/lib/compliance";
 import { Badge, Button, cx, Dialog, Field } from "@/ui";
 import { toast } from "@/ui/toast";
@@ -89,10 +89,13 @@ function Summary({ s }: { s: SupplierInvoice }) {
  */
 /** `actor`: who approves it, when it is done on a site manager's phone shown to the office (merged 19 Nov). */
 export function ApproveDialog({ s, allocations, actor, onClose }: { s: SupplierInvoice; allocations?: Omit<Allocation, "id">[]; actor?: string; onClose: (done: boolean) => void }) {
-  const { project, sub, approvalBy: by } = usePurchases();
+  const { project, sub, approvalBy: by, waitsFor } = usePurchases();
   // On a site manager's phone shown to the office, the yes is his (he runs the site), whoever is looking.
   const step = actor ? by(s, { personId: actor, handles: false, approvesAll: false, approvesOwnSites: true }) : by(s);
   const siteOnly = step === "site" && purchaseStage(s) === "approve";
+  // The managing director stepping in while it is still on the site manager's step (21 Nov): allowed, and said plainly.
+  const ahead = step === "finish" && purchaseStage(s) === "approve" && approveStep(s) === "site";
+  const waitingOn = ahead ? waitsFor(s).replace(/, then the managing director$/, "") : "";
   const day = useDay();
   // A subcontractor's lapsed insurance is flagged here, not held (Compliance, 18 Nov): the approver decides.
   const flags = s.subcontractorId && sub(s.subcontractorId) ? subInsuranceFlags(sub(s.subcontractorId)!, day) : [];
@@ -124,6 +127,11 @@ export function ApproveDialog({ s, allocations, actor, onClose }: { s: SupplierI
     >
       <div className="grid gap-3">
         <Summary s={s} />
+        {ahead && (
+          <p className="rounded-md bg-warn-soft px-2.5 py-2 text-[0.93rem] text-warn" role="note">
+            This is still waiting on {waitingOn}. Your approval finishes it now, without the site manager's yes, and the invoice's history will say so.
+          </p>
+        )}
         {flags.length > 0 && <p className="rounded-md bg-bad-soft px-2.5 py-2 text-[0.93rem] text-bad">{flags.join(". ")}. You can still approve; ask them {PORTAL ? "to send the new schedule through their portal" : "for the new schedule"}.</p>}
         <p className="text-muted">
           {siteOnly ? "You approve it for the site: the work was done or the goods arrived. It then goes to the managing director, who approves it into job costs." : credit ? `It comes off the job costs of ${codes.join(" and ")}. Nothing is paid on a credit note.` : `It goes into the job costs of ${codes.join(" and ")}, and on to accounts, who pay it by ${dFull(payBy(s))} and mark it paid.`}

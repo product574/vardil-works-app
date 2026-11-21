@@ -4,7 +4,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { addInvoiceComment, deleteDraftInvoice, emailAboutInvoice, issueInvoice, markExported, raiseInvoiceQuery, unmarkInvoicePaid } from "@/data/actions";
 import { useDay } from "@/data/store";
 import type { InvoiceQuery, SalesInvoice } from "@/data/types";
-import { buildSalesExport, PACKAGE } from "@/lib/accounts-export";
+import { ACCOUNTS_EXPORT, buildSalesExport, PACKAGE } from "@/lib/accounts-export";
 import { invoiceNo } from "@/lib/billing";
 import { dFull, dShort, when } from "@/lib/format";
 import { billedSoFar, billingEmail, dueWords, exportRowOf, grossOf, leftToBill, openQuery, routeWords, stageOf, threadFor, type ThreadItem } from "@/lib/invoices";
@@ -112,7 +112,7 @@ export function InvoicePage() {
               <Menu label={`More for ${no}`} trigger={<span className="px-1 font-medium">More</span>}>
                 {(close) => (
                   <>
-                    {(out || stage === "paid") && !i.exportedAt && (
+                    {ACCOUNTS_EXPORT && (out || stage === "paid") && !i.exportedAt && (
                       <MenuItem
                         onClick={() => {
                           close();
@@ -173,7 +173,7 @@ export function InvoicePage() {
       />
       <PageBody className="grid max-w-[92rem] grid-cols-1 gap-4">
         <Panel className="overflow-x-auto">
-          <dl aria-label="Where this invoice stands" className="grid min-w-[44rem] grid-cols-4 divide-x divide-line">
+          <dl aria-label="Where this invoice stands" className={cx("grid divide-x divide-line", ACCOUNTS_EXPORT ? "min-w-[44rem] grid-cols-4" : "min-w-[33rem] grid-cols-3")}>
             <div className="px-3 py-2">
               <dt className="text-[0.87rem] text-muted">Total with VAT</dt>
               <dd className="text-[1.15rem] font-medium">{access.seeValues ? money2(grossOf(i), region) : "Hidden for you"}</dd>
@@ -189,6 +189,7 @@ export function InvoicePage() {
               <dd className={cx("text-[1.15rem] font-medium", stage === "overdue" && "text-bad", stage === "paid" && "text-ok")}>{stage === "paid" ? dFull(i.paidOn) : out ? "Not yet" : "-"}</dd>
               <dd className="text-[0.87rem] text-muted">{out ? `Due ${dFull(i.dueOn)}. ${dueWords(i, day)}.` : stage === "paid" ? `It was due ${dFull(i.dueOn)}.` : `Due ${c?.termsDays ?? 30} days after it is sent.`}</dd>
             </div>
+            {ACCOUNTS_EXPORT && (
             <div className="px-3 py-2">
               <dt className="text-[0.87rem] text-muted">In {pkgName}</dt>
               <dd className={cx("text-[1.15rem] font-medium", i.issuedOn && !i.exportedAt && "text-warn")}>{i.exportedAt ? dFull(i.exportedAt.slice(0, 10)) : i.issuedOn ? "Not yet" : "-"}</dd>
@@ -205,6 +206,7 @@ export function InvoicePage() {
                 )}
               </dd>
             </div>
+            )}
           </dl>
         </Panel>
 

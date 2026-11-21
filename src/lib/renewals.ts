@@ -72,3 +72,12 @@ export function todoDue(expiry: string, today: string): string {
 
 /** An open to-do is late once its due day has passed. */
 export const todoLate = (t: Pick<Todo, "due" | "doneAt">, today: string) => !t.doneAt && t.due < today;
+
+// ── Whose list a to-do is on (21 Nov: a to-do can be given to a colleague) ────
+type Owned = Pick<Todo, "createdBy" | "forName">;
+/** Whose list it is on: the colleague it was given to, or whoever added it. */
+export const todoOwner = (t: Owned) => t.forName ?? t.createdBy;
+/** One person's own list. */
+export const todosFor = <T extends Owned>(todos: T[], me: string) => todos.filter((t) => todoOwner(t) === me);
+/** What one person has given to others, so they can see when each is ticked off. */
+export const todosGivenBy = <T extends Owned>(todos: T[], me: string) => todos.filter((t) => t.createdBy === me && todoOwner(t) !== me);

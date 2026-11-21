@@ -1,3 +1,4 @@
+import { ACCOUNTS_EXPORT } from "@/lib/accounts-export";
 import { DotsThree, MagnifyingGlass, Trash } from "@phosphor-icons/react";
 import { useEffect, useId, useState } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
@@ -13,7 +14,7 @@ import { money0, money2, r2, REGION } from "@/lib/money";
 import { scopePercent } from "@/lib/project-costs";
 import { Badge, Button, cx, Dialog, Empty, Field, Menu, MenuItem, NumInput, PageBody, PageHead, Panel, Segmented } from "@/ui";
 import { toast } from "@/ui/toast";
-import { ClientPaidDialog, downloadInvoicePdf, SendInvoiceDialog, StageBadge, useInv } from "./shared";
+import { ClientPaidDialog, downloadInvoicePdf, PaidSwitch, SendInvoiceDialog, StageBadge, useInv } from "./shared";
 
 const ORDER = { draft: 0, held: 1, overdue: 2, sent: 3, paid: 4 } as const;
 const TABS: { value: Show; label: string }[] = [
@@ -79,11 +80,14 @@ export function ClientInvoices() {
         title="Client invoices"
         note={`${plural(debt.count, "invoice")} sent and not yet paid${access.seeValues ? `, ${money0(debt.gross, region)} owed including VAT` : ""}. ${count("overdue")} past the due date. ${drafts === 0 ? "No drafts waiting to go." : `${plural(drafts, "draft")} waiting to be sent.`}`}
         actions={
-          canEdit && (
-            <Button variant="primary" onClick={() => setDrafting(true)}>
-              Draft an invoice
-            </Button>
-          )
+          <>
+            <PaidSwitch value={show === "paid" ? "paid" : show === "unpaid" || show === "overdue" ? "unpaid" : "all"} onChange={(v) => navigate(ADDRESS[v === "paid" ? "paid" : v === "unpaid" ? "unpaid" : "all"])} counts={{ unpaid: count("unpaid"), paid: count("paid") }} />
+            {canEdit && (
+              <Button variant="primary" onClick={() => setDrafting(true)}>
+                Draft an invoice
+              </Button>
+            )}
+          </>
         }
       />
       <PageBody className="grid max-w-[92rem] grid-cols-1 gap-4">
@@ -125,7 +129,7 @@ export function ClientInvoices() {
                   <th>Due</th>
                   {access.seeValues && <th className="num">Total with VAT</th>}
                   <th>Status</th>
-                  <th>In accounts</th>
+                  {ACCOUNTS_EXPORT && <th>In accounts</th>}
                   <th aria-label="Actions" />
                 </tr>
               </thead>
@@ -181,7 +185,7 @@ export function ClientInvoices() {
                         )}
                         {i.clientPaidOn && stage !== "paid" && <span className="mt-1 block text-[0.87rem] text-muted">Client says paid {dShort(i.clientPaidOn)}</span>}
                       </td>
-                      <td className={cx("whitespace-nowrap", LABELLED)} data-label="In accounts">{i.exportedAt ? dShort(i.exportedAt.slice(0, 10)) : i.issuedOn ? <span className="text-muted">Not yet</span> : ""}</td>
+                      {ACCOUNTS_EXPORT && <td className={cx("whitespace-nowrap", LABELLED)} data-label="In accounts">{i.exportedAt ? dShort(i.exportedAt.slice(0, 10)) : i.issuedOn ? <span className="text-muted">Not yet</span> : ""}</td>}
                       <td className="text-right whitespace-nowrap max-xl:col-span-2 max-xl:text-left sm:max-xl:col-span-4">
                         <span className="inline-flex items-center gap-1.5">
                           {canEdit && stage === "draft" && (

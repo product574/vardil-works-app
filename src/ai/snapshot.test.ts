@@ -67,7 +67,7 @@ describe("the summary of the firm Ask AI is given", () => {
   });
 
   it("knows what is waiting in To be sorted and what the firm pays for this system", () => {
-    expect(line("To be sorted: 6")).toContain("Scaffold handover certificate.pdf");
+    expect(line("To be sorted: 7")).toContain("Scaffold handover certificate.pdf");
     expect(text).toContain("What the firm pays Vardil for this system (Admin, Billing): Monthly plan, 59.00 per person with a sign-in a month");
     // Friday 13 Nov: the three months before November, the newest first.
     expect(text).toMatch(/VD-2610 \| 2026-10 \| 2026-11-02 \| 13 \| 767\.00 \| paid 2026-11-05/);

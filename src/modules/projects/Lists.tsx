@@ -2,7 +2,7 @@ import { Plus } from "@phosphor-icons/react";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAccess } from "@/data/access";
-import { clearHold, closeRequest, draftHandover } from "@/data/actions";
+import { clearHold, closeRequest } from "@/data/actions";
 import { co } from "@/data/place";
 import { useData, useDay, usePrefs } from "@/data/store";
 import type { Db, Project, ProjectStatus, SiteRequest } from "@/data/types";
@@ -29,11 +29,11 @@ const clientOf = (db: Db, p: Project) => db.clients.find((c) => c.id === p.clien
 type Filter = "All" | ProjectStatus;
 
 /** Projects, Live projects (20 Nov, the Oldstone template): the live jobs only, opening each on its own page. */
-export const LiveProjects = () => <AllProjects fixed="Live" />;
+export const LiveProjects = () => <ProjectList fixed="Live" />;
 /** Projects, Not started: confirmed and waiting to start. */
-export const NotStarted = () => <AllProjects fixed="Not started" />;
+export const NotStarted = () => <ProjectList fixed="Not started" />;
 
-export function AllProjects({ fixed }: { fixed?: "Live" | "Not started" } = {}) {
+function ProjectList({ fixed }: { fixed?: "Live" | "Not started" } = {}) {
   const db = useData((s) => s.db);
   const region = usePrefs((s) => s.brand.region);
   const access = useAccess();
@@ -394,76 +394,6 @@ export function ClearHoldDialog({ p, onClose }: { p: Project; onClose: () => voi
   );
 }
 
-export function Completed() {
-  const db = useData((s) => s.db);
-  const day = useDay();
-  const region = usePrefs((s) => s.brand.region);
-  const access = useAccess();
-  const navigate = useNavigate();
-  const rows = access.scope(db.projects).filter((p) => p.status === "Complete" || p.status === "Invoiced" || p.status === "Closed").sort((a, b) => b.endDate.localeCompare(a.endDate));
-  return (
-    <>
-      <PageHead title="Completed" note="Finished work and where each one stands on handover." />
-      <PageBody>
-        <Panel className="overflow-x-auto">
-          {rows.length === 0 ? (
-            <Empty title="No completed projects yet" />
-          ) : (
-            <table className="tbl">
-              <thead>
-                <tr>
-                  <th>Code</th>
-                  <th>Project</th>
-                  <th>Client</th>
-                  <th>Finished</th>
-                  {access.seeValues && <th className="num">Value</th>}
-                  <th>Status</th>
-                  <th>Handover</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((p) => {
-                  const drafted = db.approvals.some((a) => a.kind === "handover" && a.projectId === p.id && a.status === "Pending");
-                  return (
-                    <tr key={p.id} className="rowlink" onClick={() => navigate(`/projects/${p.code}`)}>
-                      <td className="font-medium">{p.code}</td>
-                      <td>{p.name}</td>
-                      <td>{clientOf(db, p)}</td>
-                      <td className="whitespace-nowrap">{dShort(p.endDate)}</td>
-                      {access.seeValues && <td className="num">{p.value != null ? money0(p.value, region) : "-"}</td>}
-                      <td>
-                        <ProjectBadge status={p.status} />
-                      </td>
-                      <td onClick={(e) => e.stopPropagation()}>
-                        {p.handoverSentAt ? (
-                          <span className="text-ok">Sent {whenInline(p.handoverSentAt, day)}</span>
-                        ) : p.invoiceHold ? (
-                          <Badge tone="warn">On hold: {[p.extrasFlag && "variations", p.snaggingFlag && "snagging"].filter(Boolean).join(" and ")}</Badge>
-                        ) : drafted ? (
-                          <Badge tone="accent">Draft in approvals</Badge>
-                        ) : (
-                          <Button
-                            size="sm"
-                            onClick={() => {
-                              draftHandover(p.id);
-                              toast("Handover email drafted and sent to Approvals");
-                            }}
-                          >
-                            Draft handover
-                          </Button>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
-        </Panel>
-      </PageBody>
-    </>
-  );
-}
 
 export function SiteRequests() {
   const db = useData((s) => s.db);

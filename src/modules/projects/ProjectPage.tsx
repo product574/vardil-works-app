@@ -1,3 +1,4 @@
+import { JobInvoices } from "./JobInvoices";
 import { DownloadSimple, FilmStrip, Image as ImageIcon, Plus } from "@phosphor-icons/react";
 import { type FormEvent, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
@@ -955,6 +956,7 @@ function CostsTab({ p, db, pct }: TabProps & { pct: number }) {
         </Panel>
         <p className="mt-2 text-[0.93rem] text-muted">Value earned is the contract value multiplied by the share of scope ticked off.</p>
       </Section>
+      <JobInvoices p={p} db={db} />
     </div>
   );
 }

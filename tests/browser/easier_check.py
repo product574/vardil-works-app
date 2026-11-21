@@ -53,7 +53,7 @@ def steps(page, ctx):
     # ── 2. The Portal is hidden everywhere
     go(page, "/projects")
     secs = sections()
-    check("Projects: Live projects, Not started, Resources today, Completed, Requests and variations, Files; no Portal", secs == ["Live projects", "Not started", "Resources today", "Completed", "Requests and variations", "Files"], secs)
+    check("Projects: Live projects, Not started, Resources today, All projects, Requests and variations, Files; no Portal", secs == ["Live projects", "Not started", "Resources today", "All projects", "Requests and variations", "Files"], secs)
     page.goto(BASE + "/portal"); page.wait_for_timeout(500)
     check("The Portal's address does not open", "/portal" not in page.url, page.url)
     go(page, "/customers")

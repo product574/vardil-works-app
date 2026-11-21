@@ -6,7 +6,9 @@ import { useData, useDay, usePrefs } from "@/data/store";
 import type { Project } from "@/data/types";
 import { dShort, plural } from "@/lib/format";
 import { money0, money2 } from "@/lib/money";
-import { profitState, profitTotals, type SiteProfit, siteProfit, THIN_PROFIT_PCT } from "@/lib/profitability";
+import { jobBars, type MoneyIn, moneyIn, profitState, profitTotals, type SiteProfit, siteProfit, THIN_PROFIT_PCT } from "@/lib/profitability";
+import { invoiceNo } from "@/lib/billing";
+import type { SalesInvoice } from "@/data/types";
 import { scopePercent } from "@/lib/project-costs";
 import { Badge, Button, cx, Dialog, Empty, PageBody, PageHead, Panel, Section, Segmented } from "@/ui";
 
@@ -28,6 +30,8 @@ export function Profitability() {
   const region = usePrefs((s) => s.brand.region);
   const [show, setShow] = useState<"live" | "finished">("live");
   const [openId, setOpenId] = useState<string | null>(null);
+  // Bars first (21 Nov); the table of every column is one press away.
+  const [view, setView] = useState<"bars" | "table">("bars");
   const m = (n: number | null) => money0(n, region);
   const finished = show === "finished";
   const sites = db.projects.filter((p) => (finished ? p.status === "Complete" || p.status === "Invoiced" || p.status === "Closed" : p.status === "Live")).sort((a, b) => a.code.localeCompare(b.code));
@@ -35,9 +39,9 @@ export function Profitability() {
     () =>
       sites.map((p) => {
         const done = p.status === "Live" ? scopePercent(db.scopeTasks.filter((t) => t.projectId === p.id)) : 100;
-        return { p, done, ...siteProfit(p, db.attendance, db.people, db.expenses, jobInvoices(db, p)) };
+        return { p, done, inn: moneyIn(p.id, db.salesInvoices), ...siteProfit(p, db.attendance, db.people, db.expenses, jobInvoices(db, p)) };
       }),
-    [db.attendance, db.people, db.expenses, db.supplierInvoices, db.scopeTasks, sites.map((p) => p.id).join()],
+    [db.attendance, db.people, db.expenses, db.supplierInvoices, db.salesInvoices, db.scopeTasks, sites.map((p) => p.id).join()],
   );
   // What each person costs is the managing director's to see, and nobody else's (17 Nov).
   if (access.role !== "md") return <Navigate to={access.home} replace />;
@@ -93,7 +97,12 @@ export function Profitability() {
             ? `Finished jobs, to ${dShort(day)}: ${m(total.value)} of work, ${m(total.costs)} in costs, ${m(total.netProfit)} net profit (${pct(total.netPct)}).`
             : `Live sites, to ${dShort(day)}: ${m(total.costs)} in costs so far, ${m(total.wages)} of it wages. Overtime is ${total.overtimeShare}% of the wage bill, and cost ${m(total.premium)} more than the same hours at the basic rate.`
         }
-        actions={<Segmented label="Which sites" value={show} onChange={setShow} options={[{ value: "live", label: "Live sites" }, { value: "finished", label: "Finished" }]} />}
+        actions={
+          <>
+            <Segmented label="Shown as" value={view} onChange={setView} options={[{ value: "bars", label: "Bars" }, { value: "table", label: "Table" }]} />
+            <Segmented label="Which sites" value={show} onChange={setShow} options={[{ value: "live", label: "Live sites" }, { value: "finished", label: "Finished" }]} />
+          </>
+        }
       />
       <PageBody className="grid max-w-[88rem] gap-5">
         {finished && (lost.length > 0 || thin.length > 0) && (
@@ -110,7 +119,19 @@ export function Profitability() {
             )}
           </div>
         )}
-        <Panel className="overflow-x-auto">
+        {view === "bars" && rows.length > 0 && (
+          <>
+            <BarKey />
+            <ul aria-label="Money in and out by job" className="grid gap-3">
+              {rows.map((r) => (
+                <li key={r.p.id}>
+                  <JobBarRow row={r} m={m} onOpen={() => setOpenId(r.p.id)} />
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+        <Panel className={cx("overflow-x-auto", view === "bars" && rows.length > 0 && "hidden")}>
           {rows.length === 0 ? (
             <Empty title={finished ? "No finished jobs" : "No live sites"}>Wages show here once a site has timesheets.</Empty>
           ) : finished ? (
@@ -207,24 +228,102 @@ export function Profitability() {
           <Link to="/invoicing/costs" className="font-medium text-accent-ink underline-offset-2 hover:underline">
             Job costs
           </Link>
-          . Click a {finished ? "job's" : "site"} code to see who its wages went to and what it cost.
+          . Money in is what has been invoiced to the client before VAT. Click a {finished ? "job" : "site"} to see its invoices, who its wages went to and what it cost.
         </p>
       </PageBody>
-      {open && <SiteDialog row={open} finished={finished} region={region} onClose={() => setOpenId(null)} />}
+      {open && <SiteDialog row={open} finished={finished} region={region} invoices={db.salesInvoices.filter((i) => i.projectId === open.p.id)} onClose={() => setOpenId(null)} />}
     </>
   );
 }
 
-/** One site's outgoings person by person: rate, days, hours at each rate, wages and reimbursements. */
-function SiteDialog({ row, finished, region, onClose }: { row: SiteProfit & { p: Project; done: number }; finished: boolean; region: "IE" | "UK"; onClose: () => void }) {
+type Row = SiteProfit & { p: Project; done: number; inn: MoneyIn };
+
+/** What the bars mean, once, above the list. */
+function BarKey() {
+  const sw = "inline-block h-3 w-6 rounded-sm align-middle";
+  return (
+    <p className="flex flex-wrap items-center gap-x-5 gap-y-1 text-[0.87rem] text-muted" aria-label="What the bars show">
+      <span>
+        <span aria-hidden className={cx(sw, "bg-accent")} /> Paid by the client
+      </span>
+      <span>
+        <span aria-hidden className={cx(sw, "bg-accent/45")} /> Invoiced, not paid yet
+      </span>
+      <span>
+        <span aria-hidden className={cx(sw, "border border-dashed border-accent")} /> Still on the contract
+      </span>
+      <span>
+        <span aria-hidden className={cx(sw, "bg-ink/55")} /> Money out (costs so far)
+      </span>
+    </p>
+  );
+}
+
+/**
+ * One job as two bars (21 Nov): money in over money out. The whole row is a button that opens
+ * the job's detail. The outline on the top bar is the contract value; what is empty inside it is
+ * still to invoice.
+ */
+function JobBarRow({ row, m, onOpen }: { row: Row; m: (n: number | null) => string; onOpen: () => void }) {
+  const b = jobBars(row.value, row.inn, row.costs);
+  const live = row.p.status === "Live";
+  const label = `${row.p.code} ${row.p.name}: ${m(row.inn.invoiced)} in of ${m(row.value)} on the contract, ${m(row.costs)} out. See the detail`;
+  return (
+    <button type="button" onClick={onOpen} aria-label={label} className="press block w-full rounded-lg border border-line bg-surface px-4 py-3 text-left hover:border-line-strong">
+      <span className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
+        <span className="font-medium text-accent-ink">{row.p.code}</span>
+        <span className="font-medium">{row.p.name}</span>
+        <span className="text-[0.87rem] text-muted">{live ? `${row.done}% of the work done` : row.p.status}</span>
+        <span className="ml-auto text-[0.93rem] text-muted">
+          Contract <span className="font-medium text-ink tabular-nums">{m(row.value)}</span>
+        </span>
+      </span>
+      <span className="mt-2 grid grid-cols-[2.2rem_minmax(0,1fr)_6.5rem] items-center gap-x-2 gap-y-1.5">
+        <span className="text-[0.87rem] text-muted">In</span>
+        <span className="relative block h-5" data-bar="in">
+          {/* The contract as an empty outline; money in fills it from the left. */}
+          <span aria-hidden className="absolute inset-y-0 left-0 rounded-sm border border-dashed border-accent" style={{ width: `${b.contract}%` }} data-part="contract" />
+          <span aria-hidden className="absolute inset-y-0 left-0 rounded-l-sm bg-accent" style={{ width: `${b.paid}%` }} data-part="paid" />
+          <span aria-hidden className="absolute inset-y-0 bg-accent/45" style={{ left: `${b.paid}%`, width: `${b.unpaid}%` }} data-part="unpaid" />
+        </span>
+        <span className="text-right font-medium tabular-nums">{m(row.inn.invoiced)}</span>
+        <span className="text-[0.87rem] text-muted">Out</span>
+        <span className="relative block h-5" data-bar="out">
+          <span aria-hidden className={cx("absolute inset-y-0 left-0 rounded-sm", b.over ? "bg-bad" : "bg-ink/55")} style={{ width: `${b.out}%` }} data-part="out" />
+        </span>
+        <span className={cx("text-right font-medium tabular-nums", b.over && "text-bad")}>{m(row.costs)}</span>
+      </span>
+      <span className="mt-2 flex flex-wrap gap-x-5 gap-y-0.5 text-[0.87rem] text-muted">
+        <span>Paid {m(row.inn.paid)}</span>
+        <span>Invoiced, not paid {m(row.inn.unpaid)}</span>
+        <span>Still to invoice {m(b.toInvoice)}</span>
+        {b.over ? (
+          <span className="font-medium text-bad">Costs have passed the contract value by {m(row.costs - (row.value ?? 0))}</span>
+        ) : b.ahead < 0 ? (
+          <span className="font-medium text-warn">Costs are {m(-b.ahead)} ahead of what is invoiced</span>
+        ) : (
+          <span>
+            {live ? "Invoiced less costs so far" : "Net profit"}: <span className="font-medium text-ink">{m(live ? b.ahead : row.netProfit)}</span>
+          </span>
+        )}
+      </span>
+    </button>
+  );
+}
+
+const INVOICE_STATE: Record<SalesInvoice["status"], string> = { "To invoice": "Draft, not sent", Held: "On hold", Invoiced: "Sent, not paid", Paid: "Paid" };
+
+/** One site in detail: money in invoice by invoice, then its outgoings person by person and by heading. */
+function SiteDialog({ row, finished, region, invoices, onClose }: { row: Row; finished: boolean; region: "IE" | "UK"; invoices: SalesInvoice[]; onClose: () => void }) {
   const m2 = (n: number) => money2(n, region);
   const w = row.wages;
+  const b = jobBars(row.value, row.inn, row.costs);
   return (
     <Dialog
       open
       wide
       onClose={onClose}
-      title={`${row.p.code} ${row.p.name}: ${finished ? "what the job cost" : "costs so far"}`}
+      title={`${row.p.code} ${row.p.name}: money in and out${finished ? "" : " so far"}`}
       footer={
         <>
           <Link to={`/projects/${row.p.code}?tab=costs`} className="mr-auto text-[0.93rem] font-medium text-accent-ink underline-offset-2 hover:underline">
@@ -235,6 +334,41 @@ function SiteDialog({ row, finished, region, onClose }: { row: SiteProfit & { p:
       }
     >
       <div className="grid gap-4">
+        <Section title="Money in" aside={`${m2(row.inn.invoiced)} invoiced of ${row.value == null ? "no contract value" : m2(row.value)}: ${m2(row.inn.paid)} paid, ${m2(row.inn.unpaid)} not paid yet, ${m2(b.toInvoice)} still to invoice`}>
+          <div className="overflow-x-auto rounded-md border border-line">
+            {invoices.length === 0 ? (
+              <p className="px-3 py-3 text-muted">Nothing has been invoiced on this job yet.</p>
+            ) : (
+              <table className="tbl" aria-label={`Invoices to the client on ${row.p.code}`}>
+                <thead>
+                  <tr>
+                    <th>Invoice</th>
+                    <th>For</th>
+                    <th className="num">Before VAT</th>
+                    <th>Where it stands</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {invoices.map((i) => (
+                    <tr key={i.id}>
+                      <td>
+                        <Link to={`/invoicing/client/${invoiceNo(i)}`} className="font-medium text-accent-ink underline-offset-2 hover:underline">
+                          {invoiceNo(i)}
+                        </Link>
+                      </td>
+                      <td>{i.description}</td>
+                      <td className="num">{m2(i.net)}</td>
+                      <td>
+                        <Badge tone={i.status === "Paid" ? "ok" : i.status === "Invoiced" ? "accent" : i.status === "Held" ? "warn" : "neutral"}>{INVOICE_STATE[i.status]}</Badge>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </Section>
+        <h3 className="font-display text-[1.05rem] font-semibold">Money out</h3>
         <p className="text-muted">
           {m2(w.total)} in wages{row.reimbursements > 0 ? ` and ${m2(row.reimbursements)} in reimbursements` : ""}, {plural(row.people.length, "person", "people")}. Overtime cost {m2(w.premium)} more than the same hours at the basic rate.
         </p>

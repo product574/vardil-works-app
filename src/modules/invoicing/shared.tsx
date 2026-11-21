@@ -2,7 +2,7 @@
  * Pieces every invoicing screen uses: who is looking and what they may do, the invoice drawn
  * as paper, its PDF, and the dialog that sends it.
  */
-import { Paperclip } from "@phosphor-icons/react";
+import { DownloadSimple, Eye, Paperclip } from "@phosphor-icons/react";
 import { useId, useState } from "react";
 import { useAccess } from "@/data/access";
 import { actorName, markInvoicePaid, sendInvoice, unmarkInvoicePaid } from "@/data/actions";
@@ -12,9 +12,10 @@ import { invoiceNo } from "@/lib/billing";
 import { addDays } from "@/lib/dates";
 import { dFull } from "@/lib/format";
 import { money2 } from "@/lib/money";
-import { billingEmail, emailFor, grossOf, type InvoiceDoc, invoiceDoc, nextAccountsNo, pdfName, STAGE_LABEL, STAGE_TONE, stageOf } from "@/lib/invoices";
+import { asSent, billingEmail, emailFor, grossOf, type InvoiceDoc, invoiceDoc, nextAccountsNo, pdfName, STAGE_LABEL, STAGE_TONE, stageOf } from "@/lib/invoices";
 import { invoicePdf, type PdfLogo } from "@/lib/pdf";
-import { Badge, Button, cx, Dialog, Field } from "@/ui";
+import type { PaidShown } from "@/lib/claims";
+import { Badge, Button, cx, Dialog, Field, Segmented } from "@/ui";
 import { toast } from "@/ui/toast";
 import { PORTAL } from "@/lib/apps";
 
@@ -52,79 +53,79 @@ export function useInvoiceDoc(i: SalesInvoice | undefined, client: Client | unde
 export function InvoicePaper({ doc, className }: { doc: InvoiceDoc; className?: string }) {
   const brand = usePrefs((s) => s.brand);
   const muted = "text-[#5b6875]";
+  // The firm's colour, for the title, the two headings and the numbers at the foot (21 Nov, after Oldstone's own paper).
+  const inColour = { color: brand.accent };
   return (
     <div aria-label={`${doc.title} ${doc.number} as the client receives it`} className={cx("rounded-lg border border-line bg-white px-7 py-7 text-[0.93rem] text-[#1b2733] shadow-pop", className)}>
       <div className="flex flex-wrap items-start gap-4">
         <div className="min-w-0">
-          {doc.showLogo && brand.logoUrl && <img src={brand.logoUrl} alt="" className="mb-2 h-11 w-auto" />}
-          <p className="font-display text-[1.25rem] leading-tight font-semibold">{doc.seller.name}</p>
-          {doc.seller.address.map((l) => (
-            <p key={l} className={muted}>
-              {l}
-            </p>
-          ))}
+          <p className="font-display text-[1.6rem] leading-none font-semibold" style={inColour}>
+            {doc.title}
+          </p>
+          {doc.stamp && <p className={cx("mt-1.5 text-[0.87rem] font-semibold tracking-wide uppercase", doc.stamp === "Paid" ? "text-[#1a7f4f]" : muted)}>{doc.stamp}</p>}
         </div>
         <div className="ml-auto text-right">
-          <p className="font-display text-[1.9rem] leading-none font-semibold">{doc.title}</p>
-          <p className="mt-1 font-semibold">{doc.number}</p>
-          {doc.stamp && <p className={cx("text-[0.87rem] font-semibold tracking-wide uppercase", doc.stamp === "Paid" ? "text-[#1a7f4f]" : muted)}>{doc.stamp}</p>}
-          {[...doc.seller.contact, ...doc.seller.registration].map((l) => (
-            <p key={l} className={muted}>
-              {l}
-            </p>
-          ))}
+          {doc.showLogo && brand.logoUrl ? <img src={brand.logoUrl} alt={doc.seller.name} className="ml-auto h-14 w-auto max-w-[15rem] object-contain" /> : <p className="font-display text-[1.35rem] leading-tight font-semibold">{doc.seller.name}</p>}
         </div>
       </div>
-      <div className="mt-3 border-t-2" style={{ borderColor: doc.rule ? brand.accent : "#1b2733" }} />
-      <div className="mt-5 grid gap-5 sm:grid-cols-2">
-        <div>
-          <p className={cx("text-[0.8rem] font-semibold tracking-wide uppercase", muted)}>Bill to</p>
+      <div className="mt-7 grid gap-x-4 gap-y-4 sm:grid-cols-[minmax(0,1.2fr)_minmax(0,0.85fr)_minmax(0,1.2fr)]">
+        <div aria-label="Who it is to">
           {doc.billTo.map((l, n) => (
             <p key={`${n}${l}`} className={n === 0 ? "font-semibold" : undefined}>
               {l}
             </p>
           ))}
         </div>
-        <dl className="grid content-start grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-0.5">
-          {doc.facts.map(([k, v]) => (
-            <div key={k} className="contents">
-              <dt className={muted}>{k}</dt>
-              <dd>{v}</dd>
-            </div>
+        <div aria-label="Who it is from">
+          {doc.showLogo && brand.logoUrl && <p className="font-semibold">{doc.seller.name}</p>}
+          {doc.seller.address.map((l) => (
+            <p key={l}>{l}</p>
           ))}
-        </dl>
+        </div>
+        <div className="text-[0.85rem] leading-[1.65] break-words">
+          {doc.seller.contact.map((l) => (
+            <p key={l}>{l}</p>
+          ))}
+        </div>
       </div>
-      <table className="mt-6 w-full">
+      <dl className="mt-6 ml-auto grid w-fit max-w-full grid-cols-[auto_minmax(0,auto)] gap-x-5 gap-y-0.5">
+        {doc.facts.map(([k, v]) => (
+          <div key={k} className="contents">
+            <dt className={cx("text-right text-[0.87rem]", muted)}>{k}:</dt>
+            <dd className="text-right">{v}</dd>
+          </div>
+        ))}
+      </dl>
+      <table className="mt-7 w-full">
         <thead>
-          <tr className={cx("border-b border-[#1b2733] text-left text-[0.8rem] tracking-wide uppercase", muted)}>
-            <th className="py-1.5 pr-3 font-semibold">Description</th>
-            <th className="py-1.5 pr-2 text-right font-semibold">Qty</th>
-            <th className="py-1.5 pr-3 font-semibold">Unit</th>
-            <th className="py-1.5 pr-3 text-right font-semibold">Rate</th>
-            <th className="py-1.5 text-right font-semibold">Amount</th>
+          <tr className="text-left">
+            <th className="pb-1.5 pr-3 font-semibold underline underline-offset-4" style={inColour}>
+              Description
+            </th>
+            <th className="pb-1.5 text-right font-semibold underline underline-offset-4" style={inColour}>
+              Amount
+            </th>
           </tr>
         </thead>
         <tbody>
           {doc.lines.map((l, n) => (
-            <tr key={n} className="border-b border-[#dfe5ea] align-top">
-              <td className="py-2 pr-3">{l.description}</td>
-              <td className="py-2 pr-2 text-right tabular-nums">{l.qty}</td>
-              <td className={cx("py-2 pr-3", muted)}>{l.unit}</td>
-              <td className="py-2 pr-3 text-right whitespace-nowrap tabular-nums">{l.rate}</td>
-              <td className="py-2 text-right whitespace-nowrap tabular-nums">{l.amount}</td>
+            <tr key={n} className="align-top">
+              <td className="py-1 pr-3">{l.description}</td>
+              <td className="py-1 text-right whitespace-nowrap tabular-nums">{l.amount}</td>
             </tr>
           ))}
         </tbody>
       </table>
-      <dl className="mt-3 ml-auto grid w-64 grid-cols-2 gap-y-1">
+      <dl className="mt-8 ml-auto grid w-72 max-w-full grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-1">
         {doc.totals.map((t) => (
-          <div key={t.label} className={cx("contents", t.strong && "font-semibold")}>
-            <dt className={cx(t.strong ? "border-t border-[#1b2733] pt-1.5" : muted)}>{t.label}</dt>
-            <dd className={cx("text-right tabular-nums", t.strong && "border-t border-[#1b2733] pt-1.5")}>{t.value}</dd>
+          <div key={t.label} className="contents">
+            <dt className={cx(t.strong ? "pt-1.5 font-semibold" : muted)}>{t.label}:</dt>
+            {/* The total sits between a single rule and a double one, as on a ledger. */}
+            <dd className={cx("text-right tabular-nums", t.strong && "border-t border-b-[3px] border-double border-[#1b2733] pt-1.5 pb-1 font-semibold")}>{t.value}</dd>
           </div>
         ))}
       </dl>
-      <div className={cx("mt-6 grid gap-0.5 text-[0.87rem]", muted)}>
+      <div className={cx("mt-7 grid gap-0.5 text-[0.87rem]", muted)}>
         {doc.notes.map((l) => (
           <p key={l}>{l}</p>
         ))}
@@ -137,7 +138,14 @@ export function InvoicePaper({ doc, className }: { doc: InvoiceDoc; className?: 
           ))}
         </div>
       )}
-      <p className={cx("mt-6 border-t border-[#dfe5ea] pt-2 text-[0.87rem]", muted)}>{doc.footer}</p>
+      <div className="mt-7 flex flex-wrap gap-x-8 gap-y-1 text-[0.87rem] font-semibold" style={inColour}>
+        {doc.seller.registration.map(([k, v]) => (
+          <p key={k}>
+            {k} <span className="ml-3">{v}</span>
+          </p>
+        ))}
+      </div>
+      {doc.footer && <p className={cx("mt-2 text-[0.87rem]", muted)}>{doc.footer}</p>}
     </div>
   );
 }
@@ -215,6 +223,9 @@ function SendForm({ i, onClose }: { i: SalesInvoice; onClose: (sentAs?: string) 
   const [email, setEmail] = useState(true);
   const [portal, setPortal] = useState(PORTAL && !!c?.portalEnabled);
   const attachment = pdfName(number, brand.legalName);
+  // The attachment as it will go: a draft already carries the number and dates it takes on sending.
+  const design = useInvoiceDesign();
+  const doc = invoiceDoc({ invoice: asSent(i, number, day, dueOn), client: c, project: p, design, company: brand.legalName, region, today: day });
   const okTo = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to.trim());
   const blocked = (!email && !portal) || (email && (!okTo || !subject.trim() || !body.trim()));
   const send = () => {
@@ -269,14 +280,72 @@ function SendForm({ i, onClose }: { i: SalesInvoice; onClose: (sentAs?: string) 
           <Field label="Message" hint="Written from the email template. Change anything for this one invoice.">
             {(id) => <textarea id={id} rows={9} className="field" value={body} onChange={(e) => setBody(e.target.value)} />}
           </Field>
-          <p className="flex items-center gap-1.5 text-[0.93rem]">
-            <Paperclip size={16} className="text-muted" /> {attachment}
-          </p>
+          <AttachedInvoice doc={doc} name={attachment} />
         </>
       )}
       {blocked && <p className="text-[0.93rem] text-warn">{!email && !portal ? "Tick at least one way of sending it." : !okTo ? "The address it goes to is not a full email address." : "The email needs a subject and a message."}</p>}
     </form>
     </Dialog>
+  );
+}
+
+/**
+ * "Not paid" and "Paid" on top of every Finance list (Oisin, 21 Nov), with All to see both. The
+ * same three buttons everywhere, so it is always the same place to look.
+ */
+export function PaidSwitch({ value, onChange, counts }: { value: PaidShown; onChange: (v: PaidShown) => void; counts?: { unpaid: number; paid: number } }) {
+  return (
+    <Segmented
+      label="Paid or not paid"
+      value={value}
+      onChange={onChange}
+      options={[
+        { value: "all", label: "All" },
+        { value: "unpaid", label: "Not paid", count: counts?.unpaid },
+        { value: "paid", label: "Paid", count: counts?.paid },
+      ]}
+    />
+  );
+}
+
+/**
+ * The PDF that goes with the email (21 Nov): a card with a small picture of the page, its file
+ * name, Preview (the whole page, as the client will open it) and Download. The picture is the
+ * page itself drawn small, so it always matches what is sent.
+ */
+export function AttachedInvoice({ doc, name }: { doc: InvoiceDoc; name: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div>
+      <p className="mb-1 text-[0.93rem] font-medium">Attached</p>
+      <div className="flex items-stretch gap-3 rounded-md border border-line-strong bg-surface p-2">
+        <button type="button" onClick={() => setOpen(true)} aria-label={`Preview the attached ${doc.title.toLowerCase()} ${doc.number}`} className="press relative h-[6.5rem] w-[4.6rem] shrink-0 overflow-hidden rounded border border-line bg-white">
+          {/* The real page at one sixth of its size: nothing in it can be clicked or read by a screen reader twice. */}
+          <span aria-hidden className="pointer-events-none absolute top-0 left-0 block w-[27.6rem] origin-top-left scale-[0.1667]">
+            <InvoicePaper doc={doc} className="rounded-none border-0 shadow-none" />
+          </span>
+        </button>
+        <div className="grid min-w-0 flex-1 content-center gap-1">
+          <p className="flex min-w-0 items-center gap-1.5 font-medium">
+            <Paperclip size={16} className="shrink-0 text-muted" /> <span className="min-w-0 truncate">{name}</span>
+          </p>
+          <p className="text-[0.87rem] text-muted">
+            PDF, {doc.number}, {doc.totals.at(-1)?.value}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" onClick={() => setOpen(true)}>
+              <Eye size={15} /> Preview
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => void downloadInvoicePdf(doc).then((n) => toast(`${n} downloaded`))}>
+              <DownloadSimple size={15} /> Download
+            </Button>
+          </div>
+        </div>
+      </div>
+      <Dialog open={open} onClose={() => setOpen(false)} title={name} wide footer={<><Button onClick={() => void downloadInvoicePdf(doc).then((n) => toast(`${n} downloaded`))}>Download PDF</Button><Button variant="primary" onClick={() => setOpen(false)}>Back to the email</Button></>}>
+        <InvoicePaper doc={doc} className="shadow-none" />
+      </Dialog>
+    </div>
   );
 }
 

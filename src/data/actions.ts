@@ -962,6 +962,28 @@ export function forwardCrewRequest(id: ID) {
   });
 }
 
+/**
+ * The managing director answers a crew request himself while it is still with the site manager
+ * (21 Nov: he "can give approval above the lower ranks if he wants and goes into it manually").
+ * It leaves the site manager's list, keeps who first asked, and is answered there and then.
+ */
+export function stepInOnCrewRequest(id: ID, approve: boolean, note?: string): "planned" | "open" | "declined" | null {
+  let taken = false;
+  mutate((db) => {
+    const r = db.requests.find((x) => x.id === id);
+    if (!r || r.status !== "Open" || r.heldBy !== "site") return;
+    const who = actorName(db);
+    r.raisedBy = r.requestedBy;
+    r.steppedInBy = who;
+    r.forwardedAt = nowStamp();
+    delete r.heldBy;
+    taken = true;
+    audit(db, r.projectId ?? undefined, `Request answered by ${who} ahead of the site manager: ${r.description} (asked by ${r.raisedBy})`);
+    log(db, "Stepped in on a crew request ahead of the site manager", `${r.description}, ${db.projects.find((p) => p.id === r.projectId)?.name ?? "general"}`, "admin");
+  });
+  return taken ? decideSiteRequest(id, approve, note) : null;
+}
+
 /** Ask management for one named person on one day (the planner on the site manager's phone, which cannot change the plan itself). */
 export function requestPerson(projectId: ID, personId: ID, date: string, note: string) {
   const name = useData.getState().db.people.find((p) => p.id === personId)?.name ?? "";
@@ -1982,11 +2004,26 @@ export function addFleetDoc(d: { vehicleId: ID; category: FleetDocCategory; date
 
 // ── To do (the Dashboard's own list) ───────────────────────────────────────────
 
-export function addTodo(t: Pick<Todo, "title" | "due"> & Partial<Pick<Todo, "vehicleId" | "item" | "complianceKey" | "to">>): ID {
+export function addTodo(t: Pick<Todo, "title" | "due"> & Partial<Pick<Todo, "vehicleId" | "item" | "complianceKey" | "to" | "from" | "forName">>): ID {
   const id = newId("td");
   mutate((db) => {
-    db.todos.unshift({ id, title: clean(t.title), due: t.due, ...(t.vehicleId ? { vehicleId: t.vehicleId } : {}), ...(t.item ? { item: t.item } : {}), ...(t.complianceKey ? { complianceKey: t.complianceKey } : {}), ...(t.to ? { to: t.to } : {}), createdAt: nowStamp(), createdBy: actorName(db) });
-    log(db, "Added a to-do", `${clean(t.title)}, due ${t.due}`, "dashboard");
+    const me = actorName(db);
+    // Given to a colleague (21 Nov), it goes on their list; "for me" is the same as nobody named.
+    const forName = t.forName && t.forName !== me && db.people.some((p) => p.name === t.forName) ? t.forName : undefined;
+    db.todos.unshift({
+      id,
+      title: clean(t.title),
+      due: t.due,
+      ...(t.vehicleId ? { vehicleId: t.vehicleId } : {}),
+      ...(t.item ? { item: t.item } : {}),
+      ...(t.complianceKey ? { complianceKey: t.complianceKey } : {}),
+      ...(t.to ? { to: t.to } : {}),
+      ...(t.from ? { from: clean(t.from) } : {}),
+      ...(forName ? { forName } : {}),
+      createdAt: nowStamp(),
+      createdBy: me,
+    });
+    log(db, forName ? "Gave a colleague a to-do" : "Added a to-do", `${clean(t.title)}, due ${t.due}${forName ? `, for ${forName}` : ""}`, "dashboard");
   });
   return id;
 }
@@ -2227,6 +2264,20 @@ export function addFile(projectId: ID, category: FileCategory, f: { name: string
   });
 }
 
+/**
+ * A file added from the top bar on any screen (Oisin, 21 Nov). It goes to To be sorted, under the
+ * name of the project it was added for (or under "No project yet"), until someone picks its folder.
+ */
+export function addLooseFile(f: { name: string; kind: FileKind; sizeKb: number; dataUrl?: string }, forProjectId: ID | null): ID {
+  const id = newId("f");
+  mutate((db) => {
+    const p = forProjectId ? db.projects.find((x) => x.id === forProjectId) : undefined;
+    db.files.unshift({ id, projectId: null, ...(p ? { forProjectId: p.id } : {}), folder: "General to be sorted", category: "Unclassified", name: clean(f.name) || "File", kind: f.kind, sizeKb: f.sizeKb, modified: getDay(), addedBy: actorName(db), source: "Upload", tone: db.files.length % 6, ...(f.dataUrl ? { dataUrl: f.dataUrl } : {}) });
+    log(db, "Added a file to be sorted", `${clean(f.name)}${p ? `, for ${p.code} ${p.name}` : ", no project yet"}`, "files");
+  });
+  return id;
+}
+
 /** A client sends a document through the portal: a purchase order, a payment certificate. It lands in the project's Correspondence folder. */
 export function clientSendsDocument(projectId: ID, who: string, what: string, f: { name: string; dataUrl: string }) {
   mutate((db) => {
@@ -2246,6 +2297,7 @@ export function fileIt(fileId: ID, projectId: ID, category: FileCategory) {
     f.projectId = projectId;
     f.category = category;
     f.folder = category;
+    delete f.forProjectId;
     if (category === "Photos and videos" && !f.stage) {
       f.stage = "During";
       f.caption = f.name.replace(/\.[a-z0-9]+$/i, "");
@@ -2289,13 +2341,16 @@ export function approvePurchase(id: ID, allocations?: Omit<Allocation, "id">[]) 
     if (!s || s.readStatus !== "needs_review") return;
     if (allocations) s.allocations = allocations.map((a) => ({ ...a, id: newId("al") }));
     if (s.allocations.length === 0) return;
+    // The managing director may approve one that is still on the site manager's step (21 Nov): it is recorded that he stepped in.
+    const ahead = !!s.siteStep && !s.siteApprovedAt && !!s.askedAt;
+    if (ahead) s.aheadOfSite = true;
     s.readStatus = "confirmed";
     s.confirmedBy = actorName(db);
     s.confirmedAt = nowStamp();
     delete s.sentBack;
     // The paper is filed with each project it was charged to.
     for (const projectId of new Set(s.allocations.map((a) => a.projectId))) fileInvoice(db, projectId, s.fileName, s.receivedAt.slice(0, 10), s.supplier, "Email");
-    log(db, `Approved a ${whose(s)} invoice into job costs`, purchaseName(s), "invoicing");
+    log(db, `Approved a ${whose(s)} invoice into job costs${ahead ? ", ahead of the site manager's step" : ""}`, purchaseName(s), "invoicing");
   });
 }
 
