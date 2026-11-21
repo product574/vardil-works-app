@@ -75,7 +75,7 @@ export function suggestionsFor(path: string, db: Db): { about?: { label: string;
         ...(c && p.status === "Live" ? [`Draft this week's update to ${c.contactName}`] : []),
       ],
     };
-  } else if (path.startsWith("/invoicing")) about = { label: "About invoicing", items: ["Which invoices are overdue, and by how much?", "What is ready to invoice, and what is held?", "Which jobs have the thinnest margin so far?", "Draft chasers for the overdue invoices"] };
+  } else if (path.startsWith("/invoicing")) about = { label: "About invoicing", items: ["Which invoices are overdue, and by how much?", "What is ready to invoice, and what is on hold?", "Which jobs have the thinnest margin so far?", "Draft chasers for the overdue invoices"] };
   else if (path.startsWith("/sales")) about = { label: "About sales", items: ["Which quotes have had no answer?", "Which enquiries still need a quote?", "How many quotes have we won and lost?", "Draft a quote for the newest enquiry"] };
   else if (path.startsWith("/people")) about = { label: "About people", items: ["Who is free next week?", "Whose tickets run out this month?", "Who worked overtime this week?", "Which holiday requests are waiting?"] };
   else if (path.startsWith("/schedule")) about = { label: "About the schedule", items: ["Who is free next week?", "Is anyone double booked?", "Who is on each site on Monday?"] };

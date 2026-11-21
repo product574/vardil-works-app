@@ -1,5 +1,6 @@
 import { useId, useState } from "react";
 import { addPurchaseInvoice } from "@/data/actions";
+import { useData } from "@/data/store";
 import type { CostCategoryKey, SupplierInvoice } from "@/data/types";
 import { VAT_RATES } from "@/lib/invoices";
 import { readProof } from "@/lib/image";
@@ -9,6 +10,8 @@ import { addPurchaseProblem, ARRIVED, knownPayees, readInvoiceName } from "@/lib
 import { Button, Dialog, Field, NumInput, Segmented } from "@/ui";
 import { PickFile } from "@/ui/files";
 import { toast } from "@/ui/toast";
+import { useAccess } from "@/data/access";
+import { AddSubcontractorDialog } from "@/modules/compliance/AddSubcontractor";
 import { usePurchases } from "./purchase-shared";
 
 /** Cost headings in the words used on screen. The keys match src/lib/job-costs.ts. */
@@ -50,6 +53,8 @@ export function AddInvoiceDialog({ onClose }: { onClose: (id?: string) => void }
   const [category, setCategory] = useState<CostCategoryKey>("material");
   const [via, setVia] = useState<NonNullable<SupplierInvoice["via"]>>("email");
   const [tried, setTried] = useState(false);
+  const [newSub, setNewSub] = useState(false);
+  const maySub = useAccess().may("manageCompany");
 
   const sub = db.subcontractors.find((s) => s.name.trim().toLowerCase() === from.trim().toLowerCase());
   const job = db.projects.find((p) => p.id === projectId);
@@ -139,6 +144,17 @@ export function AddInvoiceDialog({ onClose }: { onClose: (id?: string) => void }
                   <option key={n} value={n} />
                 ))}
               </datalist>
+              {/* A name not on file goes in as a supplier unless the office says it is a subcontractor (21 Nov, decision 240). */}
+              {!sub && from.trim().length > 2 && !payees.some((n) => n.toLowerCase() === from.trim().toLowerCase()) && (
+                <p className="mt-1 text-[0.87rem]">
+                  <span className="text-muted">Not on file, so it goes in as a new supplier. </span>
+                  {maySub && (
+                    <button type="button" className="font-medium text-accent-ink underline underline-offset-2" onClick={() => setNewSub(true)}>
+                      A subcontractor? Add them
+                    </button>
+                  )}
+                </p>
+              )}
             </>
           )}
         </Field>
@@ -210,6 +226,23 @@ export function AddInvoiceDialog({ onClose }: { onClose: (id?: string) => void }
           Once approved it moves to To be paid, where the office pays it and marks it paid. For an invoice that covers more than one job, use Save to check later and split its lines in Money out.
         </p>
       </form>
+      {newSub && (
+        <AddSubcontractorDialog
+          name={from.trim()}
+          projectId={projectId || undefined}
+          onClose={(id) => {
+            setNewSub(false);
+            if (!id) return;
+            // The name as it was saved, so the invoice matches the firm, and the building rate a subcontractor's work carries.
+            const added = subNameOf(id);
+            if (added) setFrom(added);
+            setVatPct(rates[0]!.pct);
+          }}
+        />
+      )}
     </Dialog>
   );
 }
+
+/** A subcontractor's name by id, read straight from the store just after it was added. */
+const subNameOf = (id: string) => useData.getState().db.subcontractors.find((s) => s.id === id)?.name;

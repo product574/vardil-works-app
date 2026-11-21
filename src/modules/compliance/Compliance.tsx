@@ -5,9 +5,10 @@
  * Fleet, Machinery (with the scaffold registers), Company papers and Subcontractors.
  */
 import { driversOf } from "@/lib/fleet";
-import { useState } from "react";
+import { Plus } from "@phosphor-icons/react";
+import { useId, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { addCert, addCourse, bookOnCourse, markCourseDone, recordSubWorker, unbookFromCourse } from "@/data/actions";
+import { addCert, addCompanyPaper, addCourse, bookOnCourse, markCourseDone, recordSubWorker, unbookFromCourse } from "@/data/actions";
 import type { Course, Person, SubPaperKind } from "@/data/types";
 import { AREAS, type Area, blocksText, bookingFor, type ComplianceRow, courseStage, countRows, latestPaper, planBlocks, renewedTo, scaffoldDue, standing, stateOf, subFlags, ticketBlocks, ticketMatrix } from "@/lib/compliance";
 import { addDays } from "@/lib/dates";
@@ -15,11 +16,13 @@ import { dFull, dShort, dWeekday, plural } from "@/lib/format";
 import { money0 } from "@/lib/money";
 import { usePrefs } from "@/data/store";
 import { nextWorkWeek } from "@/lib/week";
-import { Badge, Button, cx, Dialog, Empty, Field, NumInput, PageBody, PageHead, Panel, Section, Segmented } from "@/ui";
+import { Badge, Button, cx, Dialog, Empty, Field, NextStep, NumInput, PageBody, PageHead, Panel, Section, Segmented } from "@/ui";
 import { ProofField, useProofPick } from "@/ui/files";
 import { toast } from "@/ui/toast";
 import { actionLabel, Figures, InspectForm, LINK, permFor, ProofCell, RenewDialog, RowTable, StateBadge, stateLabel, useCompliance } from "./shared";
 import { PORTAL } from "@/lib/apps";
+import { paperProblem, USUAL_PAPERS } from "@/lib/ways-in";
+import { AddSubcontractorDialog } from "./AddSubcontractor";
 
 const needsAttention = (r: ComplianceRow) => r.state !== "ok" || r.proofNeeded || !!r.sent;
 
@@ -931,9 +934,20 @@ export function CompanyPapers() {
   const [open, setOpen] = useState<ComplianceRow | null>(null);
   const mine = rows.filter((r) => r.area === "company");
   const canEdit = access.may("manageCompany");
+  const [adding, setAdding] = useState(false);
   return (
     <>
-      <PageHead title="Company papers" note={`The firm's own insurances, tax clearance and registrations. ${countRows(mine).due} due inside 30 days. Clients and main contractors ask for these before work starts.`} />
+      <PageHead
+        title="Company papers"
+        note={`The firm's own insurances, tax clearance and registrations. ${countRows(mine).due} due inside 30 days. Clients and main contractors ask for these before work starts. Add a paper the firm did not hold before with Add paper; renew one already here on its own row.`}
+        actions={
+          canEdit && (
+            <Button variant="primary" onClick={() => setAdding(true)}>
+              <Plus size={16} /> Add paper
+            </Button>
+          )
+        }
+      />
       <PageBody className="max-w-6xl">
         <Panel className="overflow-x-auto">
           <table className="tbl" aria-label="Company papers">
@@ -977,7 +991,90 @@ export function CompanyPapers() {
         {!canEdit && <p className="mt-2 text-[0.93rem] text-muted">Renewing these needs the "Manage company and subcontractor papers" permission (the managing director and accounts by default).</p>}
       </PageBody>
       {open && <RenewDialog key={open.key} row={open} onClose={() => setOpen(null)} />}
+      {adding && <AddPaperDialog onClose={() => setAdding(false)} />}
     </>
+  );
+}
+
+/**
+ * A paper the firm did not hold before (21 Nov, decision 244): a new insurance, registration or
+ * permit. Filled in by whoever keeps the company papers. From then on it is renewed on its row
+ * and reminded about like the rest.
+ */
+function AddPaperDialog({ onClose }: { onClose: () => void }) {
+  const { db, day } = useCompliance();
+  const formId = useId();
+  const listId = useId();
+  const [name, setName] = useState("");
+  const [provider, setProvider] = useState("");
+  const [reference, setReference] = useState("");
+  const [cover, setCover] = useState("");
+  const [expires, setExpires] = useState(addDays(day, 365));
+  const [tried, setTried] = useState(false);
+  const { proof, error, pick } = useProofPick();
+  const usual = USUAL_PAPERS.filter((u) => !db.companyPapers.some((c) => c.name.toLowerCase() === u.toLowerCase()));
+  const form = { name, provider, reference, cover, expires };
+  const problem = paperProblem(form, db.companyPapers);
+  const save = () => {
+    setTried(true);
+    if (problem) return;
+    if (!addCompanyPaper(form, proof)) return;
+    toast(`${name.trim()} added${proof ? ", copy attached" : ". Marked as waiting on proof"}`);
+    onClose();
+  };
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      title="Add a company paper"
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button variant="primary" type="submit" form={formId}>
+            Add paper
+          </Button>
+        </>
+      }
+    >
+      <form
+        id={formId}
+        className="grid gap-3 sm:grid-cols-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          save();
+        }}
+      >
+        <Field label="What it is" className="sm:col-span-2">
+          {(id) => (
+            <>
+              <input id={id} className="field" list={listId} value={name} placeholder="Waste collection permit" onChange={(e) => setName(e.target.value)} />
+              <datalist id={listId}>
+                {usual.map((u) => (
+                  <option key={u} value={u} />
+                ))}
+              </datalist>
+            </>
+          )}
+        </Field>
+        <Field label="Who it is from" hint="The insurer, broker or body that issued it.">
+          {(id) => <input id={id} className="field" value={provider} onChange={(e) => setProvider(e.target.value)} />}
+        </Field>
+        <Field label="Policy or reference number (optional)">{(id) => <input id={id} className="field" value={reference} onChange={(e) => setReference(e.target.value)} />}</Field>
+        <Field label="Cover (optional)" hint="For an insurance: the limit, such as 6.5 million any one event.">
+          {(id) => <input id={id} className="field" value={cover} onChange={(e) => setCover(e.target.value)} />}
+        </Field>
+        <Field label="Runs to">{(id) => <input id={id} type="date" className="field" value={expires} onChange={(e) => setExpires(e.target.value)} />}</Field>
+        <div className="sm:col-span-2">
+          <ProofField pick={pick} proof={proof} error={error} label="Copy (optional)" hint="A PDF of the schedule or certificate, or a photo of it. Saved without one, it shows Proof needed until a copy is attached." />
+        </div>
+        <p role="alert" className="min-h-5 text-bad sm:col-span-2">
+          {tried ? problem : ""}
+        </p>
+        <div className="sm:col-span-2">
+          <NextStep>It joins the list here and Everything due. It shows as due 30 days before it runs out and goes on the Monday reminder; renew it on its row when the new one comes.</NextStep>
+        </div>
+      </form>
+    </Dialog>
   );
 }
 
@@ -990,6 +1087,7 @@ export function Subcontractors() {
   const [params] = useSearchParams();
   const [open, setOpen] = useState<ComplianceRow | null>(null);
   const [adding, setAdding] = useState<string | null>(null);
+  const [newSub, setNewSub] = useState(false);
   const mine = rows.filter((r) => r.area === "subcontractors");
   const canEdit = access.may("manageCompany");
   const live = db.projects.filter((p) => p.status === "Live" || p.status === "Not started");
@@ -998,7 +1096,17 @@ export function Subcontractors() {
   const code = (id: string) => db.projects.find((p) => p.id === id)?.code ?? "";
   return (
     <>
-      <PageHead title="Subcontractors" note={`Each subcontractor's insurances, safety statement, a method statement for every site they are on, and their people's ${words.safetyCard}. ${PORTAL ? "They send these through their portal; anything that came by email is recorded here." : "They send these by email and the office records each one here."} An invoice from a subcontractor whose insurance has run out is flagged to whoever approves it.`} />
+      <PageHead
+        title="Subcontractors"
+        actions={
+          canEdit && (
+            <Button variant="primary" onClick={() => setNewSub(true)}>
+              <Plus size={16} /> Add subcontractor
+            </Button>
+          )
+        }
+        note={`Each subcontractor's insurances, safety statement, a method statement for every site they are on, and their people's ${words.safetyCard}. ${PORTAL ? "They send these through their portal; anything that came by email is recorded here." : "They send these by email and the office records each one here."} An invoice from a subcontractor whose insurance has run out is flagged to whoever approves it.`}
+      />
       <PageBody className="grid max-w-6xl gap-5">
         {subs.map((s) => {
           const flags = subFlags(s, live, day);
@@ -1010,7 +1118,7 @@ export function Subcontractors() {
               <div className="flex flex-wrap items-baseline gap-x-3">
                 <h2 className="text-[1.15rem]">{s.name}</h2>
                 <span className="text-muted">
-                  {s.trade}, on {s.projectIds.filter((id) => live.some((p) => p.id === id)).map(code).join(", ")}. {s.contactName}, {s.phone}.
+                  {s.trade}, {s.projectIds.some((id) => live.some((p) => p.id === id)) ? `on ${s.projectIds.filter((id) => live.some((p) => p.id === id)).map(code).join(", ")}` : "on no site yet"}. {[s.contactName, s.phone].filter(Boolean).join(", ")}.
                 </span>
                 {PORTAL && (
                   <Link to={`/portal/subcontractors?sub=${s.id}`} className={cx("text-[0.93rem]", LINK)}>
@@ -1100,6 +1208,7 @@ export function Subcontractors() {
       </PageBody>
       {open && <RenewDialog key={open.key} row={open} onClose={() => setOpen(null)} />}
       {adding && <AddWorkerDialog subId={adding} onClose={() => setAdding(null)} />}
+      {newSub && <AddSubcontractorDialog onClose={() => setNewSub(false)} />}
     </>
   );
 }

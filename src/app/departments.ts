@@ -98,6 +98,7 @@ export const DEPARTMENTS: Department[] = [
       ] },
       { label: "Site", items: [
         { to: "/projects/requests", label: "Requests", count: (db, _today, me) => openRequestCount(db, me) },
+        { to: "/projects/orders", label: "Orders and deliveries", count: (db, today) => db.supplies.filter((o) => o.status !== "Delivered" && o.dueOn < today).length, countTone: "warn" },
         // Where a site manager approves what the subcontractors on their sites have invoiced (18 Nov).
         { to: "/projects/subcontractor-invoices", label: "Subcontractor invoices" },
       ] },
@@ -205,7 +206,7 @@ export const DEPARTMENTS: Department[] = [
         { to: "/invoicing/claims", label: "Payment claims" },
         { to: "/invoicing", label: "Client invoices", end: true, count: (db) => db.salesInvoices.filter((i) => i.status === "To invoice").length },
         { to: "/invoicing/invoiced", label: "Unpaid", count: (db, today) => db.salesInvoices.filter((i) => i.status === "Invoiced" && !!i.dueOn && i.dueOn < today).length, countTone: "bad" },
-        { to: "/invoicing/held", label: "Held", count: (db) => db.salesInvoices.filter((i) => i.status === "Held").length, countTone: "warn" },
+        { to: "/invoicing/held", label: "On hold", count: (db) => db.salesInvoices.filter((i) => i.status === "Held").length, countTone: "warn" },
         { to: "/invoicing/queries", label: "Client queries", count: (db) => db.invoiceQueries.filter((q) => q.status === "Open").length, countTone: "warn" },
       ] },
       // Supplier and subcontractor invoices are checked, approved, then paid (18 Nov). The counts

@@ -92,7 +92,7 @@ def steps(page, ctx):
 
     # ── 4. Variations and snagging: clearer words, the plus buttons, the snag list
     go(page, "/projects/extras")
-    check("The screen is Variations and snagging", page.get_by_role("heading", name="Variations and snagging", level=1).count() == 1 and tabs() == ["Site requests", "Variations and snagging", "Invoices to approve"], tabs())
+    check("The screen is Variations and snagging", page.get_by_role("heading", name="Variations and snagging", level=1).count() == 1 and tabs() == ["Site requests", "Orders and deliveries", "Variations and snagging", "Invoices to approve"], tabs())
     heads = [re.sub(r"\s*\(\d+\)$", "", h.inner_text().strip()) for h in page.locator("main h2").all()]
     check("Three lists: Final accounts on hold, Variations waiting for approval, Open snags", heads == ["Final accounts on hold", "Variations waiting for approval", "Open snags"], heads)
     txt = page.locator("main").inner_text()

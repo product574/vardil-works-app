@@ -13,7 +13,7 @@ import { bankHolidayOn, closureDays, isBankHoliday, isRestDay } from "@/lib/bank
 import { addDays, dayOfWeek, isWeekend } from "@/lib/dates";
 import { billingEmail, grossOf, linesNet, nextAccountsNo, routeWords } from "@/lib/invoices";
 import { TENDER_CHECKS } from "@/lib/tenders";
-import { addPurchaseProblem, approveStep, chainOf, CHAIN_WORDS, nextFileNo, partyOf, purchaseStage, receiptEmail, remittanceEmail, startsOnSite } from "@/lib/purchases";
+import { accountRefOf, addPurchaseProblem, approveStep, chainOf, CHAIN_WORDS, nextFileNo, partyOf, purchaseStage, receiptEmail, remittanceEmail, startsOnSite } from "@/lib/purchases";
 import { REGION } from "@/lib/money";
 import { normaliseReg } from "@/lib/fleet";
 import { overtimeText, overtimeTotal, restDayKind, restDayProblem, storedDouble } from "@/lib/overtime";
@@ -24,6 +24,8 @@ import { driverSiteOn, dropOutcome } from "@/lib/roster";
 import { money2, r2 } from "@/lib/money";
 import { quoteTotal } from "@/lib/quotes";
 import { openSnags, takesSnags } from "@/lib/snags";
+import { orderProblem, spendProblem, type NewSpend } from "@/lib/buying";
+import { hireProblem, paperProblem, projectProblem, scopeLines, subProblem, type NewHire, type NewPaper, type NewProject, type NewSub } from "@/lib/ways-in";
 import { attendanceShort, type DayMark, restDayMark } from "@/lib/week";
 import { addMinutes, checkCode, type CodeCheck, codesLeft, isLocked, LOCK_MINUTES, MAX_TRIES, phoneDigits, SESSION_DAYS, triesLeft } from "@/lib/phone-auth";
 import { levelOf, levelValue, signedInPersonId } from "./access";
@@ -3653,4 +3655,220 @@ export function sendRoster(weekStart: string, messages: RosterSend["messages"]) 
     const people = new Set(messages.map((m) => m.personId)).size;
     log(db, "Sent the week's roster by email and WhatsApp", `Week of ${weekStart}, ${people} people, ${messages.length} messages`, "schedule");
   });
+}
+
+// ── More ways in (21 Nov, decisions 239 to 244) ───────────────────────────────
+
+/**
+ * Plant goes on hire: the office records who from, their reference, the rate and the day it
+ * starts. When it answers a site's request, that request is done. Returns the new hire's id, or
+ * null when the form is not complete.
+ */
+export function putOnHire(f: NewHire, requestId?: ID): ID | null {
+  if (hireProblem(f)) return null;
+  let id: ID | null = null;
+  mutate((db) => {
+    const p = db.projects.find((x) => x.id === f.projectId);
+    if (!p) return;
+    const who = actorName(db);
+    id = newId("hp");
+    const r = requestId ? db.requests.find((x) => x.id === requestId) : undefined;
+    db.hiredPlant.unshift({
+      id,
+      projectId: p.id,
+      description: f.description.trim(),
+      quantity: Math.max(1, Math.round(f.quantity) || 1),
+      hireCompany: f.hireCompany.trim(),
+      hirePhone: f.hirePhone.trim(),
+      hireRef: f.hireRef.trim() || "To follow",
+      onHireFrom: f.onHireFrom,
+      rate: r2(f.rate),
+      rateUnit: f.rateUnit,
+      status: "On hire",
+      notes: f.notes.trim(),
+      putOnBy: who,
+      ...(r ? { requestId: r.id } : {}),
+    });
+    if (r && r.status === "Open") {
+      r.status = "Done";
+      r.dealtBy = who;
+    }
+    audit(db, p.id, `Plant on hire: ${f.description.trim()} from ${f.hireCompany.trim()}${r ? `, asked for by ${r.requestedBy}` : ""}`);
+    log(db, "Put plant on hire", `${f.description.trim()}, ${f.hireCompany.trim()}, ${p.code} ${p.name}`, "plant");
+  });
+  return id;
+}
+
+/**
+ * A new subcontractor firm. Its Sage account is made from the name and never changes. It starts
+ * with no papers on file, so Compliance flags its insurances and safety statement as missing
+ * until the office records them.
+ */
+export function addSubcontractor(f: NewSub): ID | null {
+  let id: ID | null = null;
+  mutate((db) => {
+    if (subProblem(f, db.subcontractors)) return;
+    id = newId("sub");
+    const stem = accountRefOf(f.name);
+    const taken = db.subcontractors.filter((x) => x.accountRef.startsWith(stem)).length;
+    db.subcontractors.push({
+      id,
+      name: f.name.trim().replace(/\s+/g, " "),
+      trade: f.trade.trim(),
+      contactName: f.contactName.trim(),
+      email: f.email.trim().toLowerCase(),
+      phone: f.phone.trim(),
+      accountRef: taken ? `${stem.slice(0, 7)}${taken + 1}` : stem,
+      termsDays: Math.round(f.termsDays),
+      projectIds: f.projectIds.filter((pid) => db.projects.some((p) => p.id === pid)),
+      papers: [],
+      workers: [],
+    });
+    log(db, "Added a subcontractor", `${f.name.trim()}, ${f.trade.trim()}`, "compliance");
+  });
+  return id;
+}
+
+/**
+ * A project that did not come from a tender: a repeat client, emergency works, a job on a
+ * schedule of rates. It gets the next site code and starts as Not started, so it counts in Sales,
+ * Confirmed like any other order. Returns the site code, or "" when the form is not complete.
+ */
+export function addProject(f: NewProject): string {
+  if (projectProblem(f)) return "";
+  let code = "";
+  mutate((db) => {
+    const client = db.clients.find((c) => c.id === f.clientId);
+    if (!client) return;
+    const who = actorName(db);
+    code = `C${nextNumber(db.projects.map((p) => p.code), "C")}`;
+    const id = `pr-${code}`;
+    const cm = db.people.find((p) => p.id === f.contractsManagerId) ?? db.people.find((p) => p.name === who && p.trade === "Contracts manager") ?? db.people.find((p) => p.id === "p-cm1")!;
+    const priced = f.pricedBy !== "Unpriced" && (f.value ?? 0) > 0;
+    const order = f.orderRef.trim();
+    db.projects.unshift({
+      id,
+      code,
+      name: f.name.trim(),
+      clientId: client.id,
+      location: f.location.trim(),
+      county: f.county.trim(),
+      description: f.description.trim(),
+      heritage: "To be confirmed with the conservation officer",
+      status: "Not started",
+      contractsManagerId: cm.id,
+      siteManagerId: f.siteManagerId,
+      startDate: f.startDate,
+      endDate: f.endDate,
+      plannedEnd: f.endDate,
+      value: priced ? r2(f.value!) : null,
+      pricedBy: f.pricedBy,
+      ...(order ? { orderRef: order } : {}),
+      siteInstructions: "",
+      extrasFlag: false,
+      snaggingFlag: false,
+      invoiceHold: false,
+      audit: [{ at: nowStamp(), who, what: `Project set up without a tender for ${client.name}${order ? `, against ${order}` : ""}` }],
+    });
+    const lines = scopeLines(f.scope);
+    if (lines.length) {
+      const groupId = newId("sg");
+      db.scopeGroups.push({ id: groupId, projectId: id, label: "Original project overview", isOriginal: true, date: getDay() });
+      for (const l of lines) db.scopeTasks.push({ id: newId("st"), projectId: id, groupId, description: l, done: false });
+    }
+    log(db, "Added a project without a tender", `${code} ${f.name.trim()}, ${client.name}`, "projects", who);
+  });
+  return code;
+}
+
+/**
+ * Work has started on site: a Not started job becomes a live project (21 Nov, decision 245).
+ * Said by whoever runs the site or the office. If it starts on a different day than planned, the
+ * start date follows.
+ */
+export function startProject(projectId: ID) {
+  mutate((db) => {
+    const p = db.projects.find((x) => x.id === projectId);
+    if (!p || p.status !== "Not started") return;
+    const day = getDay();
+    p.status = "Live";
+    if (p.startDate !== day) p.startDate = day;
+    if (p.endDate < day) p.endDate = day;
+    audit(db, p.id, "Work started on site");
+    log(db, "Started a project on site", `${p.code} ${p.name}`, "projects");
+  });
+}
+
+/** Ask to buy something, for a site or for the firm. It waits for the managing director's yes or no in Admin, Requests. */
+export function askToSpend(f: NewSpend & { projectId: ID | null }): ID | null {
+  if (spendProblem(f)) return null;
+  let id: ID | null = null;
+  mutate((db) => {
+    const by = actorId(db);
+    if (!by) return;
+    id = newId("sp");
+    db.spendRequests.unshift({ id, requestedById: by, createdAt: nowStamp(), what: f.what.trim(), supplier: f.supplier.trim() || "Not chosen yet", projectId: f.projectId, amount: r2(f.amount), reason: f.reason.trim(), status: "Waiting" });
+    const p = db.projects.find((x) => x.id === f.projectId);
+    audit(db, p?.id, `Asked to buy: ${f.what.trim()}`);
+    log(db, "Asked to buy something", `${f.what.trim()}, ${money2(f.amount, usePrefs.getState().brand.region)}${p ? `, ${p.code} ${p.name}` : ", for the firm"}`, "projects");
+  });
+  return id;
+}
+
+/** The office has placed the order for an approved request: who with, and the day it is due on site. */
+export function placeOrder(spendId: ID, f: { supplier: string; dueOn: string }): ID | null {
+  if (orderProblem(f, getDay())) return null;
+  let id: ID | null = null;
+  mutate((db) => {
+    const x = db.spendRequests.find((s) => s.id === spendId);
+    if (!x || x.status !== "Approved" || x.orderId) return;
+    const who = actorName(db);
+    const supplier = f.supplier.trim();
+    id = newId("su");
+    x.orderId = id;
+    x.supplier = supplier;
+    db.supplies.unshift({ id, from: supplier, party: db.subcontractors.some((s) => s.name === supplier) ? "subcontractor" : "supplier", projectId: x.projectId, description: x.what, orderedOn: getDay(), dueOn: f.dueOn, status: "Ordered", spendId: x.id, amount: x.amount, orderedBy: who });
+    const p = db.projects.find((y) => y.id === x.projectId);
+    audit(db, p?.id, `Ordered from ${supplier}: ${x.what}, due ${f.dueOn}`);
+    log(db, "Placed an order", `${x.what}, ${supplier}${p ? `, ${p.code} ${p.name}` : ", for the firm"}`, "projects");
+  });
+  return id;
+}
+
+/** It has arrived: said by the site it was for, or the office. Undo with `undoDelivered`. */
+export function markDelivered(orderId: ID) {
+  mutate((db) => {
+    const o = db.supplies.find((x) => x.id === orderId);
+    if (!o || o.status === "Delivered") return;
+    o.status = "Delivered";
+    o.deliveredOn = getDay();
+    o.deliveredBy = actorName(db);
+    delete o.progress;
+    const p = db.projects.find((y) => y.id === o.projectId);
+    audit(db, p?.id, `Delivered: ${o.description}, from ${o.from}`);
+    log(db, "Marked an order delivered", `${o.description}, ${o.from}${p ? `, ${p.code} ${p.name}` : ""}`, "projects");
+  });
+}
+
+export function undoDelivered(orderId: ID) {
+  mutate((db) => {
+    const o = db.supplies.find((x) => x.id === orderId);
+    if (!o || o.status !== "Delivered") return;
+    o.status = "Ordered";
+    delete o.deliveredOn;
+    delete o.deliveredBy;
+    log(db, "Took back a delivery", `${o.description}, ${o.from}`, "projects");
+  });
+}
+
+/** A company paper the firm did not hold before: a new insurance, registration or permit. Renewed from then on like the rest. */
+export function addCompanyPaper(f: NewPaper, proof: NewProof): ID | null {
+  let id: ID | null = null;
+  mutate((db) => {
+    if (paperProblem(f, db.companyPapers)) return;
+    id = newId("co");
+    db.companyPapers.push({ id, name: f.name.trim(), provider: f.provider.trim(), reference: f.reference.trim() || "To follow", ...(f.cover.trim() ? { cover: f.cover.trim() } : {}), expires: f.expires, ...stampProof(db, proof) });
+    log(db, "Added a company paper", `${f.name.trim()}, to ${f.expires}${proof ? "" : ", proof still needed"}`, "compliance");
+  });
+  return id;
 }

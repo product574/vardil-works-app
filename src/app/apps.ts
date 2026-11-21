@@ -79,6 +79,7 @@ export const APPS: App[] = [
         label: "Requests and variations",
         tabs: [
           t("projects", "/projects/requests", "Site requests", { count: (db, _today, me) => openRequestCount(db, me) }),
+          t("projects", "/projects/orders", "Orders and deliveries", { count: (db, today) => db.supplies.filter((o) => o.status !== "Delivered" && o.dueOn < today).length, countTone: "warn" }),
           t("projects", "/projects/extras", "Variations and snagging", { count: (db) => db.projects.filter((p) => p.invoiceHold).length, countTone: "warn" }),
           t("projects", "/projects/subcontractor-invoices", "Invoices to approve"),
         ],
@@ -174,7 +175,7 @@ export const APPS: App[] = [
           t("invoicing", "/invoicing/claims", "Payment claims", { count: (db, today) => claimsToIssue(db, today), countTone: "bad" }),
           t("invoicing", "/invoicing", "All client invoices", { end: true, count: (db) => db.salesInvoices.filter((i) => i.status === "To invoice").length }),
           t("invoicing", "/invoicing/invoiced", "Unpaid", { count: (db, today) => db.salesInvoices.filter((i) => i.status === "Invoiced" && !!i.dueOn && i.dueOn < today).length, countTone: "bad" }),
-          t("invoicing", "/invoicing/held", "Held", { count: (db) => db.salesInvoices.filter((i) => i.status === "Held").length, countTone: "warn" }),
+          t("invoicing", "/invoicing/held", "On hold", { count: (db) => db.salesInvoices.filter((i) => i.status === "Held").length, countTone: "warn" }),
           t("invoicing", "/invoicing/queries", "Client queries", { count: (db) => db.invoiceQueries.filter((q) => q.status === "Open").length, countTone: "warn" }),
           t("invoicing", "/invoicing/export", "Sage export"),
           t("invoicing", "/invoicing/design", "Invoice design"),

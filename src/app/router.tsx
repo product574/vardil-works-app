@@ -107,6 +107,7 @@ export const router = create([
           screen("projects/extras", projects, (m) => m.ExtrasAndSnagging),
           screen("projects/completed", projects, (m) => m.Completed),
           screen("projects/requests", projects, (m) => m.SiteRequests),
+          screen("projects/orders", projects, (m) => m.OrdersAndDeliveries),
           screen("projects/subcontractor-invoices", projects, (m) => m.SubcontractorInvoicesForSites),
           screen("projects/:code", projects, (m) => m.ProjectPage),
           screen("people/timesheet", people, (m) => m.Timesheet),

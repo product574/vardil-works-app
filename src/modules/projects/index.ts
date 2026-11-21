@@ -2,3 +2,4 @@ export { AllProjects, Completed, ExtrasAndSnagging, LiveProjects, NotStarted, On
 export { ResourcesToday } from "./ResourcesToday";
 export { ProjectPage } from "./ProjectPage";
 export { SubcontractorInvoicesForSites } from "./SubInvoices";
+export { OrdersAndDeliveries } from "./Orders";

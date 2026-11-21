@@ -11,7 +11,7 @@ import { PORTAL } from "./apps";
 
 /** The state shown on screen. Overdue is a sent invoice past its due date. */
 export type Stage = "draft" | "held" | "sent" | "overdue" | "paid";
-export const STAGE_LABEL: Record<Stage, string> = { draft: "Draft", held: "Held", sent: "Sent", overdue: "Overdue", paid: "Paid" };
+export const STAGE_LABEL: Record<Stage, string> = { draft: "Draft", held: "On hold", sent: "Sent", overdue: "Overdue", paid: "Paid" };
 export const STAGE_TONE: Record<Stage, "neutral" | "accent" | "ok" | "warn" | "bad"> = { draft: "neutral", held: "warn", sent: "accent", overdue: "bad", paid: "ok" };
 
 export function stageOf(i: Pick<SalesInvoice, "status" | "dueOn">, today: string): Stage {

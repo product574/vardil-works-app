@@ -98,7 +98,7 @@ describe("a site manager's general request, not for one site", () => {
     expect(sees(EOIN)).toBe(true);
     expect(sees(CATHAL)).toBe(false);
     expect(openRequestCount(db(), EOIN)).toBe(3);
-    expect(openRequestCount(db(), "p-md")).toBe(7);
+    expect(openRequestCount(db(), "p-md")).toBe(8);
     // It is not a request from a crew, on any site.
     expect(crewRequests(db().requests, db().projects.map((p) => p.id)).some((r) => r.id === id)).toBe(false);
   });

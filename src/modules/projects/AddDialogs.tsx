@@ -1,7 +1,8 @@
 import { useId, useState } from "react";
 import { useAccess } from "@/data/access";
-import { addRequest, addSnag, raiseExtra } from "@/data/actions";
+import { addRequest, addSnag, askToSpend, raiseExtra } from "@/data/actions";
 import { useData, useDay } from "@/data/store";
+import { spendProblem } from "@/lib/buying";
 import type { Project, RequestKind, Snag } from "@/data/types";
 import { addDays } from "@/lib/dates";
 import { takesRequests, takesSnags, takesVariations } from "@/lib/snags";
@@ -61,24 +62,42 @@ function SiteField({ sites, value, onChange, fixed, general }: { sites: Project[
 
 const Next = ({ children }: { children: string }) => <p className="rounded-md bg-side px-3 py-2 text-[0.93rem] text-muted">{children}</p>;
 
-/** Ask the office for people, plant or something else. It waits for the managing director's yes or no in Admin. */
-export function NewRequestDialog({ onClose, project }: { onClose: () => void; project?: Project }) {
+/**
+ * Ask the office for people, plant, something to buy or something else. It waits for the managing
+ * director's yes or no in Admin. "Something to buy" (21 Nov, decision 242) asks different things:
+ * what, who from if known, how much and why; after a yes the office orders it. `buy` opens the box
+ * on that kind (the button on Orders and deliveries).
+ */
+export function NewRequestDialog({ onClose, project, buy }: { onClose: () => void; project?: Project; buy?: boolean }) {
   const day = useDay();
   const sites = useSites(takesRequests);
+  const suppliers = useData((s) => s.db.supplierInvoices);
   const formId = useId();
+  const listId = useId();
   const [site, setSite] = useState(project?.id ?? "");
-  const [kind, setKind] = useState<RequestKind>("personnel");
+  const [kind, setKind] = useState<RequestKind | "buy">(buy ? "buy" : "personnel");
+  const [supplier, setSupplier] = useState("");
+  const [amount, setAmount] = useState(0);
+  const [reason, setReason] = useState("");
   const [description, setDescription] = useState("");
   const [quantity, setQuantity] = useState(1);
   const [from, setFrom] = useState(addDays(day, 1));
   const [to, setTo] = useState(addDays(day, 5));
   const [notes, setNotes] = useState("");
   const general = site === GENERAL;
-  const problem = !site ? "Choose the site it is for." : !description.trim() ? "Say what is needed." : to < from ? "The end date is before the start date." : "";
+  const buying = kind === "buy";
+  const known = [...new Set(suppliers.map((s) => s.supplier))].sort();
+  const problem = !site ? "Choose the site it is for." : buying ? spendProblem({ what: description, supplier, amount, reason }) : !description.trim() ? "Say what is needed." : to < from ? "The end date is before the start date." : "";
   const [tried, setTried] = useState(false);
   const send = () => {
     setTried(true);
     if (problem) return;
+    if (buying) {
+      askToSpend({ projectId: general ? null : site, what: description, supplier, amount, reason });
+      toast("Sent. It waits for a yes or no in Admin, Requests. After a yes the office orders it");
+      onClose();
+      return;
+    }
     addRequest({ projectId: general ? null : site, kind: general ? "other" : kind, description: description.trim(), quantity: Math.max(1, quantity || 1), neededFrom: from, neededTo: to, notes: notes.trim() });
     toast("Request sent. It waits for a yes or no in Admin, Requests");
     onClose();
@@ -87,12 +106,12 @@ export function NewRequestDialog({ onClose, project }: { onClose: () => void; pr
     <Dialog
       open
       onClose={onClose}
-      title="New request"
+      title={buy ? "Something to buy" : "New request"}
       footer={
         <>
           <Button onClick={onClose}>Cancel</Button>
           <Button variant="primary" type="submit" form={formId}>
-            Send request
+            {buying ? "Ask to buy" : "Send request"}
           </Button>
         </>
       }
@@ -106,32 +125,64 @@ export function NewRequestDialog({ onClose, project }: { onClose: () => void; pr
         }}
       >
         <SiteField sites={sites} value={site} onChange={setSite} fixed={project} general />
-        {!general && (
-          <Field label="What kind">
-            {(id) => (
-              <select id={id} className="field" value={kind} onChange={(e) => setKind(e.target.value as RequestKind)}>
-                <option value="personnel">People</option>
-                <option value="own_plant">Our own plant</option>
-                <option value="hired_plant">Plant to hire</option>
-                <option value="other">Something else</option>
-              </select>
-            )}
-          </Field>
+        <Field label="What kind">
+          {(id) => (
+            <select id={id} className="field" value={general && !buying ? "other" : kind} onChange={(e) => setKind(e.target.value as RequestKind | "buy")}>
+              {!general && <option value="personnel">People</option>}
+              {!general && <option value="own_plant">Our own plant</option>}
+              {!general && <option value="hired_plant">Plant to hire</option>}
+              <option value="buy">Something to buy</option>
+              <option value="other">Something else</option>
+            </select>
+          )}
+        </Field>
+        {buying ? (
+          <>
+            <Field label="What is to be bought">{(id) => <input id={id} className="field" value={description} placeholder="Lime putty, 40 tubs" onChange={(e) => setDescription(e.target.value)} />}</Field>
+            <div className="grid grid-cols-[1fr_9rem] gap-3">
+              <Field label="Supplier, if you know (optional)">
+                {(id) => (
+                  <>
+                    <input id={id} className="field" list={listId} value={supplier} onChange={(e) => setSupplier(e.target.value)} />
+                    <datalist id={listId}>
+                      {known.map((k) => (
+                        <option key={k} value={k} />
+                      ))}
+                    </datalist>
+                  </>
+                )}
+              </Field>
+              <div>
+                <p className="mb-1 text-[0.93rem] font-medium">Amount before VAT</p>
+                <NumInput label="Amount before VAT" value={amount} onChange={setAmount} className="h-9 w-full" />
+              </div>
+            </div>
+            <Field label="Why it is needed">{(id) => <textarea id={id} rows={2} className="field" value={reason} placeholder="The finish coats start on Monday and the store is down to four tubs" onChange={(e) => setReason(e.target.value)} />}</Field>
+          </>
+        ) : (
+          <>
+            <Field label="What is needed">{(id) => <input id={id} className="field" value={description} placeholder="Two general operatives for scaffold adaptation" onChange={(e) => setDescription(e.target.value)} />}</Field>
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <p className="mb-1 text-[0.93rem] font-medium">How many</p>
+                <NumInput label="How many" value={quantity} onChange={setQuantity} />
+              </div>
+              <Field label="From">{(id) => <input id={id} type="date" className="field" value={from} onChange={(e) => setFrom(e.target.value)} />}</Field>
+              <Field label="Until">{(id) => <input id={id} type="date" className="field" value={to} onChange={(e) => setTo(e.target.value)} />}</Field>
+            </div>
+            <Field label="Note (optional)">{(id) => <input id={id} className="field" value={notes} onChange={(e) => setNotes(e.target.value)} />}</Field>
+          </>
         )}
-        <Field label="What is needed">{(id) => <input id={id} className="field" value={description} placeholder="Two general operatives for scaffold adaptation" onChange={(e) => setDescription(e.target.value)} />}</Field>
-        <div className="grid grid-cols-3 gap-3">
-          <div>
-            <p className="mb-1 text-[0.93rem] font-medium">How many</p>
-            <NumInput label="How many" value={quantity} onChange={setQuantity} />
-          </div>
-          <Field label="From">{(id) => <input id={id} type="date" className="field" value={from} onChange={(e) => setFrom(e.target.value)} />}</Field>
-          <Field label="Until">{(id) => <input id={id} type="date" className="field" value={to} onChange={(e) => setTo(e.target.value)} />}</Field>
-        </div>
-        <Field label="Note (optional)">{(id) => <input id={id} className="field" value={notes} onChange={(e) => setNotes(e.target.value)} />}</Field>
         <p role="alert" className="min-h-5 text-bad">
           {tried ? problem : ""}
         </p>
-        <Next>It goes to the managing director for a yes or no (Admin, Requests). A yes stays open until the office has arranged it.</Next>
+        <Next>
+          {buying
+            ? "It goes to the managing director for a yes or no (Admin, Requests). After a yes the office places the order, and whoever runs the site marks it delivered when it arrives (Orders and deliveries)."
+            : kind === "hired_plant" && !general
+              ? "It goes to the managing director for a yes or no (Admin, Requests). After a yes the office arranges it with a hire company and puts it on hire."
+              : "It goes to the managing director for a yes or no (Admin, Requests). A yes stays open until the office has arranged it."}
+        </Next>
       </form>
     </Dialog>
   );

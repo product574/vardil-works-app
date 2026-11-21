@@ -166,6 +166,9 @@ export function Field({ label, hint, children, className }: { label: string; hin
   );
 }
 
+/** The grey line under a form that says what happens next and who it waits for (decision 230). */
+export const NextStep = ({ children }: { children: ReactNode }) => <p className="rounded-md bg-side px-3 py-2 text-[0.93rem] text-muted">{children}</p>;
+
 // ── Dialog ────────────────────────────────────────────────────────────────────
 
 /** A modal built on the browser's own <dialog>, so Escape, focus trapping and the backdrop come free. */

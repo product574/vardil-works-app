@@ -5,7 +5,7 @@ import { useAccess } from "@/data/access";
 import { clearHold, closeRequest, draftHandover } from "@/data/actions";
 import { co } from "@/data/place";
 import { useData, useDay, usePrefs } from "@/data/store";
-import type { Db, Project, ProjectStatus } from "@/data/types";
+import type { Db, Project, ProjectStatus, SiteRequest } from "@/data/types";
 import { dShort, plural, when, whenInline } from "@/lib/format";
 import { money0 } from "@/lib/money";
 import { scopePercent } from "@/lib/project-costs";
@@ -16,6 +16,8 @@ import { Badge, Button, DeclineNote, Dialog, Empty, PageBody, PageHead, Panel, S
 import { HoldBadge, Progress, ProjectBadge } from "@/ui/status";
 import { toast } from "@/ui/toast";
 import { AddSnagDialog, NewRequestDialog, NewVariationDialog } from "./AddDialogs";
+import { AddProjectDialog } from "./AddProject";
+import { PutOnHireDialog } from "@/modules/plant/PutOnHire";
 import { CrewRequestButtons } from "./CrewRequestButtons";
 import { SnagList } from "./Snags";
 import { REQUEST_LABEL } from "./ProjectPage";
@@ -38,6 +40,7 @@ export function AllProjects({ fixed }: { fixed?: "Live" | "Not started" } = {}) 
   const navigate = useNavigate();
   const day = useDay();
   const [chosen, setFilter] = useState<Filter>("Live");
+  const [adding, setAdding] = useState(false);
   const filter: Filter = fixed ?? chosen;
   const [q, setQ] = useState("");
   const mine = access.scope(db.projects);
@@ -56,6 +59,12 @@ export function AllProjects({ fixed }: { fixed?: "Live" | "Not started" } = {}) 
         <div className="mt-3 flex flex-wrap items-center gap-2">
           {!fixed && <Segmented label="Project status" value={filter} onChange={setFilter} options={[{ value: "Live", label: "Live", count: count("Live") }, { value: "Not started", label: "Not started", count: count("Not started") }, { value: "Complete", label: "Complete", count: count("Complete") }, { value: "Invoiced", label: "Invoiced", count: count("Invoiced") }, { value: "Closed", label: "Closed", count: count("Closed") }, { value: "All", label: "All", count: mine.length }]} />}
           <input type="search" aria-label="Search projects" placeholder="Search by code, name, client or county" className="field max-w-xs" value={q} onChange={(e) => setQ(e.target.value)} />
+          {/* A job that skipped the tender stage is set up here (21 Nov, decision 241). */}
+          {fixed !== "Live" && access.may("manageProjects") && (
+            <Button variant="primary" onClick={() => setAdding(true)}>
+              <Plus size={16} /> Add project
+            </Button>
+          )}
         </div>
       </PageHead>
       <PageBody>
@@ -116,7 +125,16 @@ export function AllProjects({ fixed }: { fixed?: "Live" | "Not started" } = {}) 
             </table>
           )}
         </Panel>
+        {fixed === "Not started" && <p className="mt-2 max-w-[80ch] text-[0.93rem] text-muted">A tender recorded as won in Sales becomes a project here by itself. A job that skipped the tender stage is added with Add project. Either way it turns live when its site manager or the office presses Start on site on its page.</p>}
       </PageBody>
+      {adding && (
+        <AddProjectDialog
+          onClose={(code) => {
+            setAdding(false);
+            if (code) navigate(`/projects/${code}`);
+          }}
+        />
+      )}
     </>
   );
 }
@@ -454,6 +472,7 @@ export function SiteRequests() {
   const office = access.may("manageProjects");
   const [show, setShow] = useState<"Open" | "Done">("Open");
   const [adding, setAdding] = useState(false);
+  const [hiring, setHiring] = useState<SiteRequest | null>(null);
   const canAdd = access.scope(db.projects).some(takesRequests);
   const ids = new Set(access.scope(db.projects).map((p) => p.id));
   // Requests on the sites this screen covers, and general ones (not for one site) for the office and for whoever asked.
@@ -569,17 +588,25 @@ export function SiteRequests() {
                         )}
                       </td>
                       <td className="text-right">
-                        {r.status === "Open" && office && (
-                          <Button
-                            size="sm"
-                            onClick={() => {
-                              closeRequest(r.id);
-                              toast("Request marked as dealt with");
-                            }}
-                          >
-                            Mark dealt with
-                          </Button>
-                        )}
+                        <span className="flex flex-wrap justify-end gap-1.5">
+                          {/* An agreed hire is recorded, not just ticked off (21 Nov): the box closes the request itself. */}
+                          {r.status === "Open" && r.kind === "hired_plant" && r.decision === "Approved" && r.projectId && access.may("managePlant") && (
+                            <Button size="sm" variant="primary" onClick={() => setHiring(r)}>
+                              Put on hire
+                            </Button>
+                          )}
+                          {r.status === "Open" && office && (
+                            <Button
+                              size="sm"
+                              onClick={() => {
+                                closeRequest(r.id);
+                                toast("Request marked as dealt with");
+                              }}
+                            >
+                              Mark dealt with
+                            </Button>
+                          )}
+                        </span>
                       </td>
                     </tr>
                   );
@@ -590,6 +617,7 @@ export function SiteRequests() {
         </Panel>
       </PageBody>
       {adding && <NewRequestDialog onClose={() => setAdding(false)} />}
+      {hiring && <PutOnHireDialog request={hiring} onClose={() => setHiring(null)} />}
     </>
   );
 }

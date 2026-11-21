@@ -6,7 +6,7 @@
  * invite, the first time a one-time code (shown on the phone in the demo), then their own password,
  * then fingerprint if they want it. English first; other languages per firm come later.
  */
-import { ArrowLeft, CalendarBlank, CalendarDots, CalendarPlus, Camera, CaretRight, Certificate, Clock, Fingerprint, HandPalm, IdentificationCard, Invoice, Ladder, Megaphone, Phone, PlusCircle, Receipt, SunHorizon, Tray, Truck, UserMinus, Wrench } from "@phosphor-icons/react";
+import { ArrowLeft, CalendarBlank, CalendarDots, CalendarPlus, Camera, CaretRight, Certificate, Clock, Fingerprint, HandPalm, IdentificationCard, Invoice, Ladder, ListChecks, Megaphone, Package, Phone, PlusCircle, Receipt, SunHorizon, Tray, Truck, UserMinus, Wrench } from "@phosphor-icons/react";
 import { useCallback, useEffect, useState } from "react";
 import { useAccess } from "@/data/access";
 import { actAs, decideExpense, nowStamp, enterPhoneCode, sendPhoneCode, setPhoneBiometrics, setPhonePassword, signOutPhone, tryPhonePassword } from "@/data/actions";
@@ -25,6 +25,7 @@ import { toast } from "@/ui/toast";
 import { CheckLine } from "./fleet-sheets";
 import { OvertimeClaimsSheet, HoursSheet } from "./hours";
 import { cannotWork, CannotWorkSheet, CrewRequestsSheet, InstructionsSheet, ScaffoldSheet, scaffoldsDue, SiteMonthSheet, SiteWeekSheet, SubInvoiceSheet, subsWaiting, TimeSheet, WeekendSheet } from "./ManagerPhone";
+import { DeliveriesSheet, ordersComing, SnagsSheet, snagsOpen } from "./job-sheets";
 import { MyCerts, RepairSheet } from "./one-sheets";
 import { OfficeFeed } from "./OfficeFeed";
 import { PhoneFrame } from "./PhoneFrame";
@@ -608,7 +609,7 @@ export function siteToday(db: Db, siteId: string, day: string) {
 /** "6 people on site today" once marked, else "6 people down for today". */
 const peopleLine = (st: { planned: number; onSite: boolean }) => (st.planned === 0 ? "Nobody planned today" : `${plural(st.planned, "person", "people")} ${st.onSite ? "on site today" : "down for today"}`);
 
-type JobSheet = "time" | "overtime" | "receipts" | "crew" | "weekend" | "week" | "month" | "notes" | "cannot" | "scaffolds" | "subs" | "photo" | "extra" | "ask" | null;
+type JobSheet = "time" | "overtime" | "receipts" | "crew" | "weekend" | "week" | "month" | "notes" | "cannot" | "scaffolds" | "subs" | "photo" | "extra" | "ask" | "snags" | "orders" | null;
 
 /**
  * One site on a site manager's phone. Always: the timesheet and what waits for him on it. With
@@ -625,6 +626,7 @@ function JobScreen({ site, me, day, onBack }: { site: Project; me: Person; day: 
   const st = siteToday(db, site.id, day);
   const note = dayInstruction(db.dayInstructions, site.id, day);
   const blocked = cannotWork(db, site.id, day).length;
+  const coming = ordersComing(db, site.id);
   const row = (k: JobSheet, label: string, Icon: typeof Clock, extra?: React.ReactNode, sub?: string) => (
     <button key={k} type="button" className="press flex min-h-14 items-center gap-3 rounded-lg border border-line-strong bg-surface px-3 py-2 text-left hover:border-accent" onClick={() => setSheet(k)}>
       <Icon size={22} className="shrink-0 text-accent-ink" aria-hidden="true" />
@@ -669,6 +671,8 @@ function JobScreen({ site, me, day, onBack }: { site: Project; me: Person; day: 
             {row("notes", "Site instructions", Megaphone, undefined, note ? "Up for today" : "Nothing up for today")}
             {row("cannot", "Who cannot work", UserMinus, count(blocked, "bad"))}
             {row("scaffolds", "Scaffold inspections", Ladder, count(scaffoldsDue(db, site.id, day), "warn"))}
+            {row("snags", "Snags", ListChecks, count(snagsOpen(db, site.id), "warn"), "Add one, or mark one fixed")}
+            {row("orders", "Orders and deliveries", Package, coming.some((o) => o.dueOn < day) ? count(coming.length, "bad") : count(coming.length), "Mark a delivery as arrived")}
             {row("photo", "Send a photo", Camera)}
             {row("extra", "Report extra work", PlusCircle)}
             {row("ask", "Make a request", HandPalm, undefined, "For this site. It goes to the office")}
@@ -689,6 +693,8 @@ function JobScreen({ site, me, day, onBack }: { site: Project; me: Person; day: 
       {sheet === "photo" && <PhotoSheet site={site} me={me} lang="en" onClose={close} />}
       {sheet === "extra" && <ExtraSheet site={site} me={me} lang="en" onClose={close} />}
       {sheet === "ask" && <AskSheet site={site} me={me} lang="en" day={day} onClose={close} />}
+      {sheet === "snags" && <SnagsSheet site={site} me={me} onClose={close} />}
+      {sheet === "orders" && <DeliveriesSheet site={site} me={me} day={day} onClose={close} />}
     </div>
   );
 }

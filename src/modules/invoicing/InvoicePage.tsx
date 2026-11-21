@@ -1,7 +1,7 @@
 import { ArrowLeft, ChatText, EnvelopeSimple, PaperPlaneTilt, Question } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { addInvoiceComment, clearHold, deleteDraftInvoice, emailAboutInvoice, issueInvoice, markExported, raiseInvoiceQuery, unmarkInvoicePaid } from "@/data/actions";
+import { addInvoiceComment, deleteDraftInvoice, emailAboutInvoice, issueInvoice, markExported, raiseInvoiceQuery, unmarkInvoicePaid } from "@/data/actions";
 import { useDay } from "@/data/store";
 import type { InvoiceQuery, SalesInvoice } from "@/data/types";
 import { buildSalesExport, PACKAGE } from "@/lib/accounts-export";
@@ -9,6 +9,7 @@ import { invoiceNo } from "@/lib/billing";
 import { dFull, dShort, when } from "@/lib/format";
 import { billedSoFar, billingEmail, dueWords, exportRowOf, grossOf, leftToBill, openQuery, routeWords, stageOf, threadFor, type ThreadItem } from "@/lib/invoices";
 import { money0, money2 } from "@/lib/money";
+import { holdWords } from "@/lib/snags";
 import { Badge, Button, cx, Dialog, Empty, Fact, Field, Menu, MenuItem, PageBody, PageHead, Panel, Section, Segmented } from "@/ui";
 import { ProjectBadge } from "@/ui/status";
 import { toast } from "@/ui/toast";
@@ -180,7 +181,7 @@ export function InvoicePage() {
             </div>
             <div className="px-3 py-2">
               <dt className="text-[0.87rem] text-muted">Sent to the client</dt>
-              <dd className={cx("text-[1.15rem] font-medium", !i.issuedOn && "text-warn")}>{i.issuedOn ? dFull(i.issuedOn) : stage === "held" ? "Held" : "Not yet"}</dd>
+              <dd className={cx("text-[1.15rem] font-medium", !i.issuedOn && "text-warn")}>{i.issuedOn ? dFull(i.issuedOn) : stage === "held" ? "On hold" : "Not yet"}</dd>
               <dd className="text-[0.87rem] text-muted">{i.issuedOn ? `${routeWords(i.sentVia)}${i.sentTo && i.sentVia?.includes("email") ? `, to ${i.sentTo}` : ""}` : stage === "held" ? i.holdReason : "A draft. Nobody outside the office has seen it."}</dd>
             </div>
             <div className="px-3 py-2">
@@ -209,22 +210,11 @@ export function InvoicePage() {
 
         {stage === "held" && (
           <div className="flex flex-wrap items-center gap-3 rounded-md bg-warn-soft px-3 py-2 text-warn">
-            <p className="mr-auto">Held: {i.holdReason ?? "a manager has held it"}. It cannot go to the client until the hold is cleared on the project.</p>
-            {access.may("manageProjects") ? (
-              <Button
-                size="sm"
-                onClick={() => {
-                  clearHold(i.projectId);
-                  toast(`Hold cleared on ${p?.code}. The invoice is now a draft, ready to send`);
-                }}
-              >
-                Clear hold
-              </Button>
-            ) : (
-              <Link to={`/projects/${p?.code}?tab=extras`} className="font-medium underline underline-offset-2">
-                Open the project
-              </Link>
-            )}
+            <p className="mr-auto">{holdWords(p, db.variations, db.snags, i.holdReason)} It cannot go to the client until then.</p>
+            {/* The hold is dealt with where its reasons are: the project's variations and snags (a manager can also clear it there, after a confirm box). */}
+            <Link to={`/projects/${p?.code}?tab=extras`} className="font-medium underline underline-offset-2">
+              See what is open on {p?.code}
+            </Link>
           </div>
         )}
         {query && (

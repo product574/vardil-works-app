@@ -37,8 +37,13 @@ for each round, as before.
 **Easier to put things in, 20 Nov (later):** decisions 230 to 238, built on the branch
 `easier-inputs` from `main` at b2a98ca, pushed to GitHub, and the artifact "Vardil Works master
 demo" republished from it the same evening so he can look. See "Easier to put things in, 20 Nov"
-further down. Not merged into `main` until Oisin says. The checklist of changes was given in the
+further down. Moved into `main` on 21 Nov at Oisin's word ("Merge now"). The checklist of changes was given in the
 chat, with the open questions as "Decision for you" lines.
+
+**More ways in, 21 Nov:** decisions 239 to 248, built on the branch `more-ways-in` from `main`
+at 1c68ea5, pushed to GitHub, and the artifact "Vardil Works master demo" republished from it.
+See "More ways in, 21 Nov" further down. Not merged into `main` until Oisin says. The checklist
+was given in the chat, with the open questions as "Decision for you" lines.
 
 ## Start here (handed over 16 Nov 2026)
 
@@ -490,6 +495,23 @@ two rounds, the layout one with sketches; he picked the recommended answer each 
 | 236 | Wording | "Final accounts on hold" in place of "Invoices held", each with its reason and what lets it go ("On hold because 3 snags are open. It lets go by marking each one fixed."). "Variations" in place of "extras" on office screens (the tab, headings, buttons, hold reasons, history lines); the phone keeps "Report extra work", and invoice lines keep "Agreed extra". Clear hold asks first and says what stays open |
 | 237 | Invoices from suppliers and subcontractors | The office adds each one (his only pick of four ways in): Add invoice in Finance, Money out. Choose the PDF or photograph the paper, check the boxes, pick the job. Whoever adds it is the one who checks it, so it goes straight to the job's site manager, then the managing director (the firm's chain, decision 223), then To be paid. Nothing arrives unread by itself any more: the sample data's two unread invoices are now saved to check |
 | 238 | Who enters what | Written down record by record (project doc `inputs/who-enters-what.md`), with the gaps still open listed there and under "Easier to put things in" below |
+
+Decisions made by Oisin on the master demo, 21 Nov 2026 ("Yes help with this process", on the list
+of records that still had no way in). Twelve question buttons in three rounds, one with sketches;
+he picked the recommended answer each time:
+
+| # | Question | Decision |
+|---|---|---|
+| 239 | Hired plant going on hire | From an agreed request, or direct. An approved "Plant to hire" request shows under "Agreed, waiting to be hired" on Resources, Plant, Hired plant, and has a Put on hire button there, on Site requests and on the project's Site requests tab; the box (hire company, their phone and reference, the day it starts, the rate a day or a week, how many) starts with what the site asked for, and saving it marks the request dealt with. "Put plant on hire" on the Hired plant list is for a hire nobody had to ask for. For anyone with "Manage plant and fleet" |
+| 240 | A new subcontractor firm | Both places: Add subcontractor on Resources, Training, Subcontractors, and inside Add invoice, where a name not on file is offered "A subcontractor? Add them" (the name and the job come across, and the invoice then goes in as theirs). Name, trade, contact, email, phone, payment terms, the sites they are on. It starts with no papers, so Compliance flags its insurances, safety statement and a method statement for each site until the office records them. For anyone with "Manage company and subcontractor papers" |
+| 241 | A project without a tender | Add project on Projects, Not started (and All projects), for the managing director and contracts managers (the permission `manageProjects`, now worded "Clear invoice holds, set up jobs and deal with site requests"). Client, name, where, county, the work in a sentence, how it is priced (an agreed price, a schedule of rates, not priced yet), the value, the client's order number, start and finish, site manager, contracts manager, and the scope typed one item a line (his pick), which becomes the scope to tick off and the Programme's bars. It gets the next site code and counts in Sales, Confirmed and the Pipeline, marked "No tender" (his pick) |
+| 242 | Buying for a site | The full loop (his pick of two sketches): "Something to buy" is a kind in New request (what, the supplier if known, the amount before VAT, why), for a site or for the firm; the managing director's yes or no in Admin, Requests, under Spending; the office presses Order placed (who from, the day it is due) on the new tab Projects, Requests and variations, Orders and deliveries; whoever runs the site presses Mark delivered there, on the project's Site requests tab or on his phone, with an Undo; the invoice then comes in through Add invoice. The sample data's spending requests and supply orders, shown nowhere since the old dashboard went, are what the screen opens with |
+| 243 | Who does what in buying | Every purchase needs the managing director's yes, for now (his pick; whether small buys skip him is a question for the onboarding form). Orders are placed by whoever has `manageProjects`. A delivery is marked by anyone who opens that site (its site manager, and anyone given it in Admin, Site access) or the office; an order for the firm, not a site, is the office's |
+| 244 | A new company paper | Add paper on Resources, Training, Company papers, for whoever keeps them (`manageCompany`): what it is (the usual ones not yet held are offered), who from, reference, cover, the day it runs to, a copy (saved without one it reads Proof needed). One already on the list is refused and pointed at its Renew button |
+| 245 | Who says a job has started | Found while building 241: nothing in the demo ever turned a Not started job live. Built as the default, for him to confirm: Start on site on a Not started project's Overview, for its site manager (anyone who opens the site) or the office. The job joins Live projects from that day and leaves Sales, Confirmed. The other way would be by itself, the first day anyone is marked in on its timesheet |
+| 246 | "Held" in Finance | "On hold", as in Projects (his pick): the Money in tab, the badge, Payment claims and the invoice page, each with the reason and what lets it go in the same words as Projects ("Because 3 snags are open. It lets go by marking each one fixed."). Finance no longer clears a hold itself: the row and the invoice page link to the project's Variations tab ("See what is open"), where Clear hold asks first (decision 236) |
+| 247 | The site manager's phone | Snags only for him, not operatives (his pick): inside a site, Snags (the list, Add a snag with a photo from the camera, Mark fixed with Undo) and Orders and deliveries (what is on order for the site, Mark delivered, what is asked for and not ordered yet). Make a request on his phone has "Something to buy" with the amount and the reason. Everything is saved in his name. Invoices stay with the office |
+| 248 | Questions go on the onboarding form | Oisin, 21 Nov: "For all these questions that you need my input for record them for the onboarding form". Every question put to him while building is recorded as a question for the client onboarding form (Claude's project memory, and `inputs/who-enters-what.md`), with his pick for the demo beside it |
 
 Standing preferences (these come from Aodhan and are not optional):
 
@@ -2167,6 +2189,82 @@ width, and the invoice once added.
 - Finance still calls a held final account "Held" (the invoice's own status); only Projects was
   reworded.
 - Ask AI was not tried with the model: its summary lists snags and no longer says "opened".
+- A real phone, Safari and Firefox, the hosted build behind Cloudflare.
+
+## More ways in, 21 Nov (decisions 239 to 248)
+
+Branch `more-ways-in`, from `main` at 1c68ea5 (the easier-inputs round, moved into `main` that
+morning at his word). DATA_VERSION 29. Oisin's ask: help with the "Decision for you" list from the
+round before, which was the records that still had no way in on screen. He picked all four groups
+to build, snags on the site manager's phone, "On hold" in Finance, and to merge the round before.
+
+**Built.**
+
+- **Rules** (pure, with tests): `src/lib/ways-in.ts` (`hireProblem`, `hiresToArrange`,
+  `hireCompanies`, `subProblem`, `projectProblem`, `scopeLines`, `paperProblem`, `USUAL_PAPERS`)
+  and `src/lib/buying.ts` (`spendProblem`, `spendStage`, `toOrder`, `onOrder`, `deliveredLately`,
+  `daysLate`, `orderProblem`, `mayMarkDelivered`, `buyingFor`). `holdWords` in `lib/snags.ts`.
+- **Actions**: `putOnHire(form, requestId?)`, `addSubcontractor`, `addProject`, `startProject`,
+  `askToSpend`, `placeOrder`, `markDelivered`, `undoDelivered`, `addCompanyPaper`. Each refuses
+  what its form refuses and writes to the Activity log (and the project's history where it has one).
+- **Records**: `HiredPlant.requestId`, `putOnBy`; `SpendRequest.orderId`; `SupplyOrder.projectId`
+  can be null (for the firm), plus `spendId`, `amount`, `orderedBy`, `deliveredBy`;
+  `Project.orderRef`, and `pricedBy` gains "Agreed price".
+- **Screens**: `plant/PutOnHire.tsx`; `compliance/AddSubcontractor.tsx` (also opened from
+  `invoicing/AddInvoice.tsx`, one box over the other); `projects/AddProject.tsx`;
+  `projects/Orders.tsx` (`OrdersAndDeliveries` at `/projects/orders`, `BuyingLists` shared with
+  the project's Site requests tab, `PlaceOrderDialog`); `AddPaperDialog` in
+  `compliance/Compliance.tsx`; `site/job-sheets.tsx` (`SnagsSheet`, `DeliveriesSheet`).
+  `NewRequestDialog` takes `buy` to open on Something to buy. `NextStep` in `src/ui` is the grey
+  "what happens next" line every new box ends with.
+- **Sample data**: rq-9, a tracked scissor lift for C722 agreed yesterday and not yet hired; sp-5,
+  stainless steel cramps for C722 agreed yesterday and not yet ordered. So Hired plant opens with
+  one hire to arrange and Orders and deliveries with two to order (the office printer is the other).
+
+**Who enters what** is updated in the project doc `inputs/who-enters-what.md`, with the questions
+for the onboarding form. Not records of their own, by design for now: a supplier (only a name
+on its invoices and orders) and a hire company (typed on the hire, offered again once used).
+
+**Tested.** 835 automated tests in 83 files (new: `lib/buying.test.ts`, `lib/ways-in.test.ts`,
+`data/ways-in.test.ts`, the hold sentence in `lib/snags.test.ts`; `overview`, `requests` and
+`site-access` tests changed for the two new sample records), both type checks. New browser suite
+`tests/browser/ways_in_check.py`, 67 checks, all passing, no console errors: a hire from the
+agreed request (what comes across, refused without a hire company, a known company bringing its
+phone, the request dealt with) and a direct one, shown on the site's Plant tab; a subcontractor
+added on its own screen (refusals, the Sage account, papers flagged missing) and from inside Add
+invoice (the name and job coming across, the invoice going in as theirs); a project without a
+tender (refusals, the scope count, saved, on its page, on the Programme, in Sales, Confirmed and
+the Pipeline marked No tender, Start on site making it live and taking it off Confirmed); buying
+end to end (the tab, the four lists and their counts, a late delivery, Something to buy refused
+without an amount, the managing director's yes in Admin, Order placed refused without a supplier,
+on order and linked to the ask, on the project's tab); a site manager seeing only his own sites'
+orders, unable to place orders or add a project, marking one delivered and Undo; on his phone,
+Orders and deliveries and Mark delivered in his name, a snag added with a photo and marked fixed
+in his name with the job's flag following, Something to buy held until the amount and reason are
+in; Add paper (a duplicate refused, saved with Proof needed, its row and Renew); a contracts
+manager unable to add company papers but able to add a project; Finance reading On hold with the
+reason and what lets it go, and no "Held" on the list or on Payment claims; the Activity log;
+dark mode; phone width on nine screens and three of the boxes. `easier_check.py` 70 of 70 (its
+tab list gained Orders and deliveries) and `master_check.py` 47 of 47. Screenshots read by eye:
+Orders and deliveries in light and dark, Something to buy, Add a project at desktop and phone
+width, the new project's page, the site's Plant tab with the new hire, Subcontractors, the phone's
+site screen and snag sheet, and Finance, On hold. Found by eye and fixed: a job added with no
+county read "Co. ." in its heading, so the county is now required; Finance's Clear hold cleared a
+hold without asking, so it now points at the project.
+
+**Not tested, and known gaps.**
+
+- The 28 older browser suites and `csp_check.py` still stop at their first step, as before (they
+  were written for the department bar and the old dashboard).
+- Ask AI was not tried with the model. Its summary says whether an approved purchase is ordered;
+  it does not yet list hires to arrange or jobs with no tender apart from "Priced by".
+- Nothing is sent to a supplier or a hire company: the order and the hire are records of what the
+  office arranged by phone or email.
+- An order has one delivery: a part delivery cannot be recorded from the screen (the sample data
+  has one), only the whole order marked delivered.
+- A hire's cost is still an estimate from the rate until the hire company's invoice is added.
+- A project added without a tender has no site group chat until someone makes one, and its
+  heritage line reads "To be confirmed with the conservation officer".
 - A real phone, Safari and Firefox, the hosted build behind Cloudflare.
 
 ## Build status

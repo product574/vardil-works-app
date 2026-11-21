@@ -114,12 +114,12 @@ export function Confirmed() {
     <>
       <PageHead
         title="Confirmed"
-        note={`${plural(confirmed.length, "order")} won and not started yet${access.seeValues ? `, ${money0(confirmedValue, region)} before VAT` : ""}. ${plural(wonLately, "tender")} won in the last 60 days in all; the rest are live projects now.`}
+        note={`${plural(confirmed.length, "order")} confirmed and not started yet${access.seeValues ? `, ${money0(confirmedValue, region)} before VAT` : ""}. ${plural(wonLately, "tender")} won in the last 60 days in all; the rest are live projects now. A job that skipped the tender stage is added in Projects, Not started, and counts here marked "No tender".`}
       />
       <PageBody className="grid max-w-[80rem] grid-cols-1 gap-4">
         <Panel className="overflow-x-auto">
           {confirmed.length === 0 ? (
-            <Empty title="Nothing confirmed and waiting to start">A tender recorded as won becomes a project here until its first day on site.</Empty>
+            <Empty title="Nothing confirmed and waiting to start">A tender recorded as won becomes a project here until its first day on site. A job with no tender is added in Projects, Not started.</Empty>
           ) : (
             <table className="tbl" aria-label="Confirmed orders">
               <thead>
@@ -147,8 +147,8 @@ export function Confirmed() {
                         </span>
                       </td>
                       <td>{db.clients.find((c) => c.id === p.clientId)?.name}</td>
-                      <td>{q ? <Link to={`/sales/quotes/${q.ref}`} className="text-accent-ink underline-offset-2 hover:underline">{q.ref}</Link> : "-"}</td>
-                      <td>{q?.poNumber ?? "To follow"}</td>
+                      <td>{q ? <Link to={`/sales/quotes/${q.ref}`} className="text-accent-ink underline-offset-2 hover:underline">{q.ref}</Link> : <Badge>No tender</Badge>}</td>
+                      <td>{q?.poNumber ?? p.orderRef ?? "To follow"}</td>
                       {access.seeValues && <td className="num">{p.value != null ? money0(p.value, region) : "-"}</td>}
                       <td>
                         {dFull(p.startDate)}
@@ -236,6 +236,7 @@ export function Pipeline() {
                         <span className="font-medium">{p.code}</span> {p.name}
                         <span className="block text-[0.87rem] text-muted">
                           {db.clients.find((c) => c.id === p.clientId)?.name}, starts {dShort(p.startDate)}
+                          {!p.quoteId && ", no tender"}
                         </span>
                       </span>
                       {access.seeValues && <span className="w-24 text-right tabular-nums">{p.value != null ? m(p.value) : "-"}</span>}

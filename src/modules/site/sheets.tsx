@@ -1,10 +1,11 @@
 import { CalendarBlank, Camera, Phone, SignOut, Truck } from "@phosphor-icons/react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { actAs, addPhoto, addRequest, claimExpense, raiseExtra, requestLeave, sendTicketPhoto, submitVehicleCheck } from "@/data/actions";
+import { actAs, addPhoto, addRequest, askToSpend, claimExpense, raiseExtra, requestLeave, sendTicketPhoto, submitVehicleCheck } from "@/data/actions";
 import { stateOf, ticketBlocks, vehicleBlocks } from "@/lib/compliance";
 import { useData, usePrefs } from "@/data/store";
 import { type ExpenseKind, type Language, LANGUAGE_NAME, type Person, type Project, type RequestKind } from "@/data/types";
+import { spendProblem } from "@/lib/buying";
 import { addDays } from "@/lib/dates";
 import { type CheckAnswer, checkedCount, checkReady, CHECK_ITEMS, DRIVING_CHECK } from "@/lib/driving";
 import { dShort, plural } from "@/lib/format";
@@ -173,10 +174,14 @@ export function ExtraSheet({ site, me, lang, onClose }: { site: Project; me: Per
 export function AskSheet({ site, me, lang, day, toManager, onClose }: { site: Project | null; me: Person; lang: Language; day: string; toManager?: boolean; onClose: () => void }) {
   const t = WORDS[lang];
   const requests = useData((s) => s.db.requests);
-  const [kind, setKind] = useState<RequestKind>(site ? "own_plant" : "other");
+  const [kind, setKind] = useState<RequestKind | "buy">(site ? "own_plant" : "other");
   const [text, setText] = useState("");
+  // Something to buy (21 Nov): the amount and the reason go with it, for the managing director's yes or no.
+  const [amount, setAmount] = useState(0);
+  const [reason, setReason] = useState("");
+  const buying = kind === "buy";
   // A site manager can ask for anything; the crew's form keeps to people and plant, in their own language.
-  const kinds: [RequestKind, string][] = [["own_plant", t.ownPlant], ["hired_plant", t.hirePlant], ["personnel", t.people], ...(toManager ? [] : ([["other", "Something else"]] as [RequestKind, string][]))];
+  const kinds: [RequestKind | "buy", string][] = [["own_plant", t.ownPlant], ["hired_plant", t.hirePlant], ["personnel", t.people], ...(toManager ? [] : ([["buy", "Something to buy"], ["other", "Something else"]] as [RequestKind | "buy", string][]))];
   const mine = site ? [] : requests.filter((r) => r.projectId === null && r.requestedById === me.id).slice(0, 4);
   const state = (r: (typeof mine)[number]) => (r.decision === "Declined" ? `Turned down by ${r.decidedBy}${r.declineNote ? `. Note: ${r.declineNote}` : ""}` : r.status === "Done" ? "Dealt with" : r.decision === "Approved" ? `Agreed by ${r.decidedBy}, the office is arranging it` : "Waiting for the office");
   return (
@@ -192,8 +197,14 @@ export function AskSheet({ site, me, lang, day, toManager, onClose }: { site: Pr
           <Button
             size="lg"
             variant="primary"
-            disabled={!text.trim()}
+            disabled={buying ? !!spendProblem({ what: text, supplier: "", amount, reason }) : !text.trim()}
             onClick={() => {
+              if (kind === "buy") {
+                actAs(me.id, () => askToSpend({ projectId: site?.id ?? null, what: text, supplier: "", amount, reason }));
+                toast("Sent to the office for a yes or no. After a yes they order it");
+                onClose();
+                return;
+              }
               actAs(me.id, () => addRequest({ projectId: site?.id ?? null, kind, description: text.trim(), quantity: 1, neededFrom: addDays(day, 1), neededTo: addDays(day, 7), notes: lang === "en" ? "Sent from the site phone" : `Sent from the site phone in ${LANGUAGE_NAME[lang]}`, ...(toManager && site ? { heldBy: "site" as const } : {}) }));
               toast(toManager ? t.askSent : "Request sent to the office");
               onClose();
@@ -213,9 +224,19 @@ export function AskSheet({ site, me, lang, day, toManager, onClose }: { site: Pr
             <span>{label}</span>
           </label>
         ))}
-        <Field label={t.what} className="mt-2">
+        <Field label={buying ? "What is to be bought" : t.what} className="mt-2">
           {(id) => <textarea id={id} rows={2} className="field text-[1.02rem]" value={text} onChange={(e) => setText(e.target.value)} />}
         </Field>
+        {buying && (
+          <>
+            <div>
+              <p className="mb-1 text-[0.93rem] font-medium">About how much, before VAT</p>
+              <NumInput label="About how much, before VAT" value={amount} onChange={setAmount} className="h-11 w-36 text-[1.02rem]" />
+            </div>
+            <Field label="Why it is needed">{(id) => <textarea id={id} rows={2} className="field text-[1.02rem]" value={reason} onChange={(e) => setReason(e.target.value)} />}</Field>
+            <p className="text-[0.93rem] text-muted">It goes to the managing director for a yes or no. After a yes the office orders it, and you mark it delivered under Orders and deliveries.</p>
+          </>
+        )}
       </fieldset>
       {mine.length > 0 && (
         <section className="mt-4">

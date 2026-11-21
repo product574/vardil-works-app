@@ -1,9 +1,10 @@
 import { DotsThree, MagnifyingGlass, Trash } from "@phosphor-icons/react";
 import { useEffect, useId, useState } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { clearHold, deleteDraftInvoice, draftInvoice, issueInvoice, saveDraftInvoice, unmarkInvoicePaid } from "@/data/actions";
+import { deleteDraftInvoice, draftInvoice, issueInvoice, saveDraftInvoice, unmarkInvoicePaid } from "@/data/actions";
 import { co } from "@/data/place";
 import { useData, useInvoiceDesign, usePrefs } from "@/data/store";
+import { holdWords } from "@/lib/snags";
 import type { InvoiceLine, SalesInvoice } from "@/data/types";
 import { invoiceNo } from "@/lib/billing";
 import { dShort, plural } from "@/lib/format";
@@ -18,7 +19,7 @@ const ORDER = { draft: 0, held: 1, overdue: 2, sent: 3, paid: 4 } as const;
 const TABS: { value: Show; label: string }[] = [
   { value: "all", label: "All" },
   { value: "draft", label: "Drafts" },
-  { value: "held", label: "Held" },
+  { value: "held", label: "On hold" },
   { value: "unpaid", label: "Sent" },
   { value: "overdue", label: "Overdue" },
   { value: "paid", label: "Paid" },
@@ -172,7 +173,7 @@ export function ClientInvoices() {
                       )}
                       <td className={LABELLED} data-label="Status">
                         <StageBadge i={i} />
-                        {stage === "held" && <span className="mt-1 block max-w-[16rem] text-[0.87rem] text-warn">{i.holdReason ?? "A manager has held it"}</span>}
+                        {stage === "held" && <span className="mt-1 block max-w-[18rem] text-[0.87rem] text-warn">{holdWords(db.projects.find((x) => x.id === i.projectId), db.variations, db.snags, i.holdReason).replace(/^On hold because /, "Because ").replace(/^On hold: /, "")}</span>}
                         {query && (
                           <Link to="/invoicing/queries" className="mt-1 block">
                             <Badge tone="warn">Query open</Badge>
@@ -204,22 +205,12 @@ export function ClientInvoices() {
                               Undo paid
                             </Button>
                           )}
-                          {stage === "held" &&
-                            (access.may("manageProjects") ? (
-                              <Button
-                                size="sm"
-                                onClick={() => {
-                                  clearHold(i.projectId);
-                                  toast(`Hold cleared on ${p?.code}. The invoice is now a draft, ready to send`);
-                                }}
-                              >
-                                Clear hold
-                              </Button>
-                            ) : (
-                              <Link to={`/projects/${p?.code}?tab=extras`} className="text-accent-ink underline-offset-2 hover:underline">
-                                Open project
-                              </Link>
-                            ))}
+                          {/* A hold is dealt with where its reasons are (21 Nov): the project's variations and snags, where a manager can also clear it after a confirm box. */}
+                          {stage === "held" && (
+                            <Link to={`/projects/${p?.code}?tab=extras`} className="text-accent-ink underline-offset-2 hover:underline">
+                              See what is open
+                            </Link>
+                          )}
                           <Menu label={`More for ${no}`} trigger={<DotsThree size={20} weight="bold" />}>
                             {(close) => (
                               <>

@@ -2,12 +2,12 @@ import { DownloadSimple, FilmStrip, Image as ImageIcon, Plus } from "@phosphor-i
 import { type FormEvent, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useAccess } from "@/data/access";
-import { addPhoto, addScaffold, addScopeTask, completeProject, notifyHireReturn, strikeScaffold, toggleScopeTask } from "@/data/actions";
+import { addPhoto, addScaffold, addScopeTask, completeProject, notifyHireReturn, startProject, strikeScaffold, toggleScopeTask } from "@/data/actions";
 import { plantBlocks, scaffoldDue, scaffoldUnsafe, standing, stateOf } from "@/lib/compliance";
 import { InspectForm } from "@/modules/compliance/shared";
 import { co } from "@/data/place";
 import { useData, useDay, usePrefs } from "@/data/store";
-import { type Db, LANGUAGE_NAME, type PhotoStage, type Project, type RequestKind } from "@/data/types";
+import { type Db, LANGUAGE_NAME, type PhotoStage, type Project, type RequestKind, type SiteRequest } from "@/data/types";
 import { holdWhy } from "@/lib/billing";
 import { capital, dFull, dShort, plural, when, whenInline } from "@/lib/format";
 import { shrinkImage } from "@/lib/image";
@@ -17,6 +17,7 @@ import { money0, money2, pct1 } from "@/lib/money";
 import { overtimeText, overtimeTotal } from "@/lib/overtime";
 import { labourCost, scopePercent, supplierCostByCategory } from "@/lib/project-costs";
 import { mayHandleCrewRequest, withSite } from "@/lib/requests";
+import { opensSite } from "@/lib/site-access";
 import { holdLines, snagCount, takesRequests, takesSnags, takesVariations } from "@/lib/snags";
 import { dueLabel, dueState, nextServiceDate } from "@/lib/status";
 import { Badge, Button, cx, DeclineNote, Dialog, Empty, Fact, Field, PageBody, PageHead, Panel, Section, Segmented } from "@/ui";
@@ -25,6 +26,8 @@ import { AddSnagDialog, NewRequestDialog, NewVariationDialog } from "./AddDialog
 import { CrewRequestButtons } from "./CrewRequestButtons";
 import { ClearHoldDialog } from "./Lists";
 import { SnagList } from "./Snags";
+import { BuyingLists } from "./Orders";
+import { PutOnHireDialog } from "@/modules/plant/PutOnHire";
 import { HoldBadge, Progress, ProjectBadge, Tabs } from "@/ui/status";
 import { toast } from "@/ui/toast";
 import { FilesTab } from "./ProjectFiles";
@@ -141,7 +144,8 @@ type TabProps = { p: Project; db: Db };
 function OverviewTab({ p, db }: TabProps) {
   const day = useDay();
   const region = usePrefs((s) => s.brand.region);
-  const { seeValues, can } = useAccess();
+  const { seeValues, can, may, personId, siteAccess } = useAccess();
+  const mayStart = may("manageProjects") || opensSite(p, personId, siteAccess);
   const client = db.clients.find((c) => c.id === p.clientId);
   const quote = db.quotes.find((q) => q.id === p.quoteId);
   const roster = db.assignments.filter((a) => a.projectId === p.id).map((a) => db.people.find((x) => x.id === a.personId)!);
@@ -149,6 +153,28 @@ function OverviewTab({ p, db }: TabProps) {
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
       <div className="grid content-start gap-6">
+        {/* Who says a job has started: whoever runs the site, or the office (21 Nov, decision 245). */}
+        {p.status === "Not started" && (
+          <div className="flex flex-wrap items-center gap-3 rounded-md bg-side px-3 py-2.5">
+            <p className="flex-1 basis-64">
+              Not started yet. Planned to start {dFull(p.startDate)}
+              {p.startDate < day ? ", which has passed" : ""}. Starting it makes it a live project: it joins Live projects and its timesheet opens.
+            </p>
+            {mayStart ? (
+              <Button
+                variant="primary"
+                onClick={() => {
+                  startProject(p.id);
+                  toast(`${p.code} is live. Its timesheet is open`);
+                }}
+              >
+                Start on site
+              </Button>
+            ) : (
+              <span className="text-[0.93rem] text-muted">Started by its site manager or the office</span>
+            )}
+          </div>
+        )}
         <Section title="The works">
           <p className="max-w-[70ch]">{p.description}</p>
         </Section>
@@ -203,9 +229,9 @@ function OverviewTab({ p, db }: TabProps) {
             <Fact label="Site manager">{db.people.find((x) => x.id === p.siteManagerId)?.name}</Fact>
             <Fact label="Start">{dFull(p.startDate)}</Fact>
             <Fact label="Finish">{dFull(p.endDate)}</Fact>
-            <Fact label="Priced by">{quote && can("sales") ? <Link to={`/sales/quotes/${quote.ref}`} className="text-accent-ink underline-offset-2 hover:underline">Quote {quote.ref}</Link> : quote ? `Quote ${quote.ref}` : p.pricedBy}</Fact>
+            <Fact label="Priced by">{quote && can("sales") ? <Link to={`/sales/quotes/${quote.ref}`} className="text-accent-ink underline-offset-2 hover:underline">Quote {quote.ref}</Link> : quote ? `Quote ${quote.ref}` : p.pricedBy === "Quote" ? "Quote" : `${p.pricedBy}, no tender`}</Fact>
             {seeValues && <Fact label="Contract value">{p.value != null ? money2(p.value, region) : "Not priced"}</Fact>}
-            {quote?.poNumber && <Fact label="Purchase order">{quote.poNumber}</Fact>}
+            {(quote?.poNumber ?? p.orderRef) && <Fact label="Purchase order">{quote?.poNumber ?? p.orderRef}</Fact>}
             {p.handoverSentAt && <Fact label="Handover sent">{when(p.handoverSentAt, day)}</Fact>}
           </dl>
         </Panel>
@@ -721,6 +747,7 @@ function RequestsTab({ p, db }: TabProps) {
   const access = useAccess();
   const canHandle = mayHandleCrewRequest(p, access.personId, access.siteAccess);
   const [adding, setAdding] = useState(false);
+  const [hiring, setHiring] = useState<SiteRequest | null>(null);
   const list = db.requests.filter((r) => r.projectId === p.id);
   return (
     <div className="grid gap-5">
@@ -760,14 +787,25 @@ function RequestsTab({ p, db }: TabProps) {
                       </div>
                     )}
                   </div>
-                  <Badge tone={withSite(r) ? "warn" : r.status === "Open" ? "accent" : r.decision === "Declined" ? "neutral" : "ok"}>{withSite(r) ? "With the site manager" : r.status === "Open" ? "With the office" : r.decision === "Declined" ? `Turned down by ${r.decidedBy}` : r.heldBy === "site" ? "Dealt with on site" : "Dealt with"}</Badge>
+                  {r.status === "Open" && r.kind === "hired_plant" && r.decision === "Approved" && access.may("managePlant") && (
+                    <Button size="sm" variant="primary" onClick={() => setHiring(r)}>
+                      Put on hire
+                    </Button>
+                  )}
+                  <Badge tone={withSite(r) ? "warn" : r.status === "Open" ? "accent" : r.decision === "Declined" ? "neutral" : "ok"}>{withSite(r) ? "With the site manager" : r.status === "Open" ? (r.decision === "Approved" ? "Agreed, with the office" : "With the office") : r.decision === "Declined" ? `Turned down by ${r.decidedBy}` : r.heldBy === "site" ? "Dealt with on site" : "Dealt with"}</Badge>
                 </li>
               ))}
             </ul>
           )}
         </Panel>
       </Section>
+      {/* Buying for this site, from the ask to the delivery (21 Nov). */}
+      <div className="grid gap-5" aria-label="Orders and deliveries for this site">
+        <h2 className="text-[1.15rem]">Orders and deliveries</h2>
+        <BuyingLists project={p} />
+      </div>
       {adding && <NewRequestDialog project={p} onClose={() => setAdding(false)} />}
+      {hiring && <PutOnHireDialog request={hiring} onClose={() => setHiring(null)} />}
     </div>
   );
 }

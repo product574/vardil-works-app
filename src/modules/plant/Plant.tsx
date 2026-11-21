@@ -1,4 +1,5 @@
 import { withOffice } from "@/lib/requests";
+import { Plus } from "@phosphor-icons/react";
 import { type FormEvent, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useAccess } from "@/data/access";
@@ -6,7 +7,7 @@ import { addPlant, collectHire, movePlant, notifyHireReturn, recordPlantService,
 import { plantBlocks } from "@/lib/compliance";
 import { co } from "@/data/place";
 import { useData, useDay, usePrefs } from "@/data/store";
-import type { Db, HiredPlant, PlantItem, Project } from "@/data/types";
+import type { Db, HiredPlant, PlantItem, Project, SiteRequest } from "@/data/types";
 import { addDays, weekStartOf } from "@/lib/dates";
 import { dFull, dShort, plural } from "@/lib/format";
 import { hireEstimate } from "@/lib/job-costs";
@@ -15,6 +16,8 @@ import { type DueState, dueLabel, dueState, nextServiceDate } from "@/lib/status
 import { Badge, Button, cx, Dialog, Empty, Fact, Field, PageBody, PageHead, Panel, Section, Segmented, Tel, type Tone } from "@/ui";
 import { ProofLink } from "@/ui/files";
 import { toast } from "@/ui/toast";
+import { hiresToArrange } from "@/lib/ways-in";
+import { PutOnHireDialog } from "./PutOnHire";
 
 export const DUE_TONE: Record<DueState, Tone> = { overdue: "bad", soon: "warn", ok: "neutral" };
 
@@ -539,15 +542,59 @@ export function HiredPlantList() {
   const rows = all.filter((h) => h.status === show).sort((a, b) => a.onHireFrom.localeCompare(b.onHireFrom));
   const n = (s: HiredPlant["status"]) => all.filter((h) => h.status === s).length;
   const weekly = all.filter((h) => h.status !== "Collected").reduce((s, h) => s + (h.rateUnit === "week" ? h.rate : h.rate * 7) * h.quantity, 0);
+  // Asked for by a site and agreed, and nobody has hired it yet (21 Nov): the office's list.
+  const waiting = hiresToArrange(db.requests).filter((r) => ids.has(r.projectId!));
+  const [adding, setAdding] = useState<SiteRequest | "new" | null>(null);
+  const code = (id: string | null) => db.projects.find((p) => p.id === id)?.code ?? "";
   return (
     <>
       <PageHead
         title="Hired plant"
-        note={`${n("On hire") + n("Return notified")} items on hire${access.seeValues ? `, costing about ${money0(weekly, region)} a week` : ""}. Hire keeps running until the company collects, so a return notified and not collected is still being paid for.`}
-        actions={<Segmented label="Hire status" value={show} onChange={setShow} options={[{ value: "On hire", label: "On hire", count: n("On hire") }, { value: "Return notified", label: "Return notified", count: n("Return notified") }, { value: "Collected", label: "Collected", count: n("Collected") }]} />}
+        note={`${n("On hire") + n("Return notified")} items on hire${access.seeValues ? `, costing about ${money0(weekly, region)} a week` : ""}. Hire keeps running until the company collects, so a return notified and not collected is still being paid for. The office puts each hire on here once the hire company has confirmed it.`}
+        actions={
+          <>
+            <Segmented label="Hire status" value={show} onChange={setShow} options={[{ value: "On hire", label: "On hire", count: n("On hire") }, { value: "Return notified", label: "Return notified", count: n("Return notified") }, { value: "Collected", label: "Collected", count: n("Collected") }]} />
+            {canEdit && (
+              <Button variant="primary" onClick={() => setAdding("new")}>
+                <Plus size={16} /> Put plant on hire
+              </Button>
+            )}
+          </>
+        }
       />
-      <PageBody>
-        <Panel className="max-w-6xl overflow-x-auto">
+      <PageBody className="grid max-w-6xl gap-6">
+        {waiting.length > 0 && (
+          <Section title={`Agreed, waiting to be hired (${waiting.length})`} aside="Asked for by a site and agreed by the managing director. Arrange it with the hire company, then put it on hire here">
+            <Panel>
+              <ul className="divide-y divide-line" aria-label="Agreed, waiting to be hired">
+                {waiting.map((r) => (
+                  <li key={r.id} className="flex flex-wrap items-center gap-3 px-3 py-2.5">
+                    <div className="min-w-0 flex-1 basis-64">
+                      <p className="font-medium">
+                        {r.description}
+                        {r.quantity > 1 && <span className="font-normal text-muted"> x {r.quantity}</span>}
+                      </p>
+                      <p className="text-[0.93rem] text-muted">
+                        <Link to={`/projects/${code(r.projectId)}?tab=requests`} className="underline-offset-2 hover:underline">
+                          {code(r.projectId)} {db.projects.find((p) => p.id === r.projectId)?.name}
+                        </Link>
+                        . Asked by {r.requestedBy}, needed {dShort(r.neededFrom)} to {dShort(r.neededTo)}.{r.notes ? ` ${r.notes}.` : ""}
+                      </p>
+                    </div>
+                    {canEdit ? (
+                      <Button size="sm" variant="primary" onClick={() => setAdding(r)}>
+                        Put on hire
+                      </Button>
+                    ) : (
+                      <span className="text-[0.93rem] text-muted">With the office</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </Panel>
+          </Section>
+        )}
+        <Panel className="overflow-x-auto">
           {rows.length === 0 ? (
             <Empty title={show === "Return notified" ? "Nothing is waiting to be collected" : "Nothing here"} />
           ) : (
@@ -604,6 +651,15 @@ export function HiredPlantList() {
           )}
         </Panel>
       </PageBody>
+      {adding && (
+        <PutOnHireDialog
+          request={adding === "new" ? undefined : adding}
+          onClose={(id) => {
+            setAdding(null);
+            if (id) setShow("On hire");
+          }}
+        />
+      )}
     </>
   );
 }

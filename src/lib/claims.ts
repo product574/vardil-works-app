@@ -13,7 +13,7 @@ import { isRestDay } from "./bank-holidays";
 import { r2 } from "./money";
 
 export type ClaimState = "issued" | "draft" | "held" | "to-issue" | "final";
-export const CLAIM_LABEL: Record<ClaimState, string> = { issued: "Issued", draft: "Drafted, not sent", held: "Held", "to-issue": "To be issued", final: "Final account to go" };
+export const CLAIM_LABEL: Record<ClaimState, string> = { issued: "Issued", draft: "Drafted, not sent", held: "On hold", "to-issue": "To be issued", final: "Final account to go" };
 export const CLAIM_TONE: Record<ClaimState, "ok" | "warn" | "bad" | "neutral"> = { issued: "ok", draft: "warn", held: "warn", "to-issue": "bad", final: "bad" };
 
 /** "2026-11" for a day in November 2026. */

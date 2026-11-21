@@ -198,7 +198,9 @@ export type Project = {
   plannedEnd?: Day;
   /** Agreed contract value excluding VAT. Null when the job is not priced yet. */
   value: number | null;
-  pricedBy: "Quote" | "Schedule of rates" | "Unpriced";
+  pricedBy: "Quote" | "Agreed price" | "Schedule of rates" | "Unpriced";
+  /** The client's order number, for a job set up without a tender (21 Nov, decision 241). A tendered job keeps it on its quote. */
+  orderRef?: string;
   siteInstructions: string;
   extrasFlag: boolean;
   snaggingFlag: boolean;
@@ -401,6 +403,8 @@ export type SpendRequest = {
   decidedAt?: Stamp;
   /** Why it was declined, if whoever declined it said (17 Nov). */
   declineNote?: string;
+  /** The order the office placed once it was approved (21 Nov, decision 242). Until then it is on the list to order. */
+  orderId?: ID;
 };
 
 /** Materials or work ordered for a site from a supplier or subcontractor, until it arrives. */
@@ -409,8 +413,15 @@ export type SupplyOrder = {
   /** The supplier or subcontractor, as on their paperwork. */
   from: string;
   party: "supplier" | "subcontractor";
-  projectId: ID;
+  /** The site it is for. Null when it is for the firm as a whole (the yard, the office). */
+  projectId: ID | null;
   description: string;
+  /** The approved request to buy it, when it started as one. */
+  spendId?: ID;
+  /** Before VAT, as approved. */
+  amount?: number;
+  orderedBy?: string;
+  deliveredBy?: string;
   orderedOn: Day;
   dueOn: Day;
   status: "Ordered" | "Part delivered" | "Ready to collect" | "Delivered";
@@ -533,6 +544,10 @@ export type HiredPlant = {
   returnNotifiedAt?: Stamp;
   collectedAt?: Stamp;
   notes: string;
+  /** The site request this hire answers, when it started as one (21 Nov, decision 239). */
+  requestId?: ID;
+  /** Who in the office recorded the hire. Missing on hires in the sample data. */
+  putOnBy?: string;
 };
 
 // ── Fleet (18 Nov, brought across from the Secure-All build at Oisin's word) ───────

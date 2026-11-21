@@ -29,11 +29,12 @@ describe("requests from the crew", () => {
     expect(mayHandleCrewRequest(undefined, null, [])).toBe(false);
   });
   it("the sidebar number matches the screen: everything open for the office, only their own sites for a site manager", () => {
-    expect(openRequestCount(db, "p-md")).toBe(6);
-    expect(openRequestCount(db, "p-cm1")).toBe(6);
+    // Seven since 21 Nov: the scissor lift for C722 is agreed and still open until it is on hire.
+    expect(openRequestCount(db, "p-md")).toBe(7);
+    expect(openRequestCount(db, "p-cm1")).toBe(7);
     // Eoin runs C719 and C724: his own request to the office and one from his crew.
     expect(openRequestCount(db, "p-sm1")).toBe(2);
     // The health and safety officer is at site manager level but sees every project.
-    expect(openRequestCount(db, "p-hs")).toBe(6);
+    expect(openRequestCount(db, "p-hs")).toBe(7);
   });
 });

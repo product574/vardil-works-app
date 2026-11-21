@@ -323,7 +323,7 @@ export function RequestsBody({ embedded }: { embedded?: boolean }) {
         )}
 
         {q.spend.length > 0 && (
-          <Section title={`Spending (${q.spend.length})`}>
+          <Section title={`Spending (${q.spend.length})`} aside="Asked for with Something to buy. After a yes the office places the order (Projects, Orders and deliveries)">
             <Panel className="overflow-x-auto">
               <table className="tbl">
                 <thead>
@@ -342,7 +342,7 @@ export function RequestsBody({ embedded }: { embedded?: boolean }) {
                       <tr key={x.id}>
                         <td>
                           <span className="font-medium">{x.what}</span>
-                          <span className="block text-[0.87rem] text-muted">From {x.supplier}. {x.reason}</span>
+                          <span className="block text-[0.87rem] text-muted">{x.supplier === "Not chosen yet" ? "Supplier not chosen yet" : `From ${x.supplier}`}. {x.reason}</span>
                         </td>
                         <td className="whitespace-nowrap">{p ? `${p.code} ${p.name}` : "The firm"}</td>
                         {access.seeValues && <td className="num whitespace-nowrap">{money2(x.amount, region)}</td>}
@@ -353,7 +353,7 @@ export function RequestsBody({ embedded }: { embedded?: boolean }) {
                         {yesNo(
                           canAnswer,
                           (note) => { decideSpend(x.id, false, note); toast(`Turned down: ${x.what}${note ? ", with your note" : ""}`); },
-                          () => { decideSpend(x.id, true); toast(`Agreed: ${x.what}`); },
+                          () => { decideSpend(x.id, true); toast(`Agreed: ${x.what}. It is on the office's list to order`); },
                           x.what,
                         )}
                       </tr>

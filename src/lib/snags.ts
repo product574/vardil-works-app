@@ -35,3 +35,13 @@ export function holdLines(p: Pick<Project, "id" | "extrasFlag" | "snaggingFlag">
   if (p.snaggingFlag) out.push({ why: open === 1 ? "1 snag is open" : `${open} snags are open`, lets: open === 1 ? "marking it fixed" : "marking each one fixed" });
   return out;
 }
+
+/**
+ * A held final account in one sentence, for Finance (21 Nov, decision 246), in the same words as
+ * Projects: "On hold because 3 snags are open. It lets go by marking each one fixed."
+ */
+export function holdWords(p: Pick<Project, "id" | "extrasFlag" | "snaggingFlag"> | undefined, variations: Pick<Variation, "projectId" | "status">[], snags: S[], fallback?: string): string {
+  const lines = p ? holdLines(p, variations, snags) : [];
+  if (lines.length === 0) return `On hold${fallback ? `: ${fallback.charAt(0).toLowerCase()}${fallback.slice(1)}` : ""}. It lets go when a manager clears the hold on the project.`;
+  return `On hold because ${lines.map((l) => l.why).join(" and ")}. It lets go by ${lines.map((l) => l.lets).join(", and ")}.`;
+}
