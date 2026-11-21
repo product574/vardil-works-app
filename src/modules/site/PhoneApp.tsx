@@ -80,10 +80,11 @@ export function PhoneAppView() {
  * for whoever last used this phone. It fills the screen and keeps clear of the notch and the
  * home bar. Still sample data kept on the phone: the real server comes before the public stores.
  */
-export function StandalonePhone() {
+export function StandalonePhone({ personId }: { personId?: string } = {}) {
   const db = useData((s) => s.db);
   const day = useDay();
-  const operativeId = usePrefs((s) => s.operativeId);
+  const saved = usePrefs((s) => s.operativeId);
+  const operativeId = personId ?? saved;
   const everyone = db.people.filter(onPhoneApp).sort((a, b) => a.name.localeCompare(b.name));
   const owner = everyone.find((p) => p.id === operativeId) ?? everyone[0];
   if (!owner) return null;

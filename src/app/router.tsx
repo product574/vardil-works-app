@@ -68,6 +68,9 @@ function staffScreen(path: string, pick: (m: StaffModule) => ComponentType): Rou
 export const router = create([
   { path: "/sign-in", element: <SignInPage /> },
   { path: "/who", element: <RolePage /> },
+  // The site app on its own (21 Nov): whose phone, then that phone, with no office around it.
+  { path: "/app", HydrateFallback: Nothing, lazy: async () => ({ Component: (await import("@/modules/site/PhoneEntry")).PhonePicker }) },
+  { path: "/app/:personId", HydrateFallback: Nothing, lazy: async () => ({ Component: (await import("@/modules/site/PhoneEntry")).PhoneOf }) },
   {
     path: "/",
     element: <Shell />,

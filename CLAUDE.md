@@ -107,8 +107,15 @@ background kept. Fonts are bundled (@fontsource), so still no outside requests. 
 unit tests, both type checks, screenshots in light and dark at phone and desktop width read by
 eye. `main_offering_check.py` still stops at "Admin screens", as it did before this round.
 
-**Next, in order:** the phone at /app with Cloudflare sign-in and "pick whose phone" (a picture
-first); Email and Team chat hidden; Reset demo data for Vardil staff only (the server already
+**The site app at its own address, 21 Nov (same branch, `site-app-calm-ui`):** Oisin opened the
+preview on his phone and got the office, so `/app` was built straight away, with no picture first:
+`/app` is "Whose phone?" (site managers, then operatives, each with their trade), `/app/<person id>`
+is that person's phone full screen with no office around it (`src/modules/site/PhoneEntry.tsx`,
+`StandalonePhone` now takes `personId`). The same Cloudflare sign-in as the office, no role page;
+an unknown id goes back to the list. Checked at phone width in Chromium, no page errors. Not
+tried: his real phone.
+
+**Next, in order:** Email and Team chat hidden; Reset demo data for Vardil staff only (the server already
 refuses anyone else); then two real phones and an office screen; then merge into `main` at Oisin's
 word. The master demo carries on in its own chat: its latest work is on `finance-quick-adds`, not
 yet in its `main`; bring its changes across here when Oisin asks (same history, so a merge).
