@@ -5,7 +5,7 @@
  * Pure rules, with tests.
  */
 import type { Project, Quote, SubPrice, TenderCheck, TenderFileKind } from "@/data/types";
-import { quoteTotal } from "./quotes";
+import { costBreakdown, marginPct, quoteTotal } from "./quotes";
 import { daysBetween } from "./status";
 import { r2 } from "./money";
 
@@ -79,3 +79,38 @@ export function pipeline(quotes: Quote[], projects: Project[]) {
   const sum = (l: { value: number }[]) => r2(l.reduce((s, x) => s + x.value, 0));
   return { tendered, tenderedValue: sum(tendered), pricing, pricingValue: sum(pricing), confirmed, confirmedValue: r2(confirmed.reduce((s, p) => s + (p.value ?? 0), 0)) };
 }
+
+/**
+ * Estimated margin (21 Nov): the margin a tender was priced at, from its cost build-up. Null when
+ * nothing is priced yet. A job won from a tender keeps its tender's figure (fixed, Oisin's pick);
+ * a job with no tender has the figure typed in Add project or Confirmed, or none.
+ */
+export const estMargin = (q: Pick<Quote, "lines" | "costing">) => marginPct(quoteTotal(q.lines), costBreakdown(q.costing).total);
+export function projectEstMargin(p: Pick<Project, "quoteId" | "estMargin">, quotes: Pick<Quote, "id" | "lines" | "costing">[]): number | null {
+  const q = p.quoteId ? quotes.find((x) => x.id === p.quoteId) : undefined;
+  return q ? estMargin(q) : (p.estMargin ?? null);
+}
+/** An average of the margins given, to one decimal place, or null when there are none. */
+export function averagePct(list: (number | null | undefined)[]): number | null {
+  const ok = list.filter((x): x is number => x != null);
+  return ok.length ? Math.round((ok.reduce((s, x) => s + x, 0) / ok.length) * 10) / 10 : null;
+}
+
+/** How long a lost tender stays under "Lost, last 90 days" before it goes to the archive. */
+export const LOST_DAYS = 90;
+
+/**
+ * The lists in Sales, Tenders, All tenders (21 Nov). Being priced; with the client; won and its
+ * project not closed yet ("Won, live": not started, live, or finished and not all paid); lost in
+ * the last 90 days; and the archive, which holds won tenders whose project is closed and lost
+ * ones older than 90 days.
+ */
+export type TenderList = "pricing" | "out" | "won" | "lost" | "archive";
+export function tenderList(q: Pick<Quote, "id" | "status" | "respondedAt">, projects: Pick<Project, "quoteId" | "status">[], today: string): TenderList {
+  const st = tenderStage(q);
+  if (st === "won") return projects.find((p) => p.quoteId === q.id)?.status === "Closed" ? "archive" : "won";
+  if (st === "lost") return lostLately(q, today) ? "lost" : "archive";
+  return st;
+}
+/** Declined in the last 90 days (the Board's Declined column and "Lost, last 90 days"). */
+export const lostLately = (q: Pick<Quote, "status" | "respondedAt">, today: string) => q.status === "Declined" && (!q.respondedAt || daysBetween(q.respondedAt.slice(0, 10), today) <= LOST_DAYS);

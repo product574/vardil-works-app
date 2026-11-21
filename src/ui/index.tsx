@@ -490,6 +490,29 @@ export function Tick({ on, label, onChange, locked }: { on: boolean; label: stri
  * A number box that lets someone type freely ("12.", "0.5") and reports the number as they go.
  * A plain controlled input would rewrite "12." to "12" mid-keystroke and make decimals untypeable.
  */
+/** A number that may be left empty (null), such as an optional estimated margin. Takes a minus sign and decimals as typed. */
+export function OptionalNumInput({ value, onChange, className, id, placeholder }: { value: number | null; onChange: (n: number | null) => void; className?: string; id?: string; placeholder?: string }) {
+  const [text, setText] = useState(value == null ? "" : String(value));
+  useEffect(() => {
+    setText((t) => (t.trim() === "" ? (value == null ? t : String(value)) : Number(t) === value ? t : value == null ? "" : String(value)));
+  }, [value]);
+  return (
+    <input
+      id={id}
+      inputMode="decimal"
+      className={cx("field", className)}
+      value={text}
+      placeholder={placeholder}
+      onChange={(e) => {
+        const t = e.target.value.replace(/[^0-9.\-]/g, "");
+        setText(t);
+        const n = Number(t);
+        onChange(t.trim() === "" || t === "-" || t === "." || !Number.isFinite(n) ? null : n);
+      }}
+    />
+  );
+}
+
 export function NumInput({ value, onChange, label, className, disabled, id }: { value: number; onChange: (n: number) => void; label: string; className?: string; disabled?: boolean; id?: string }) {
   const [text, setText] = useState(String(value));
   useEffect(() => {

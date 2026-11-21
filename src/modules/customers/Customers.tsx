@@ -8,7 +8,8 @@ import { useData, useDay, usePrefs } from "@/data/store";
 import type { Client, ClientType } from "@/data/types";
 import { plural } from "@/lib/format";
 import { money0 } from "@/lib/money";
-import { customerFigures } from "@/lib/reports";
+import { customerFigures, customerMargins } from "@/lib/reports";
+import { MarginCell } from "@/ui/margin";
 import { Badge, Button, Dialog, Empty, Field, NumInput, PageBody, PageHead, Panel, Switch } from "@/ui";
 import { toast } from "@/ui/toast";
 import { PORTAL } from "@/lib/apps";
@@ -36,7 +37,7 @@ export function Customers() {
   const q = text.trim().toLowerCase();
   const rows = db.clients
     .filter((c) => !q || [c.name, c.contactName, c.type, c.accountRef, c.county, c.contactEmail].some((v) => v?.toLowerCase().includes(q)))
-    .map((c) => ({ c, f: customerFigures(db, c.id, day), out: db.quotes.filter((x) => x.clientId === c.id && ["Sent", "Queried"].includes(x.status)).length }))
+    .map((c) => ({ c, f: customerFigures(db, c.id, day), mg: customerMargins(db, c.id), out: db.quotes.filter((x) => x.clientId === c.id && ["Sent", "Queried"].includes(x.status)).length }))
     .sort((a, b) => b.f.sales - a.f.sales || a.c.name.localeCompare(b.c.name));
   const live = db.clients.filter((c) => db.projects.some((p) => p.clientId === c.id && p.status === "Live")).length;
   return (
@@ -71,11 +72,21 @@ export function Customers() {
                   <th className="num">Tenders out</th>
                   {access.seeValues && <th className="num">Sales, 12 months</th>}
                   {access.seeValues && <th className="num">Owed now</th>}
+                  {access.seeMargins && (
+                    <th className="num" title="The average of what their finished jobs were estimated at">
+                      Est. margin
+                    </th>
+                  )}
+                  {access.seeMargins && (
+                    <th className="num" title="The average margin their finished jobs made, from Job costs">
+                      Actual margin
+                    </th>
+                  )}
                   {PORTAL && <th>Portal</th>}
                 </tr>
               </thead>
               <tbody>
-                {rows.map(({ c, f, out }) => (
+                {rows.map(({ c, f, mg, out }) => (
                   <tr key={c.id} className="rowlink" onClick={() => navigate(`/customers/${c.id}`)}>
                     <td>
                       <Link to={`/customers/${c.id}`} className="font-medium text-accent-ink underline-offset-2 hover:underline" onClick={(e) => e.stopPropagation()}>
@@ -94,6 +105,8 @@ export function Customers() {
                     <td className="num">{out || "-"}</td>
                     {access.seeValues && <td className="num">{f.sales > 0 ? money0(f.sales, region) : "-"}</td>}
                     {access.seeValues && <td className="num">{f.owed > 0 ? money0(f.owed, region) : "-"}</td>}
+                    {access.seeMargins && <MarginCell m={mg.estimated} note={mg.estimatedJobs ? plural(mg.estimatedJobs, "finished job") : undefined} />}
+                    {access.seeMargins && <MarginCell m={mg.actual} note={mg.jobs ? plural(mg.jobs, "finished job") : undefined} />}
                     {PORTAL && <td>{c.portalEnabled ? <Badge tone="ok">On</Badge> : <Badge>Off</Badge>}</td>}
                   </tr>
                 ))}

@@ -13,7 +13,8 @@ import { toast } from "@/ui/toast";
 
 /**
  * Quotes that are with clients, grouped by what needs doing about them. Nothing says whether a
- * client has opened one (decision 233), so chasing goes by how long it has been out.
+ * client has opened one (decision 233), so chasing goes by how long it has been out. Declined ones
+ * are not here (21 Nov): they are in Tenders, "Lost, last 90 days", then the archive.
  */
 export function Awaiting() {
   const db = useData((s) => s.db);
@@ -26,9 +27,8 @@ export function Awaiting() {
     { title: "Queried", note: "The client has asked something. Answer or reprice.", rows: db.quotes.filter((q) => q.status === "Queried").sort(oldest), action: "reprice" },
     { title: "Due a chase", note: `Sent ${CHASE_AFTER_DAYS} days or more ago with no answer, and not chased this week. A call usually settles these.`, rows: db.quotes.filter((q) => dueAChase(q, day)).sort(oldest), action: "chase" },
     { title: "Sent, waiting", note: "Sent or chased in the last week. Give them time.", rows: db.quotes.filter((q) => q.status === "Sent" && !dueAChase(q, day)).sort(oldest), action: "chase" },
-    { title: "Declined", note: "Worth asking why, or repricing a smaller scope.", rows: db.quotes.filter((q) => q.status === "Declined").sort(oldest), action: "reprice" },
   ];
-  const waiting = groups.slice(0, 3).reduce((s, g) => s + g.rows.length, 0);
+  const waiting = groups.reduce((s, g) => s + g.rows.length, 0);
 
   return (
     <>

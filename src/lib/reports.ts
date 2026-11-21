@@ -9,6 +9,7 @@ import { addDays } from "./dates";
 import { agedDebt } from "./invoices";
 import { r2 } from "./money";
 import { labourCost } from "./project-costs";
+import { averagePct, projectEstMargin } from "./tenders";
 
 // ── The last 12 months ────────────────────────────────────────────────────────
 
@@ -224,3 +225,19 @@ const cell = (v: string | number) => {
 
 /** A report as a spreadsheet file: a heading row, then one row per line. */
 export const csvOf = (head: string[], rows: (string | number)[][]) => [head, ...rows].map((r) => r.map(cell).join(",")).join("\r\n") + "\r\n";
+
+/**
+ * A customer's average margins (21 Nov), over finished jobs only (Oisin: "do not include
+ * estimates from unfinished jobs"): the actual margin of each, from Job costs, and what each was
+ * estimated at (its tender's, or the figure typed for a job with no tender). A plain average of
+ * the jobs, each job counting once. Null when there is nothing to average.
+ */
+export function customerMargins(db: Db, clientId: string) {
+  const jobs = db.projects.filter((p) => p.clientId === clientId && FINISHED.has(p.status) && (p.value ?? 0) > 0);
+  return {
+    jobs: jobs.length,
+    actual: averagePct(jobs.map((p) => jobRow(db, p).pct)),
+    estimated: averagePct(jobs.map((p) => projectEstMargin(p, db.quotes))),
+    estimatedJobs: jobs.filter((p) => projectEstMargin(p, db.quotes) != null).length,
+  };
+}

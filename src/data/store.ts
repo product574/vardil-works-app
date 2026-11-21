@@ -24,7 +24,7 @@ import { buildSeed, demoDay } from "./seed";
 import type { Db, DepartmentKey, ID, MdOverride, RoleKey } from "./types";
 
 /** Bump when the shape of Db or the sample data changes. Old saved sample data is thrown away, preferences are kept. */
-const DATA_VERSION = 29;
+const DATA_VERSION = 30;
 
 let storageFull = false;
 
@@ -99,6 +99,9 @@ type PrefsState = {
   clientDesign: Partial<InvoiceDesign> | null;
   /** Vardil staff only: the client whose demo they opened from Vardil HQ, Clients. */
   viewClient: string | null;
+  /** Sales, Board: Declined switched off by this person (21 Nov: on by default, and remembered once off). */
+  boardHideDeclined: boolean;
+  setBoardHideDeclined: (hide: boolean) => void;
   setClientLook: (brand: Partial<Brand> | null, design: Partial<InvoiceDesign> | null) => void;
   setViewClient: (id: string | null) => void;
   setAutomationsOff: (off: boolean) => void;
@@ -145,6 +148,8 @@ export const usePrefs = create<PrefsState>()(
       clientBrand: null,
       clientDesign: null,
       viewClient: null,
+      boardHideDeclined: false,
+      setBoardHideDeclined: (boardHideDeclined) => set({ boardHideDeclined }),
       setClientLook: (clientBrand, clientDesign) => set((s) => ({ clientBrand, clientDesign, brand: { ...DEFAULT_BRAND, ...s.brandEdits, ...(clientBrand ?? {}) } })),
       setViewClient: (viewClient) => set({ viewClient }),
       setAutomationsOff: (automationsOff) => set({ automationsOff }),
@@ -178,7 +183,7 @@ export const usePrefs = create<PrefsState>()(
       storage: safeStorage,
       // Only live edits are saved, so changing src/config/brand.ts reaches every browser,
       // including ones that have opened an earlier version of the demo.
-      partialize: (s) => ({ theme: s.theme, brandEdits: s.brandEdits, role: s.role, asPersonId: s.asPersonId, staffMode: s.staffMode, companyOff: s.companyOff, automationsOff: s.automationsOff, localAnnouncements: s.localAnnouncements, localAppRequests: s.localAppRequests, mdOverride: s.mdOverride, askAiOff: s.askAiOff, viewClient: s.viewClient, operativeId: s.operativeId, portalClientId: s.portalClientId, invoiceDesignEdits: s.invoiceDesignEdits, invoiceEmail: s.invoiceEmail }),
+      partialize: (s) => ({ theme: s.theme, brandEdits: s.brandEdits, role: s.role, asPersonId: s.asPersonId, staffMode: s.staffMode, companyOff: s.companyOff, automationsOff: s.automationsOff, localAnnouncements: s.localAnnouncements, localAppRequests: s.localAppRequests, mdOverride: s.mdOverride, askAiOff: s.askAiOff, viewClient: s.viewClient, operativeId: s.operativeId, portalClientId: s.portalClientId, invoiceDesignEdits: s.invoiceDesignEdits, invoiceEmail: s.invoiceEmail, boardHideDeclined: s.boardHideDeclined }),
       // Version 1 saved the whole brand, which froze the old defaults in place. Drop it, keep the rest.
       migrate: (saved, version) => {
         const s = (saved ?? {}) as Record<string, unknown>;

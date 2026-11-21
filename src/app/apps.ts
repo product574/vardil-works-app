@@ -9,11 +9,14 @@
  * access. A section shows when its person may open at least one of its screens; an app shows
  * when it has at least one section to show.
  *
- * Email, Team chat, the Site phone and Admin are not apps: they are small buttons in the top bar.
+ * Email, Team chat and the Site phone are not apps: they are small buttons in the top bar. Admin
+ * was one of them until 21 Nov, when it became the sixth app (Oisin): two sections, Requests
+ * (what waits for a yes or no) and Settings (access, billing, holidays, the log, and the old
+ * Settings screens: branding, region, about).
  */
-import { CurrencyEur, Gauge, Handshake, HardHat, type Icon, UsersThree } from "@phosphor-icons/react";
+import { CurrencyEur, Gauge, Handshake, HardHat, type Icon, UserGear, UsersThree } from "@phosphor-icons/react";
 import { needsAccounts, partyOf, purchaseStage } from "@/lib/purchases";
-import { openRequestCount, overtimeClaimCount } from "@/lib/requests";
+import { openRequestCount, overtimeClaimCount, waitingOnDirector } from "@/lib/requests";
 import { lastWeekStart, payrollStage } from "@/lib/payroll";
 import { toPay } from "@/lib/reimbursements";
 import { driversOf } from "@/lib/fleet";
@@ -31,7 +34,7 @@ export type Section = {
   /** Addresses of records opened from this section (a tender, a project, an invoice): the start of the path. */
   also?: string[];
 };
-export type AppKey = "dashboard" | "sales" | "projects" | "resources" | "finance";
+export type AppKey = "dashboard" | "sales" | "projects" | "resources" | "finance" | "admin";
 export type App = { key: AppKey; label: string; icon: Icon; sections: Section[] };
 
 const t = (dept: DepartmentKey, to: string, label: string, more: Partial<NavItem> = {}): Tab => ({ dept, to, label, ...more });
@@ -207,6 +210,39 @@ export const APPS: App[] = [
       },
     ],
   },
+  {
+    key: "admin",
+    label: "Admin",
+    icon: UserGear,
+    sections: [
+      {
+        key: "requests",
+        label: "Requests",
+        tabs: [
+          t("admin", "/admin", "Requests", { end: true, count: (db) => waitingOnDirector(db).length }),
+          t("admin", "/admin/repairs", "Repairs", { count: (db) => db.repairs.filter((r) => r.status !== "Fixed").length, countTone: "warn" }),
+          t("admin", "/admin/approvals", "Invoice approvals", { app: "invoicing", perm: "approveInvoices" }),
+        ],
+      },
+      {
+        // Roles and access, Site access and Billing stay the managing director's alone, even when Admin is given to another level.
+        key: "settings",
+        label: "Settings",
+        tabs: [
+          t("admin", "/admin/access", "Roles and access", { mdOnly: true }),
+          t("admin", "/admin/sites", "Site access", { mdOnly: true }),
+          t("admin", "/admin/billing", "Billing", { mdOnly: true }),
+          t("admin", "/admin/bank-holidays", "Company holidays"),
+          t("admin", "/admin/activity", "Activity log"),
+          t("admin", "/admin/automations", "Automations", { automations: true }),
+          t("admin", "/admin/vardil", "Vardil Works"),
+          t("settings", "/settings", "Branding", { end: true }),
+          t("settings", "/settings/region", "Region"),
+          t("settings", "/settings/about", "About this demo"),
+        ],
+      },
+    ],
+  },
 ];
 
 /** Does a screen's address match this path? An `end` screen only matches itself. */
@@ -215,7 +251,7 @@ const matches = (it: Pick<NavItem, "to" | "end">, path: string) => path === it.t
 /**
  * Which app and section a path belongs to. A screen listed in a section wins; then the longest
  * matching `also` (a tender's page belongs to Tenders). Null for anything outside the five apps
- * (Email, Team chat, the Site phone, Admin, Settings, Vardil HQ).
+ * (Email, Team chat, the Site phone, Vardil HQ).
  */
 export function placeOf(path: string): { app: App; section: Section } | null {
   for (const app of APPS) for (const section of app.sections) if (section.tabs.some((x) => path === x.to)) return { app, section };

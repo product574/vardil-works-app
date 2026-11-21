@@ -9,13 +9,14 @@ import type { ClientType, Db, Enquiry, Quote } from "@/data/types";
 import { dShort, plural } from "@/lib/format";
 import { money0, pct1 } from "@/lib/money";
 import { boardMove, type MoveKind, type Stage, STAGE_LABEL, stageOf } from "@/lib/pipeline";
-import { costBreakdown, marginFlag, marginPct, quoteTotal } from "@/lib/quotes";
+import { marginFlag, quoteTotal } from "@/lib/quotes";
+import { estMargin, LOST_DAYS, lostLately } from "@/lib/tenders";
 import { Button, cx, Dialog, Empty, Field, PageBody, PageHead, Panel, Switch } from "@/ui";
 import { EnquiryBadge } from "@/ui/status";
 import { toast } from "@/ui/toast";
 import { PORTAL } from "@/lib/apps";
 
-export const quoteMargin = (q: Quote) => marginPct(quoteTotal(q.lines), costBreakdown(q.costing).total);
+export const quoteMargin = estMargin;
 const clientName = (db: Db, id: string) => db.clients.find((c) => c.id === id)?.name ?? "";
 
 type Column = { stage: Stage; label: string; hint: string; enquiries?: Enquiry[]; quotes?: Quote[] };
@@ -46,7 +47,10 @@ export function PipelineBoard() {
   const region = usePrefs((s) => s.brand.region);
   const { seeValues, seeMargins, may } = useAccess();
   const canPrice = may("priceQuotes");
-  const [showLost, setShowLost] = useState(false);
+  const hideDeclined = usePrefs((s) => s.boardHideDeclined);
+  const setHideDeclined = usePrefs((s) => s.setBoardHideDeclined);
+  const showLost = !hideDeclined;
+  const setShowLost = (on: boolean) => setHideDeclined(!on);
   const [allDone, setAllDone] = useState<Partial<Record<Stage, boolean>>>({});
   const [logging, setLogging] = useState(false);
   const [openEnquiry, setOpenEnquiry] = useState<Enquiry | null>(null);
@@ -63,9 +67,10 @@ export function PipelineBoard() {
       { stage: "queried", label: "Queried", hint: "Client has a question", quotes: by("Queried") },
       { stage: "won", label: "Won", hint: "Accepted, now a project", quotes: by("Accepted") },
     ];
-    if (showLost) cols.push({ stage: "lost", label: "Declined", hint: "Not going ahead", quotes: by("Declined") });
+    // The last 90 days, as in Tenders, "Lost, last 90 days"; older ones are in the archive.
+    if (showLost) cols.push({ stage: "lost", label: "Declined", hint: `Not going ahead, last ${LOST_DAYS} days`, quotes: by("Declined").filter((q) => lostLately(q, day)) });
     return cols;
-  }, [db.enquiries, db.quotes, showLost]);
+  }, [db.enquiries, db.quotes, showLost, day]);
 
   const startDrag = (ev: DragEvent, card: Card) => {
     ev.dataTransfer.setData("text/plain", cardRef(card));
@@ -90,7 +95,7 @@ export function PipelineBoard() {
         actions={
           <>
             <label className="flex items-center gap-2 text-[0.93rem] text-muted">
-              <Switch on={showLost} onChange={() => setShowLost((v) => !v)} label="Show declined quotes" /> Show declined
+              <Switch on={showLost} onChange={() => setShowLost(!showLost)} label="Show declined quotes" /> Show declined
             </label>
             {canPrice && (
               <Button variant="primary" onClick={() => setLogging(true)}>

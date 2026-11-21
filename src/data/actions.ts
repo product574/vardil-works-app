@@ -3764,6 +3764,7 @@ export function addProject(f: NewProject): string {
       value: priced ? r2(f.value!) : null,
       pricedBy: f.pricedBy,
       ...(order ? { orderRef: order } : {}),
+      ...(f.estMargin != null ? { estMargin: Math.round(f.estMargin * 10) / 10 } : {}),
       siteInstructions: "",
       extrasFlag: false,
       snaggingFlag: false,
@@ -3871,4 +3872,25 @@ export function addCompanyPaper(f: NewPaper, proof: NewProof): ID | null {
     log(db, "Added a company paper", `${f.name.trim()}, to ${f.expires}${proof ? "" : ", proof still needed"}`, "compliance");
   });
   return id;
+}
+
+/**
+ * The estimated margin of a job with no tender (21 Nov): set, changed or taken away (null). A job
+ * from a tender keeps its tender's figure, so this refuses it.
+ */
+export function setEstMargin(projectId: ID, margin: number | null) {
+  let ok = false;
+  useData.getState().mutate((db) => {
+    const p = db.projects.find((x) => x.id === projectId);
+    if (!p || p.quoteId) return;
+    if (margin != null && (margin < -100 || margin >= 100)) return;
+    const was = p.estMargin;
+    if (margin == null) delete p.estMargin;
+    else p.estMargin = Math.round(margin * 10) / 10;
+    const what = margin == null ? "Estimated margin taken away" : `Estimated margin ${was == null ? "set" : "changed"} to ${p.estMargin}%${was != null ? ` (was ${was}%)` : ""}`;
+    audit(db, p.id, what);
+    log(db, what, p.code, "sales");
+    ok = true;
+  });
+  return ok;
 }

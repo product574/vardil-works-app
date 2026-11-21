@@ -39,8 +39,9 @@ def steps(page, ctx):
     tabs = lambda: [re.sub(r"\s*\d+$", "", s.strip().split("\n")[0]) for s in page.locator("nav[aria-label$=' screens']").get_by_role("link").all_inner_texts()]
 
     # ── 1. Admin: Connections is gone, and Send the week needs nothing connected
-    go(page, "/admin")
-    admin = sections()
+    # Since 21 Nov Admin is an app: Requests and Settings, with Company holidays under Settings.
+    go(page, "/admin/bank-holidays")
+    admin = sections() + tabs()
     check("Admin: no Connections", "Connections" not in admin and "Requests" in admin and "Company holidays" in admin, admin)
     page.goto(BASE + "/admin/connections"); page.wait_for_timeout(500)
     check("Admin: the old Connections address lands on Admin", page.url.endswith("/admin"), page.url)
@@ -83,7 +84,7 @@ def steps(page, ctx):
     sent = data(page, "db.quotes.filter(q => q.status === 'Sent').length")
     go(page, "/sales/awaiting")
     heads = [re.sub(r"\s*\(\d+\)$", "", h.inner_text().strip()) for h in page.locator("main h2").all()]
-    check("Awaiting response: Queried, Due a chase, Sent and waiting, Declined", heads == ["Queried", "Due a chase", "Sent, waiting", "Declined"], heads)
+    check("Awaiting response: Queried, Due a chase, Sent and waiting (Declined went on 21 Nov)", heads == ["Queried", "Due a chase", "Sent, waiting"], heads)
     counts = [int(re.search(r"\((\d+)\)", h.inner_text()).group(1)) for h in page.locator("main h2").all()]
     check("Awaiting response: every sent tender is in one of the two sent groups", counts[1] + counts[2] == sent and counts[1] >= 1, (counts, sent))
     go(page, "/sales/quotes/Q-2613")

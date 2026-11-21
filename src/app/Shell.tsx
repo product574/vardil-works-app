@@ -1,6 +1,6 @@
 import { ArrowCounterClockwise, ArrowLeft, GearSix, MagnifyingGlass, Moon, SignOut, Sun, UserSwitch } from "@phosphor-icons/react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Navigate, NavLink, Outlet, useLocation, useNavigate, useNavigationType, useRouteError } from "react-router-dom";
+import { Link, Navigate, NavLink, Outlet, useLocation, useNavigate, useNavigationType, useRouteError } from "react-router-dom";
 import { useAccess } from "@/data/access";
 import { ROLES, roleDef } from "@/data/roles";
 import { useData, useDay, useDb, usePrefs } from "@/data/store";
@@ -89,8 +89,8 @@ export function Shell() {
   // A role only reaches the departments it has been given in Admin > Roles and access.
   if (!access.can(dept.key)) return <Navigate to={access.home} replace />;
 
-  // The bottom bar holds the five apps (20 Nov, the Oldstone template); Email, Team chat, the
-  // Site phone and Admin are small buttons in the top bar.
+  // The bottom bar holds the apps (20 Nov, the Oldstone template; Admin joined them on 21 Nov);
+  // Email, Team chat and the Site phone are small buttons in the top bar.
   const apps = APPS.filter((a) => a.sections.some((sec) => sec.tabs.some((t) => access.can(t.dept))));
   const showBar = apps.length > 1;
   // Ask AI is for the managing director only (decision 46), never for anyone they sign in as.
@@ -478,7 +478,7 @@ const sectionBtn = (active: boolean) => cx("press inline-flex h-9 shrink-0 items
 
 /**
  * Level 3 (20 Nov): an app's sections as buttons across the top of the page, and the screens of
- * the open section as tabs under them. Outside the five apps (Admin, Settings, Vardil HQ) the
+ * the open section as tabs under them. Outside the apps (Vardil HQ) the
  * department's own screens are the buttons. No left sidebar (Jimmy: "strip it back").
  */
 function SectionNav() {
@@ -555,14 +555,14 @@ function AppBar({ apps, besideAsk }: { apps: App[]; besideAsk: boolean }) {
           const Icon = a.icon;
           return (
             <li key={a.key}>
-              <NavLink
+              <Link
                 to={homeOf(a)}
                 aria-current={active ? "page" : undefined}
-                className={cx("press flex h-14 w-[4.15rem] flex-col items-center justify-center gap-0.5 rounded-lg text-[0.87rem] leading-tight sm:w-[5.6rem] sm:text-[0.93rem]", active ? "bg-accent-strong font-medium text-white" : "text-muted hover:bg-accent-soft hover:text-accent-ink")}
+                className={cx("press flex h-14 w-[3.75rem] flex-col items-center justify-center gap-0.5 rounded-lg text-[0.75rem] leading-tight sm:w-[5.6rem] sm:text-[0.93rem]", active ? "bg-accent-strong font-medium text-white" : "text-muted hover:bg-accent-soft hover:text-accent-ink")}
               >
                 <Icon size={22} weight={active ? "fill" : "regular"} />
                 <span className="whitespace-nowrap">{a.label}</span>
-              </NavLink>
+              </Link>
             </li>
           );
         })}
@@ -571,8 +571,8 @@ function AppBar({ apps, besideAsk }: { apps: App[]; besideAsk: boolean }) {
   );
 }
 
-/** Email, Team chat, the Site phone and Admin (and Vardil HQ for our staff): small buttons in the top bar. */
-const UTILITIES: DepartmentKey[] = ["inbox", "chat", "site", "admin", "vardil"];
+/** Email, Team chat and the Site phone (and Vardil HQ for our staff): small buttons in the top bar. Admin is an app in the bottom bar since 21 Nov. */
+const UTILITIES: DepartmentKey[] = ["inbox", "chat", "site", "vardil"];
 
 function UtilityButtons({ className }: { className?: string }) {
   const access = useAccess();
@@ -583,7 +583,7 @@ function UtilityButtons({ className }: { className?: string }) {
   // Someone with only one of these (an operative's phone, say) has nothing to switch to.
   if (list.length === 0 || access.departments.length < 2) return null;
   return (
-    <nav aria-label="Email, chat, phone and admin" className={cx("flex shrink-0 items-center gap-0.5", className)}>
+    <nav aria-label="Email, chat and phone" className={cx("flex shrink-0 items-center gap-0.5", className)}>
       {list.map((d) => {
         const Icon = d.icon;
         const active = d.key === current;

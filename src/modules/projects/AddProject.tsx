@@ -9,7 +9,7 @@ import { plural } from "@/lib/format";
 import { siteManagerChoices } from "@/lib/site-access";
 import { type NewProject, projectProblem, scopeLines } from "@/lib/ways-in";
 import { REGION } from "@/lib/money";
-import { Button, Dialog, Field, NextStep, NumInput } from "@/ui";
+import { Button, Dialog, Field, NextStep, NumInput, OptionalNumInput } from "@/ui";
 import { toast } from "@/ui/toast";
 
 const PRICED: { value: NewProject["pricedBy"]; label: string; hint: string }[] = [
@@ -140,6 +140,11 @@ export function AddProjectDialog({ onClose }: { onClose: (code?: string) => void
             </p>
             <NumInput label="Value before VAT" value={f.value ?? 0} onChange={(n) => set("value", n > 0 ? n : null)} className="h-9 w-full" />
           </div>
+        )}
+        {access.seeMargins && (
+          <Field label="Estimated margin % (optional)" hint="What you expect it to make, as a % of the value. Shown in Sales, Confirmed and the Pipeline. Can be set later.">
+            {(id) => <OptionalNumInput id={id} value={f.estMargin ?? null} onChange={(n) => set("estMargin", n)} className="w-32" placeholder="Not given" />}
+          </Field>
         )}
         <Field label="Client's order number (optional)" hint="A purchase order, or the letter or email that confirmed it." className={f.pricedBy === "Unpriced" || !access.seeValues ? "" : "sm:col-span-2"}>
           {(id) => <input id={id} className="field" value={f.orderRef} onChange={(e) => set("orderRef", e.target.value)} />}

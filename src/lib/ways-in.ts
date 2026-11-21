@@ -58,6 +58,8 @@ export type NewProject = {
   /** Before VAT. Null when the job is not priced. */
   value: number | null;
   orderRef: string;
+  /** Optional (21 Nov): the margin % the firm expects, since there is no tender to take it from. */
+  estMargin?: number | null;
   startDate: string;
   endDate: string;
   siteManagerId: string;
@@ -80,6 +82,7 @@ export function projectProblem(f: NewProject): string {
   if (!f.county.trim()) return "Give the county the site is in.";
   if (!f.description.trim()) return "Describe the work in a sentence.";
   if (f.pricedBy === "Agreed price" && !((f.value ?? 0) > 0)) return "Give the agreed price before VAT, or choose another way it is priced.";
+  if (f.estMargin != null && (f.estMargin < -100 || f.estMargin >= 100)) return "An estimated margin is between -100% and 100%, or left empty.";
   if (!f.startDate || !f.endDate) return "Give the start and finish dates.";
   if (f.endDate < f.startDate) return "The finish date is before the start date.";
   if (!f.siteManagerId) return "Choose the site manager.";

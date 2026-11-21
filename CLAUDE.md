@@ -45,6 +45,11 @@ at 1c68ea5, pushed to GitHub, and the artifact "Vardil Works master demo" republ
 See "More ways in, 21 Nov" further down. Not merged into `main` until Oisin says. The checklist
 was given in the chat, with the open questions as "Decision for you" lines.
 
+**Sales and Admin, 21 Nov (later):** decisions 249 to 258, built on the branch `sales-and-admin`
+from `more-ways-in` at 9d30814 (that round not yet in `main`, so this one carries it), pushed to
+GitHub, and the artifact "Vardil Works master demo" republished from it. See "Sales and Admin,
+21 Nov" further down. Not merged into `main` until Oisin says.
+
 ## Start here (handed over 16 Nov 2026)
 
 Aodhan built this with Claude up to the end of step 1. From 16 Nov his co-founder develops
@@ -512,6 +517,25 @@ he picked the recommended answer each time:
 | 246 | "Held" in Finance | "On hold", as in Projects (his pick): the Money in tab, the badge, Payment claims and the invoice page, each with the reason and what lets it go in the same words as Projects ("Because 3 snags are open. It lets go by marking each one fixed."). Finance no longer clears a hold itself: the row and the invoice page link to the project's Variations tab ("See what is open"), where Clear hold asks first (decision 236) |
 | 247 | The site manager's phone | Snags only for him, not operatives (his pick): inside a site, Snags (the list, Add a snag with a photo from the camera, Mark fixed with Undo) and Orders and deliveries (what is on order for the site, Mark delivered, what is asked for and not ordered yet). Make a request on his phone has "Something to buy" with the amount and the reason. Everything is saved in his name. Invoices stay with the office |
 | 248 | Questions go on the onboarding form | Oisin, 21 Nov: "For all these questions that you need my input for record them for the onboarding form". Every question put to him while building is recorded as a question for the client onboarding form (Claude's project memory, and `inputs/who-enters-what.md`), with his pick for the demo beside it |
+
+
+Decisions made by Oisin on the master demo, later on 21 Nov 2026 (his list: an estimated margin in
+Confirmed and the Pipeline, the Board's Declined column on by default, the tender lists with an
+archive, no Declined in Awaiting response, an average margin on Customers, and Admin grouped and
+made an app). Ten question buttons in three rounds, the Admin one with sketches:
+
+| # | Question | Decision |
+|---|---|---|
+| 249 | Estimated margin in Sales | A column, Est. margin, on every tender list (All tenders, every tab), in Confirmed and beside each line of the Pipeline. Always shown to whoever may see margins; "optional" means the figure (his pick): a job won from a tender takes its tender's margin from the cost build-up, fixed (his pick); a job with no tender has an optional box in Add project and a Set margin or Change button on its row in Confirmed (his pick), or reads "Not given". `estMargin`, `projectEstMargin`, `averagePct` in `lib/tenders.ts`; `Project.estMargin`; action `setEstMargin`, refused on a tendered job, in the history and the log |
+| 250 | All tenders | Being priced, With the client, Won, live, Lost, last 90 days, then Archive in a box of its own, set apart (`tenderList`, `LOST_DAYS` in `lib/tenders.ts`). The tab picked is remembered |
+| 251 | Won, live | A won tender whose job is Not started, Live, Complete or Invoiced: it stays until the job is Closed, finished and every invoice paid (his pick). Each row shows its job and where it stands |
+| 252 | Lost and the archive | A declined tender is under "Lost, last 90 days" for 90 days from the client's answer, then goes to the Archive with everything that was on it. A won tender goes to the Archive when its job is Closed. The Archive is two lists on the page, "Won, job closed" and "Lost, over 90 days ago" (his pick) |
+| 253 | The Board's Declined column | On by default, the last 90 days only (his pick, matching Lost), with the switch to turn it off, remembered once off (his pick; `boardHideDeclined` in preferences, so it survives Reset demo data) |
+| 254 | Awaiting response | Declined removed: Queried, Due a chase, Sent and waiting |
+| 255 | A customer's margin | Two columns on Customers, Est. margin and Actual margin (his pick), each with how many jobs it covers. Both over finished jobs only (Complete, Invoiced or Closed), never estimates from unfinished jobs (his words, mid-build): the actual margin of each from Job costs, and what each was estimated at. A plain average, each job once (`customerMargins` in `lib/reports.ts`). The jobs priced before the tender records start (C709 to C717) were given an estimated margin in the sample data, a point or two either side of what each was meant to make, so every finished job has one. DATA_VERSION 30 |
+| 256 | Admin as an app | The sixth app in the bottom bar, and off the top bar (his pick). Two sections (his pick of two sketches): Requests (Requests, Repairs, Invoice approvals) and Settings (Roles and access, Site access, Billing, Company holidays, Activity log, Automations, Vardil Works, Branding, Region, About this demo) |
+| 257 | The old Settings | Branding, Region and About this demo are tabs of Admin, Settings (his pick). Their addresses (/settings...) are unchanged, and the account menu's Settings still opens Branding, now inside Admin. Who may open them is unchanged (the settings department) |
+| 258 | Questions for the onboarding form | How long a lost tender stays before the archive (90 days in the demo), and whether a job's estimated margin may be typed over once it came from a tender |
 
 Standing preferences (these come from Aodhan and are not optional):
 
@@ -2265,6 +2289,54 @@ hold without asking, so it now points at the project.
 - A hire's cost is still an estimate from the rate until the hire company's invoice is added.
 - A project added without a tender has no site group chat until someone makes one, and its
   heritage line reads "To be confirmed with the conservation officer".
+- A real phone, Safari and Firefox, the hosted build behind Cloudflare.
+
+## Sales and Admin, 21 Nov (decisions 249 to 258)
+
+Branch `sales-and-admin`, from `more-ways-in` at 9d30814. DATA_VERSION 30.
+
+**Built.**
+
+- **Rules** (`src/lib/tenders.ts`, with tests in `tender-lists.test.ts`): `estMargin` (a tender's
+  margin from its cost build-up; `quoteMargin` in `sales/Pipeline.tsx` is now this),
+  `projectEstMargin`, `averagePct`, `LOST_DAYS` (90), `tenderList`, `lostLately`.
+  `customerMargins` in `src/lib/reports.ts`.
+- **Screens**: `Tenders` in `sales/Sections.tsx` (the five tabs, the archive's two lists, a
+  `TenderTable` with Answered and Job columns on the decided lists); `Confirmed` (Est. margin,
+  `SetMarginDialog`); `Pipeline` (`MarginSpan`, "22.1% est."); the Board (`PipelineBoard`) reads
+  `boardHideDeclined`; `Awaiting.tsx` without Declined; `customers/Customers.tsx` with the two
+  columns; `projects/AddProject.tsx` with the optional box. `MarginCell` in `src/ui/margin.tsx`
+  (thin in amber, a loss in red); `OptionalNumInput` in `src/ui` for a number that may be empty.
+- **Admin**: an app in `APPS` (`src/app/apps.ts`, `AppKey` gains "admin"), out of `UTILITIES` in
+  `Shell.tsx` (the top bar's nav is now "Email, chat and phone"). The bottom bar's buttons are
+  plain Links with their own aria-current, since a NavLink marked Admin as not open on the
+  /settings screens; on a phone each is 3.75rem wide with 0.75rem names, so six fit at 375
+  pixels. `departments.ts` still holds the admin and settings departments (access, addresses,
+  Ask AI's links).
+
+**Tested.** 847 automated tests in 85 files (new `src/lib/tender-lists.test.ts` 9,
+`src/data/est-margin.test.ts` 3), the type check. New browser suite
+`tests/browser/sales_admin_check.py`, 59 checks, all passing, no console errors: the five tender
+tabs and their counts against the records, the archive apart, Est. margin on every tender, Won,
+live and Lost against the records, the archive's two lists, the tab remembered; Awaiting response
+without Declined; the Board's Declined on by default, the last 90 days only, off and remembered,
+on again; Confirmed's margins (from the tender, typed in Add project with 140% refused, Set margin,
+Change, emptied), in the log and the history; the Pipeline's three lists; Customers' two columns
+against the finished jobs, blank for a customer with only running work; Admin sixth in the bar
+and off the top bar, its two sections and tabs, the old Settings screens inside it, the account
+menu's Settings; a contracts manager without Admin, then given it without Roles and access, Site
+access or Billing; dark mode and phone width (six apps fit, every name fits its button).
+`master_check.py` 47 of 47 and `easier_check.py` changed for the sixth app and Awaiting response;
+`ways_in_check.py` 67 of 67. Screenshots read by eye: the archive, Confirmed, the Pipeline,
+Customers, Admin's Settings, the phone's bar.
+
+**Not tested, and known gaps.**
+
+- The 28 older browser suites and `csp_check.py`, as before.
+- Ask AI was not tried with the model; its summary does not yet give estimated margins or the
+  tender lists by name.
+- A customer's margins are a plain average of their jobs, so a small job counts as much as a big
+  one. Reports, Gross margin weights by revenue.
 - A real phone, Safari and Firefox, the hosted build behind Cloudflare.
 
 ## Build status

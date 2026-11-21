@@ -583,6 +583,10 @@ export function seedProjects(r: Rng, today: string, quotes: Quote[], holidays: H
       plannedEnd: finished && p.late ? workdays(p.endDate, -p.late) : p.endDate,
       value,
       pricedBy: quote ? "Quote" : p.code === "C713" || p.code === "C717" ? "Schedule of rates" : "Quote",
+      // The jobs priced before the tender records start (21 Nov): the margin they were estimated at, a
+      // point or two either side of what the job was meant to make, so a customer's estimated
+      // margin has a history to average. Jobs from a tender take their tender's.
+      ...(quote ? {} : { estMargin: p.margin + ((Number(p.code.slice(1)) % 5) - 2) * 1.5 }),
       siteInstructions: p.instructions,
       // Extras raised and not yet agreed hold the project's final account, as raising one on screen does.
       extrasFlag: p.flags?.extrasFlag ?? draftExtras,

@@ -21,7 +21,7 @@ def sign_in_as(page, role):
     page.get_by_role("button", name="Account menu").click()
     page.get_by_role("menuitem", name=role, exact=True).click(); page.wait_for_timeout(500)
 
-APPS = ["Dashboard", "Sales", "Projects", "Resources", "Finance"]
+APPS = ["Dashboard", "Sales", "Projects", "Resources", "Finance", "Admin"]
 
 def steps(page, ctx):
     page.goto(BASE + "/"); page.wait_for_url("**/sign-in")
@@ -37,11 +37,11 @@ def steps(page, ctx):
 
     # ── 1. The frame
     names = [t.strip().split("\n")[-1] for t in bar.get_by_role("link").all_inner_texts()]
-    check("Bar: the five apps in order", names == APPS, names)
+    check("Bar: the six apps in order (Admin since 21 Nov)", names == APPS, names)
     check("No left sidebar anywhere", page.locator("nav.w-52").count() == 0)
-    util = page.get_by_role("navigation", name="Email, chat, phone and admin")
+    util = page.get_by_role("navigation", name="Email, chat and phone")
     labels = [l.get_attribute("aria-label") for l in util.get_by_role("link").all()]
-    check("Top bar: Email, Team chat, Site phone and Admin as small buttons", [l.split(",")[0] for l in labels] == ["Email", "Team chat", "Site phone", "Admin"], labels)
+    check("Top bar: Email, Team chat and Site phone as small buttons (Admin is an app since 21 Nov)", [l.split(",")[0] for l in labels] == ["Email", "Team chat", "Site phone"], labels)
     check("Top bar: Email shows its unread count", any(l.startswith("Email,") and "unread" in l for l in labels), labels)
 
     # ── 2. Dashboard: a box per app, then waiting and to do

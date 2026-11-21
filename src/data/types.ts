@@ -201,6 +201,8 @@ export type Project = {
   pricedBy: "Quote" | "Agreed price" | "Schedule of rates" | "Unpriced";
   /** The client's order number, for a job set up without a tender (21 Nov, decision 241). A tendered job keeps it on its quote. */
   orderRef?: string;
+  /** The estimated margin %, typed for a job with no tender (21 Nov). Optional. A tendered job takes its tender's. */
+  estMargin?: number;
   siteInstructions: string;
   extrasFlag: boolean;
   snaggingFlag: boolean;
