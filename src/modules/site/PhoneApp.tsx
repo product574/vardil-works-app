@@ -4,12 +4,12 @@
  * sites with the timesheet for each, what waits for his yes or no, and the same tiles without My
  * week and My hours. Sign-in is by the number on the employee register: the office sends the
  * invite, the first time a one-time code (shown on the phone in the demo), then their own password,
- * then fingerprint if they want it. English first; other languages per firm come later.
+ * and the app stays signed in for 30 days. English first; other languages per firm come later.
  */
-import { ArrowLeft, CalendarBlank, CalendarDots, CalendarPlus, Camera, CaretRight, Certificate, Clock, Fingerprint, HandPalm, IdentificationCard, Invoice, Ladder, ListChecks, Megaphone, Package, Phone, PlusCircle, Receipt, SunHorizon, Tray, Truck, UserMinus, Wrench } from "@phosphor-icons/react";
+import { ArrowLeft, CalendarBlank, CalendarDots, CalendarPlus, Camera, CaretRight, Certificate, Clock, HandPalm, IdentificationCard, Invoice, Ladder, ListChecks, Megaphone, Package, Phone, PlusCircle, Receipt, SunHorizon, Tray, Truck, UserMinus, Wrench } from "@phosphor-icons/react";
 import { useCallback, useEffect, useState } from "react";
 import { levelOf, PhoneIdentity, useAccess } from "@/data/access";
-import { actAs, decideExpense, nowStamp, enterPhoneCode, sendPhoneCode, setPhoneBiometrics, setPhonePassword, signOutPhone, tryPhonePassword } from "@/data/actions";
+import { actAs, decideExpense, nowStamp, enterPhoneCode, sendPhoneCode, setPhonePassword, signOutPhone, tryPhonePassword } from "@/data/actions";
 import { useData, useDay, usePrefs } from "@/data/store";
 import type { Db, Expense, Person, Project, RoleKey } from "@/data/types";
 import { bookingFor, stateOf, ticketBlocks, vehicleBlocks } from "@/lib/compliance";
@@ -20,7 +20,7 @@ import { CODE_MINUTES, codesLeft, hashPassword, isLocked, maskPhone, MIN_PASSWOR
 import { crewRequests } from "@/lib/requests";
 import { dayInstruction, dayRoster, managerJobs, siteOn, workingDays } from "@/lib/roster";
 import { requestLeave } from "@/data/actions";
-import { Badge, Button, cx, DeclineNote, Dialog, Field, PageBody, PageHead, Switch } from "@/ui";
+import { Badge, Button, cx, DeclineNote, Dialog, Field, PageBody, PageHead } from "@/ui";
 import { toast } from "@/ui/toast";
 import { CheckLine } from "./fleet-sheets";
 import { OvertimeClaimsSheet, HoursSheet } from "./hours";
@@ -104,14 +104,10 @@ function PhoneApp({ owner, day }: { owner: Person; day: string }) {
   const me = db.people.find((p) => p.id === who) ?? owner;
   const acc = db.phoneAccounts.find((a) => a.personId === me.id);
   const now = nowStampLocal();
-  // Fingerprint opens the app each time it is opened, while the 30 days last.
-  const [unlocked, setUnlocked] = useState(false);
-  const [usePassword, setUsePassword] = useState(false);
-  // Once signing in has started it runs to its end (the fingerprint question comes after the session opens).
+  // Once signing in has started it runs to its end (the session opens as the password is saved).
   const [inFlow, setInFlow] = useState(false);
   const start = useCallback(() => setInFlow(true), []);
-  if (inFlow || !me.active || !sessionOpen(acc, now)) return <SignIn owner={owner} onStart={start} onIn={(id) => { setWho(id); setUnlocked(true); setUsePassword(false); setInFlow(false); }} />;
-  if (acc?.biometrics && !unlocked && !usePassword) return <Unlock me={me} onUnlock={() => setUnlocked(true)} onPassword={() => { signOutPhone(me.id); setUsePassword(true); }} />;
+  if (inFlow || !me.active || !sessionOpen(acc, now)) return <SignIn owner={owner} onStart={start} onIn={(id) => { setWho(id); setInFlow(false); }} />;
   const manager = me.kind === "Management" || me.level === "site";
   const identity = { role: (levelOf(me) ?? "operative") as RoleKey, personId: me.id };
   return <PhoneIdentity.Provider value={identity}>{manager ? <ManagerHome me={me} day={day} /> : <OperativeHome me={me} day={day} />}</PhoneIdentity.Provider>;
@@ -119,7 +115,7 @@ function PhoneApp({ owner, day }: { owner: Person; day: string }) {
 
 // ── Signing in ────────────────────────────────────────────────────────────────
 
-type Step = { s: "number" } | { s: "password"; id: string } | { s: "code"; id: string; purpose: "setup" | "reset"; shown: string } | { s: "new"; id: string } | { s: "finger"; id: string };
+type Step = { s: "number" } | { s: "password"; id: string } | { s: "code"; id: string; purpose: "setup" | "reset"; shown: string } | { s: "new"; id: string };
 
 const SCREEN = "grid min-h-full content-start gap-4 bg-canvas px-5 py-8";
 
@@ -235,10 +231,10 @@ function SignIn({ owner, onStart, onIn }: { owner: Person; onStart: () => void; 
           const ok = setPhonePassword(p.id, await hashPassword(p.id, secret));
           setBusy(false);
           if (!ok) return reset({ s: "number" });
-          reset({ s: "finger", id: p.id });
+          onIn(p.id);
         }}
       >
-        {head("Set your password", "You will use it to sign in on a new phone, or if fingerprint does not work.")}
+        {head("Set your password", "You will use it to sign in on a new phone, or if you are signed out.")}
         <Field label="New password" hint={`At least ${MIN_PASSWORD} characters. Three words you will remember work well.`}>
           {(id) => <input id={id} type="password" className="field h-12" autoComplete="new-password" value={secret} onChange={(e) => setSecret(e.target.value)} />}
         </Field>
@@ -252,21 +248,6 @@ function SignIn({ owner, onStart, onIn }: { owner: Person; onStart: () => void; 
     );
   }
 
-  if (step.s === "finger") {
-    const p = person(step.id);
-    return (
-      <div className={SCREEN}>
-        {head("Use fingerprint or Face ID?", "Then the app opens with a touch or a look. Your password still works if it does not.")}
-        <Fingerprint size={64} className="justify-self-center text-muted" aria-hidden="true" />
-        <Button size="lg" variant="primary" onClick={() => { setPhoneBiometrics(p.id, true); onIn(p.id); }}>
-          Turn on fingerprint
-        </Button>
-        <Button size="lg" onClick={() => { setPhoneBiometrics(p.id, false); onIn(p.id); }}>
-          Not now
-        </Button>
-      </div>
-    );
-  }
 
   // Password
   const p = person(step.id);
@@ -301,22 +282,6 @@ function SignIn({ owner, onStart, onIn }: { owner: Person; onStart: () => void; 
   );
 }
 
-function Unlock({ me, onUnlock, onPassword }: { me: Person; onUnlock: () => void; onPassword: () => void }) {
-  const brand = usePrefs((s) => s.brand);
-  return (
-    <div className={cx(SCREEN, "justify-items-center text-center")}>
-      <p className="text-body text-muted">{brand.brandName}</p>
-      <h2 className="text-page font-semibold">{me.name}</h2>
-      <button type="button" className="press grid justify-items-center gap-2 rounded-card border border-line bg-surface px-8 py-6" onClick={onUnlock}>
-        <Fingerprint size={64} aria-hidden="true" />
-        <span className="font-medium">Unlock with fingerprint</span>
-      </button>
-      <Button variant="ghost" onClick={onPassword}>
-        Use password instead
-      </Button>
-    </div>
-  );
-}
 
 // ── Home screens ──────────────────────────────────────────────────────────────
 
@@ -958,14 +923,6 @@ function MeSheet({ me, onClose }: { me: Person; onClose: () => void }) {
             </>
           )}
         </dl>
-        <div className="flex items-center gap-3 rounded-card border border-line bg-surface px-3 py-2.5">
-          <Fingerprint size={22} className="text-muted" aria-hidden="true" />
-          <span className="min-w-0 flex-1">
-            Fingerprint or Face ID
-            <span className="block text-detail text-muted">Opens the app without your password.</span>
-          </span>
-          <Switch on={!!acc?.biometrics} label="Fingerprint or Face ID" onChange={() => setPhoneBiometrics(me.id, !acc?.biometrics)} />
-        </div>
         {acc?.signedInUntil && <p className="text-body text-muted">Signed in on this phone until {dShort(acc.signedInUntil.slice(0, 10))}. You stay signed in for {SESSION_DAYS} days.</p>}
         <MyClaims me={me} />
         <Button

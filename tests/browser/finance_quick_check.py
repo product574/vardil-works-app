@@ -427,8 +427,8 @@ def steps(page, ctx):
             pg.on("pageerror", lambda e: perr.append(str(e)))
             pg.goto("http://localhost:4190/"); pg.wait_for_selector("h2, h1"); pg.wait_for_timeout(500)
             body = pg.inner_text("body")
-            own = pg.get_by_role("heading", name="Sign in").count() == 1 or pg.get_by_role("button", name="Unlock with fingerprint").count() == 1
-            check("Phone app alone: opens on the app's own screen (sign in, or unlock), no demo sign-in page", own and pg.locator("#username").count() == 0, body[:200])
+            own = pg.get_by_role("heading", name="Sign in").count() == 1
+            check("Phone app alone: opens on the app's own screen (sign in), no demo sign-in page", own and pg.locator("#username").count() == 0, body[:200])
             check("Phone app alone: nothing of the office (no top bar, no apps bar)", pg.locator("header").count() == 0 and pg.locator("nav[aria-label=Apps]").count() == 0)
             wide = pg.evaluate("document.documentElement.scrollWidth - document.documentElement.clientWidth")
             check("Phone app alone: fills the screen, no sideways scroll", wide <= 1 and pg.locator("[data-app=phone]").count() == 1, wide)
@@ -442,9 +442,6 @@ def steps(page, ctx):
             pg.get_by_label("Code").fill(code); pg.get_by_role("button", name="Check code").click(); pg.wait_for_timeout(400)
             pg.get_by_label("New password").fill("lime mortar gable"); pg.get_by_label("Type it again").fill("lime mortar gable")
             pg.get_by_role("button", name="Save password").click(); pg.wait_for_timeout(600)
-            later = pg.get_by_role("button", name=re.compile("Not now|No thanks|password each time", re.I))
-            if later.count(): later.first.click(); pg.wait_for_timeout(400)
-            elif pg.get_by_role("button", name="Turn on fingerprint").count(): pg.get_by_role("button", name="Turn on fingerprint").click(); pg.wait_for_timeout(400)
             check("Phone app alone: code, password, then the home screen with its tiles", pg.get_by_role("button", name=re.compile("^My week")).count() == 1 and pg.get_by_role("button", name=re.compile("^Report a repair")).count() == 1, pg.inner_text("body")[:300])
             pg.screenshot(path=f"{OUT}/1424-phone-app-home.png")
             reqs = pg.evaluate("performance.getEntriesByType('resource').map(r => r.name).filter(n => !n.startsWith('http://localhost:4190/'))")

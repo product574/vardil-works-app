@@ -44,7 +44,7 @@ export function seedPhoneAccounts(db: Db, today: string): PhoneAccount[] {
   const invited = at(workdays(today, -15), "16:30");
   return on
     .filter((p) => p.id !== notInvited)
-    .map((p, i): PhoneAccount => {
+    .map((p): PhoneAccount => {
       if (p.id === notSetUp) return { personId: p.id, invitedAt: at(workdays(today, -1), "11:05"), invitedBy: "Aidan King", codesSent: [], failed: 0 };
       return {
         personId: p.id,
@@ -56,7 +56,6 @@ export function seedPhoneAccounts(db: Db, today: string): PhoneAccount[] {
         failed: 0,
         signedInUntil: at(addDays(today, 20), "07:30"),
         lastSignIn: at(addDays(today, -10), "07:30"),
-        biometrics: i % 3 !== 0,
       };
     });
 }

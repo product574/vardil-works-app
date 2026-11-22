@@ -1,5 +1,5 @@
 # The phone app (20 Nov): sign-in by the number on the register, a one-time code, a password,
-# fingerprint; the operative's tiles; the site manager's sites, timesheet with Overtime, and
+# the operative's tiles; the site manager's sites, timesheet with Overtime, and
 # approvals; the office's Send invite, Sign out everywhere, Change number and Ready to be paid.
 # Needs the same build as main_offering_check.py, served on port 4180:
 #   VITE_STAFF=1 ALLOW_DEFAULT_LOGIN=1 npx vite build
@@ -38,7 +38,7 @@ with sync_playwright() as p:
     pg.screenshot(path=S + "1-register.png")
     dlg.get_by_role("button", name="Close").first.click(); pg.wait_for_timeout(200)
 
-    # The new person's first sign-in: code, password, fingerprint.
+    # The new person's first sign-in: code, password.
     pg.goto(B + "/site"); pg.wait_for_timeout(600)
     phone = pg.get_by_label("Phone app")
     pick = pg.get_by_label("Whose phone to look at")
@@ -61,8 +61,7 @@ with sync_playwright() as p:
     phone.get_by_label("New password").fill("lime mortar gable"); phone.get_by_label("Type it again").fill("lime mortar gable")
     pg.screenshot(path=S + "3-password.png")
     phone.get_by_role("button", name="Save password").click(); pg.wait_for_timeout(500)
-    ok("fingerprint offered", phone.get_by_role("button", name="Turn on fingerprint").count() == 1)
-    phone.get_by_role("button", name="Turn on fingerprint").click(); pg.wait_for_timeout(300)
+    ok("no fingerprint question: the app opens once the password is saved", phone.get_by_role("button", name=re.compile("fingerprint", re.I)).count() == 0)
     ok("operative home: big tiles", all(phone.get_by_role("button", name=re.compile("^" + n)).count() > 0 for n in ["My week", "My hours", "Holidays", "Receipt", "Report a repair", "My tickets", "Make a request"]))
     pg.screenshot(path=S + "4-operative.png")
 
@@ -86,9 +85,7 @@ with sync_playwright() as p:
     # A site manager's phone.
     opt = [o for o in pick.locator("option").all_inner_texts() if o.endswith("Site manager")][0]
     pick.select_option(label=opt); pg.wait_for_timeout(300)
-    if phone.get_by_role("button", name="Unlock with fingerprint").count():
-        ok("fingerprint unlock screen", True)
-        phone.get_by_role("button", name="Unlock with fingerprint").click(); pg.wait_for_timeout(200)
+    ok("no fingerprint unlock screen", phone.get_by_role("button", name="Unlock with fingerprint").count() == 0)
     ok("site manager: my sites and waiting for you", phone.get_by_role("heading", name="My sites today").count() == 1 and phone.get_by_role("heading", name="Waiting for you").count() == 1)
     ok("site manager: no My week or My hours", phone.get_by_role("button", name=re.compile("^My week")).count() == 0 and phone.get_by_role("button", name=re.compile("^My hours")).count() == 0)
     ok("site manager: the other tiles", all(phone.get_by_role("button", name=re.compile("^" + n)).count() > 0 for n in ["Holidays", "Receipt", "Report a repair", "My tickets", "Make a request"]))
@@ -119,7 +116,6 @@ with sync_playwright() as p:
 
     # A receipt from an operative on his site, approved on his phone, then paid by the office.
     mgr = opt.split(",")[0]
-    if phone.get_by_role("button", name="Unlock with fingerprint").count(): phone.get_by_role("button", name="Unlock with fingerprint").click(); pg.wait_for_timeout(200)
     phone.get_by_role("button", name=re.compile("^Reimbursements")).click(); pg.wait_for_timeout(300)
     rd = pg.get_by_role("dialog", name="Reimbursements to approve")
     if rd.get_by_role("button", name="Approve").count():
@@ -153,7 +149,6 @@ with sync_playwright() as p:
     # Another site manager: the first was signed out everywhere above.
     opt = [o for o in pick.locator("option").all_inner_texts() if o.endswith("Site manager") and not o.startswith(mgr)][0]
     pick.select_option(label=opt); pg.wait_for_timeout(300)
-    if phone.get_by_role("button", name="Unlock with fingerprint").count(): phone.get_by_role("button", name="Unlock with fingerprint").click(); pg.wait_for_timeout(200)
     phone.get_by_role("region", name="My sites today").get_by_role("button").first.click(); pg.wait_for_timeout(300)
     ok("everything: the site opens the whole job", all(phone.get_by_role("button", name=re.compile("^" + n)).count() > 0 for n in ["Timesheet", "Overtime time stamp", "Week ahead", "Month ahead", "Site instructions", "Who cannot work", "Scaffold inspections", "Invoices to approve", "Send a photo", "Report extra work", "Make a request"]))
     pg.screenshot(path=S + "8b-job.png")
@@ -164,14 +159,12 @@ with sync_playwright() as p:
     ok("everything: back to all my sites", phone.get_by_role("heading", name="My sites today").count() == 1)
     ops = [o for o in pick.locator("option").all_inner_texts() if not o.endswith("Site manager")]
     pick.select_option(label=ops[0]); pg.wait_for_timeout(300)
-    if phone.get_by_role("button", name="Unlock with fingerprint").count(): phone.get_by_role("button", name="Unlock with fingerprint").click(); pg.wait_for_timeout(200)
     if "Today you are at" in phone.inner_text():
         ok("everything: operative sends photos and extra work too", phone.get_by_role("button", name=re.compile("^Send a photo")).count() == 1 and phone.get_by_role("button", name=re.compile("^Report extra work")).count() == 1)
     ok("everything: Send a licence with Fleet", phone.get_by_role("button", name=re.compile("^Send a licence")).count() == 1)
 
     # A phone-sized window.
     pg.set_viewport_size({"width": 390, "height": 844}); pg.goto(B + "/site"); pg.wait_for_timeout(500)
-    if phone.get_by_role("button", name="Unlock with fingerprint").count(): phone.get_by_role("button", name="Unlock with fingerprint").click(); pg.wait_for_timeout(200)
     ok("phone width: no sideways scroll", pg.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1"))
     pg.screenshot(path=S + "9-narrow.png", full_page=True)
     ok("no page errors", not errs); print(errs[:5])

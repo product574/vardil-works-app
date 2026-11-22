@@ -9,8 +9,8 @@ has been built yet: an Android build needs Google's Android tools and an iPhone 
 with Xcode 26, and neither can run where the code was written. The first run of the workflow is
 the test.
 
-**What it is today.** Sample data kept on the phone, and stand-ins for the text message code and
-the fingerprint. That is right for test builds (TestFlight, Play internal testing). It is not
+**What it is today.** Sample data kept on the phone, and a stand-in for the text message code
+(there is no fingerprint or Face ID in the app now). That is right for test builds (TestFlight, Play internal testing). It is not
 ready for a public listing: both stores review a public app, Apple turns away demos and apps that
 are a repackaged website, and a real firm's people need the real server behind it first.
 
@@ -85,7 +85,7 @@ trying the app in the simulator and for taking screenshots.
 
 - The real server: sign-in, the text message code, each firm's own data. Marked REAL BUILD in the
   code (`src/lib/phone-auth.ts`, `src/data/actions.ts`).
-- Fingerprint and Face ID through the phone itself (a Capacitor plugin), in place of the stand-in.
+- Fingerprint and Face ID through the phone itself (a Capacitor plugin): taken out of the demo app on 22 Nov, to be built for the real app.
 - A privacy policy at a public address, and the stores' privacy answers (Apple's privacy details,
   Google's Data safety form) filled in from what the real app collects: name, mobile number,
   photos sent to the office, and whatever the server logs.

@@ -74,10 +74,8 @@ def phone_of(page, who="operative"):
 
 
 def unlock(page):
-    """Open the app past the fingerprint screen, when the person uses fingerprint."""
-    b = page.get_by_label("Phone app", exact=True).get_by_role("button", name="Unlock with fingerprint")
-    if b.count():
-        b.click(); page.wait_for_timeout(200)
+    """Kept so older suites still call it: the app has no fingerprint screen now (22 Nov), so there is nothing to open past."""
+    return None
 
 
 def pick_phone(page, name):

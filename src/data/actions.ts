@@ -3613,12 +3613,6 @@ export function tryPhonePassword(personId: ID, hash: string): PasswordTry {
   return out;
 }
 
-export function setPhoneBiometrics(personId: ID, on: boolean) {
-  mutate((db) => {
-    phoneAccount(db, personId).biometrics = on;
-  });
-}
-
 /** Sign out on the phone itself. */
 export function signOutPhone(personId: ID) {
   mutate((db) => {

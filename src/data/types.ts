@@ -361,8 +361,6 @@ export type PhoneAccount = {
   /** Signed in on their phone until this time (30 days from signing in). */
   signedInUntil?: Stamp;
   lastSignIn?: Stamp;
-  /** Fingerprint or Face ID opens the app. */
-  biometrics?: boolean;
 };
 
 export type Expense = {
