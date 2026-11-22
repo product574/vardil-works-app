@@ -599,6 +599,7 @@ export function RequestsBody({ embedded }: { embedded?: boolean }) {
                               <span className="font-medium">Overtime for {p?.name}</span>
                               <span className="block text-[0.87rem] text-muted">
                                 {c.hours} hours on {dFull(c.date)}
+                                {c.note ? `: "${c.note}"` : ""}
                               </span>
                             </td>
                             <td>{site ? `${site.code} ${site.name}` : "-"}</td>

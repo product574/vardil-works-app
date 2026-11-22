@@ -6,6 +6,7 @@ import { invoiceNo } from "./billing";
 import { gross, money2, r2, REGION } from "./money";
 import { daysBetween } from "./status";
 import { PORTAL } from "./apps";
+import { variationHeadline } from "./site-links";
 
 // ── Where an invoice stands ───────────────────────────────────────────────────
 
@@ -127,10 +128,10 @@ export type DraftStart = { key: string; label: string; description: string; line
 export function draftStarts(project: Pick<Project, "id">, invoices: SalesInvoice[], variations: Variation[], stageAmount = 0): DraftStart[] {
   const stage = invoices.filter((i) => i.projectId === project.id && /^stage payment/i.test(i.description)).length + 1;
   const billed = new Set(invoices.filter((i) => i.projectId === project.id).map((i) => i.description));
-  const extras = variations.filter((v) => v.projectId === project.id && v.status === "Approved" && !billed.has(`Agreed extra: ${v.measured}`));
+  const extras = variations.filter((v) => v.projectId === project.id && v.status === "Approved" && !billed.has(`Agreed extra: ${variationHeadline(v)}`));
   return [
     { key: "stage", label: `Stage payment ${stage}`, description: `Stage payment ${stage}: work to date`, lines: [{ description: `Stage payment ${stage}: work to date`, qty: 1, unit: "item", rate: stageAmount }] },
-    ...extras.map((v) => ({ key: v.id, label: `Agreed extra: ${v.measured}`, description: `Agreed extra: ${v.measured}`, lines: [{ description: v.description, qty: 1, unit: "item", rate: v.estimatedValue }] })),
+    ...extras.map((v) => ({ key: v.id, label: `Agreed extra: ${variationHeadline(v)}`, description: `Agreed extra: ${variationHeadline(v)}`, lines: [{ description: v.description, qty: 1, unit: "item", rate: v.estimatedValue }] })),
     { key: "dayworks", label: "Dayworks", description: "Dayworks", lines: [{ description: "Dayworks, labour", qty: 8, unit: "hours", rate: 48 }] },
     { key: "blank", label: "Something else", description: "", lines: [{ description: "", qty: 1, unit: "item", rate: 0 }] },
   ];

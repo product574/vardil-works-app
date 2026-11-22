@@ -24,6 +24,7 @@ import { driverSiteOn, dropOutcome } from "@/lib/roster";
 import { money2, r2 } from "@/lib/money";
 import { quoteTotal } from "@/lib/quotes";
 import { openSnags, takesSnags } from "@/lib/snags";
+import { fromPhone, variationHeadline } from "@/lib/site-links";
 import { orderProblem, spendProblem, type NewSpend } from "@/lib/buying";
 import { hireProblem, paperProblem, projectProblem, scopeLines, subProblem, type NewHire, type NewPaper, type NewProject, type NewSub } from "@/lib/ways-in";
 import { attendanceShort, type DayMark, restDayMark } from "@/lib/week";
@@ -138,12 +139,12 @@ export function approveApproval(id: ID) {
         v.approvedBy = who;
         const p = db.projects.find((x) => x.id === v.projectId);
         if (p && p.value != null) p.value = Math.round((p.value + v.estimatedValue) * 100) / 100;
-        audit(db, v.projectId, `Variation approved: ${v.measured} (${v.estimatedValue.toFixed(2)})`);
+        audit(db, v.projectId, `Variation approved: ${variationHeadline(v)} (${v.estimatedValue.toFixed(2)})`);
         if (p) {
           const f = refreshFinalAccount(db, p);
           // The final account has gone out already, so the agreed extra is billed on an invoice of its own.
           if (f && (f.status === "Invoiced" || f.status === "Paid")) {
-            db.salesInvoices.unshift({ id: newId("inv"), ref: `INV-${nextNumber(db.salesInvoices.map((i) => i.ref), "INV-")}`, projectId: p.id, clientId: p.clientId, description: `Agreed extra: ${v.measured}`, net: v.estimatedValue, vatPct: f.vatPct, status: "To invoice" });
+            db.salesInvoices.unshift({ id: newId("inv"), ref: `INV-${nextNumber(db.salesInvoices.map((i) => i.ref), "INV-")}`, projectId: p.id, clientId: p.clientId, description: `Agreed extra: ${variationHeadline(v)}`, net: v.estimatedValue, vatPct: f.vatPct, status: "To invoice" });
             if (p.status === "Closed") p.status = "Invoiced";
             audit(db, p.id, "Final account already issued: the extra goes to invoicing on its own");
           }
@@ -223,7 +224,7 @@ export function discardApproval(id: ID, note?: string) {
       const v = db.variations.find((x) => x.id === a.variationId);
       if (v) {
         v.status = "Rejected";
-        audit(db, v.projectId, `Variation rejected: ${v.measured}`);
+        audit(db, v.projectId, `Variation rejected: ${variationHeadline(v)}`);
         const p = db.projects.find((x) => x.id === v.projectId);
         if (p) settleExtras(db, p);
       }
@@ -311,7 +312,7 @@ export function reopenApproval(id: ID) {
         p.extrasFlag = true;
         p.invoiceHold = true;
         syncHold(db, p.id);
-        audit(db, p.id, `Variation reopened: ${v.measured}`);
+        audit(db, p.id, `Variation reopened: ${variationHeadline(v)}`);
       }
     }
     log(db, "Moved a draft back to waiting", a.title, "dashboard");
@@ -1082,8 +1083,11 @@ export function raiseExtra(projectId: ID, v: { description: string; measured: st
     p.invoiceHold = true;
     syncHold(db, p.id);
     const live = p.status === "Live";
-    db.approvals.unshift({ id: newId("ap"), kind: "variation", title: `Variation: ${v.measured || v.description.slice(0, 50)}`, rationale: `Raised by ${actorName(db)} in the office. ${live ? "The final account will be held until it is agreed." : "The final account is held until it is agreed."}`, createdAt: nowStamp(), status: "Pending", variationId: id, projectId });
-    audit(db, projectId, `Variation raised: ${v.measured || v.description}`);
+    // From the phone the measure is only a placeholder, so the worker's own words name it (22 Nov).
+    const headline = variationHeadline(v);
+    const where = fromPhone(v) ? "from the site phone. It is to be measured on site" : "in the office";
+    db.approvals.unshift({ id: newId("ap"), kind: "variation", title: `Variation: ${headline.length > 70 ? `${headline.slice(0, 67)}...` : headline}`, rationale: `Raised by ${actorName(db)} ${where}. ${live ? "The final account will be held until it is agreed." : "The final account is held until it is agreed."}`, createdAt: nowStamp(), status: "Pending", variationId: id, projectId });
+    audit(db, projectId, `Variation raised: ${headline}`);
     log(db, live ? "Drafted a variation for approval" : "Drafted a variation and held the final account", `${p.code} ${p.name}`, "projects", "Assistant");
   });
 }

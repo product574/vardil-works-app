@@ -115,6 +115,30 @@ is that person's phone full screen with no office around it (`src/modules/site/P
 an unknown id goes back to the list. Checked at phone width in Chromium, no page errors. Not
 tried: his real phone.
 
+**The phone's links to the office, 22 Nov (branch `site-app-links`, from `site-app-calm-ui`; not merged):**
+Oisin asked for every connection between the phone and the dashboard to be checked ("when send a
+photo it goes into the correct project photos files... the timesheet links up and the reporting
+goes to the correct place"). Traced in the master demo first (its decision 293, branch
+`phone-links`), then brought here by hand (the master demo's newer screens differ). Fixed: the
+phone took its permissions from the office's saved role in the same browser, so on a real phone
+(no office role) **a site manager could not mark or send the timesheet**; access is now worked out
+for the person signed in on the phone (`PhoneIdentity` in `src/data/access.ts`, provided by
+`PhoneApp`, also on the office's Site phone screen: Oisin's pick, the phone owner's permissions).
+Extra work from the phone was named "To be measured on site" in the office and said "in the
+office"; it is now named by the worker's words (`src/lib/site-links.ts`). The note typed with
+extra work was dropped when the worker's language was not English. The day's site instructions
+are on the project's Overview (his pick). Admin's step-in list shows an overtime claim's note. The
+master demo's two-tab listener was left out here: linked, the server is the copy that counts and
+every screen polls it. Tested: `src/data/phone-to-office.test.ts` (6 tests: the app's own store and
+actions as the phone, a second screen as the office, the real `handleData` between them: a photo
+in that project's photos, the timesheet marked and sent, extra work named and in Approvals, a snag,
+a site request and a crew request on the project, a repair, a receipt and an overtime claim with
+the site manager's yes and the office's answer back on the phone, the day's instructions), 923
+unit tests, both type checks, `phone_app_check.py` 38 of 38, and Eoin's phone at `/app/p-sm1` in a
+fresh browser marking and sending the timesheet (refused before the change, checked). Not tested:
+the preview on a real phone, Supabase itself. Still here and taken out of the master demo on 22
+Nov at Oisin's word: fingerprint and Face ID on the phone (ask before bringing that across).
+
 **Next, in order:** Email and Team chat hidden; Reset demo data for Vardil staff only (the server already
 refuses anyone else); then two real phones and an office screen; then merge into `main` at Oisin's
 word. The master demo carries on in its own chat: its latest work is on `finance-quick-adds`, not

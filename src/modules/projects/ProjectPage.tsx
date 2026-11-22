@@ -19,6 +19,7 @@ import { overtimeText, overtimeTotal } from "@/lib/overtime";
 import { labourCost, scopePercent, supplierCostByCategory } from "@/lib/project-costs";
 import { mayHandleCrewRequest, withSite } from "@/lib/requests";
 import { opensSite } from "@/lib/site-access";
+import { fromPhone, instructionsUp, variationHeadline } from "@/lib/site-links";
 import { holdLines, snagCount, takesRequests, takesSnags, takesVariations } from "@/lib/snags";
 import { dueLabel, dueState, nextServiceDate } from "@/lib/status";
 import { Badge, Button, cx, DeclineNote, Dialog, Empty, Fact, Field, PageBody, PageHead, Panel, Section, Segmented } from "@/ui";
@@ -151,6 +152,7 @@ function OverviewTab({ p, db }: TabProps) {
   const quote = db.quotes.find((q) => q.id === p.quoteId);
   const roster = db.assignments.filter((a) => a.projectId === p.id).map((a) => db.people.find((x) => x.id === a.personId)!);
   const today = db.attendance.filter((a) => a.projectId === p.id && a.date === day);
+  const upNow = instructionsUp(db.dayInstructions, p.id, day);
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
       <div className="grid content-start gap-6">
@@ -179,10 +181,28 @@ function OverviewTab({ p, db }: TabProps) {
         <Section title="The works">
           <p className="max-w-[70ch]">{p.description}</p>
         </Section>
-        {p.siteInstructions && (
+        {/* The site manager's instructions for the day, put up on his phone (22 Nov): the office sees what the crew sees. */}
+        {(p.siteInstructions || upNow.length > 0) && (
           <Section title="Site instructions">
-            <p className="max-w-[70ch] rounded-md border-l-4 border-accent bg-surface px-3 py-2">{p.siteInstructions}</p>
-            <p className="mt-1 text-[0.93rem] text-muted">Shown to every operative on their phone, in their own language.</p>
+            {upNow.length > 0 && (
+              <ul className="mb-3 grid gap-2" aria-label="Instructions for the day">
+                {upNow.map((x) => (
+                  <li key={x.id} className="max-w-[70ch] rounded-md border border-line bg-surface px-3 py-2">
+                    <p className="text-[0.93rem] font-medium">{x.date === day ? "Today" : dFull(x.date)}</p>
+                    <p>{x.text}</p>
+                    <p className="text-[0.93rem] text-muted">
+                      Put up by {x.by} on the site phone, {whenInline(x.at, day)}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {p.siteInstructions && (
+              <>
+                <p className="max-w-[70ch] rounded-md border-l-4 border-accent bg-surface px-3 py-2">{p.siteInstructions}</p>
+                <p className="mt-1 text-[0.93rem] text-muted">Standing instructions, shown to every operative on their phone{upNow.length > 0 ? " under the day's" : ""}.</p>
+              </>
+            )}
           </Section>
         )}
         {roster.length > 0 && (
@@ -854,11 +874,11 @@ function ExtrasTab({ p, db }: TabProps) {
                 return (
                   <li key={v.id} className="grid gap-1 px-3 py-2.5">
                     <div className="flex flex-wrap items-baseline gap-3">
-                      <p className="font-medium">{v.measured}</p>
+                      <p className="font-medium">{variationHeadline(v)}</p>
                       {seeValues && <span className="ml-auto font-medium">{money2(v.estimatedValue, region)}</span>}
                       <Badge tone={v.status === "Approved" ? "ok" : v.status === "Rejected" ? "bad" : "accent"}>{v.status === "Draft" ? "Awaiting approval" : v.status}</Badge>
                     </div>
-                    <p>{v.description}</p>
+                    {fromPhone(v) ? <p className="text-[0.93rem] text-muted">Sent from the site phone. To be measured on site</p> : <p>{v.description}</p>}
                     {v.original && v.originalLanguage && (
                       <p lang={v.originalLanguage} className="rounded bg-side px-2 py-1 text-[0.93rem] text-muted">
                         As written in {LANGUAGE_NAME[v.originalLanguage]}: {v.original}

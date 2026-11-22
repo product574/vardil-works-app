@@ -6,6 +6,7 @@ import { stateOf, ticketBlocks, vehicleBlocks } from "@/lib/compliance";
 import { useData, usePrefs } from "@/data/store";
 import { type ExpenseKind, type Language, LANGUAGE_NAME, type Person, type Project, type RequestKind } from "@/data/types";
 import { spendProblem } from "@/lib/buying";
+import { PHONE_MEASURE } from "@/lib/site-links";
 import { addDays } from "@/lib/dates";
 import { type CheckAnswer, checkedCount, checkReady, CHECK_ITEMS, DRIVING_CHECK } from "@/lib/driving";
 import { dShort, plural } from "@/lib/format";
@@ -134,8 +135,9 @@ export function ExtraSheet({ site, me, lang, onClose }: { site: Project; me: Per
               const foreign = me.language !== "en";
               actAs(me.id, () =>
                 raiseExtra(site.id, {
-                  description: note.trim() && !foreign ? `${e.en}. ${note.trim()}` : e.en,
-                  measured: "To be measured on site",
+                  // The note goes to the office as typed, in whatever language (22 Nov: it was dropped when the phone was not in English).
+                  description: note.trim() ? `${e.en}. ${note.trim()}` : e.en,
+                  measured: PHONE_MEASURE,
                   estimatedValue: 0,
                   ...(foreign ? { original: note.trim() ? `${e[me.language]}. ${note.trim()}` : e[me.language], originalLanguage: me.language } : {}),
                 }),

@@ -11,6 +11,7 @@ import { money0 } from "@/lib/money";
 import { scopePercent } from "@/lib/project-costs";
 import { crewRequests, mayHandleCrewRequest, requestsFor, withOffice } from "@/lib/requests";
 import { holdLines, takesRequests, takesSnags } from "@/lib/snags";
+import { fromPhone, variationHeadline } from "@/lib/site-links";
 import { dayRoster } from "@/lib/roster";
 import { Badge, Button, DeclineNote, Dialog, Empty, PageBody, PageHead, Panel, Section, Segmented } from "@/ui";
 import { HoldBadge, Progress, ProjectBadge } from "@/ui/status";
@@ -314,9 +315,9 @@ export function VariationsAndSnagging() {
                       <Link to={`/projects/${p.code}?tab=variations`} className="font-medium underline-offset-2 hover:underline">
                         {p.code} {p.name}
                       </Link>
-                      <p>{v.measured}</p>
+                      <p>{variationHeadline(v)}</p>
                       <p className="text-[0.93rem] text-muted">
-                        Raised by {person(db, v.raisedById)}, {whenInline(v.raisedAt, day)}
+                        Raised by {person(db, v.raisedById)}{fromPhone(v) ? " on the site phone, to be measured on site" : ""}, {whenInline(v.raisedAt, day)}
                       </p>
                     </div>
                     {access.seeValues && <span className="font-medium">{money0(v.estimatedValue, region)}</span>}

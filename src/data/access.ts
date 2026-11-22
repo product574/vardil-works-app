@@ -9,6 +9,7 @@
  * Both are edited by the managing director in Admin > Roles and access. Screens ask
  * `useAccess()`; they never check a role name themselves.
  */
+import { createContext, useContext } from "react";
 import { DEPARTMENTS } from "@/app/departments";
 import { staff } from "@/app/staff";
 import { useApps } from "@/app/workspace";
@@ -91,8 +92,18 @@ export function applyStaffChanges(
   return { ...resolved, departments, perms, seeValues, seeMargins, home };
 }
 
+/**
+ * Who is signed in on the phone app (22 Nov). The phone has no office sign-in, so without this it
+ * took its permissions from whatever role was last picked on the office site in the same browser
+ * (none at all on a fresh phone: the site manager could not mark the timesheet). Inside this
+ * provider, access is worked out for the phone's own person and their level.
+ */
+export const PhoneIdentity = createContext<{ role: RoleKey; personId: ID } | null>(null);
+
 export function useAccess() {
-  const role = usePrefs((s) => s.role);
+  const phone = useContext(PhoneIdentity);
+  const prefRole = usePrefs((s) => s.role);
+  const role = phone ? phone.role : prefRole;
   const operativeId = usePrefs((s) => s.operativeId);
   const asPersonId = usePrefs((s) => s.asPersonId);
   const staffPref = usePrefs((s) => s.staffMode);
@@ -103,10 +114,10 @@ export function useAccess() {
   const people = useDb((db) => db.people);
   const row = useDb((db) => db.access.find((a) => a.id === role));
   const def = roleDef(role);
-  const personId = signedInPersonId(role, asPersonId, operativeId, people);
+  const personId = phone ? phone.personId : signedInPersonId(role, asPersonId, operativeId, people);
   const person = useDb((db) => db.personAccess.find((a) => a.id === personId));
   // Vardil Works counts only for people the staff check passed. Everyone else is never in it, whatever is saved in their browser.
-  const staffMode = staffPref && staff.is && role === "md";
+  const staffMode = !phone && staffPref && staff.is && role === "md";
   const base = resolveAccess(def, row, person);
   // In Vardil Works nothing Vardil has switched off applies: it sees the whole firm, plus its own department.
   const resolved = staffMode ? { ...base, departments: [...base.departments, "vardil" as DepartmentKey] } : applyStaffChanges(base, role, def, { mdOverride, companyOff });

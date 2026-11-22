@@ -8,10 +8,10 @@
  */
 import { ArrowLeft, CalendarBlank, CalendarDots, CalendarPlus, Camera, CaretRight, Certificate, Clock, Fingerprint, HandPalm, IdentificationCard, Invoice, Ladder, ListChecks, Megaphone, Package, Phone, PlusCircle, Receipt, SunHorizon, Tray, Truck, UserMinus, Wrench } from "@phosphor-icons/react";
 import { useCallback, useEffect, useState } from "react";
-import { useAccess } from "@/data/access";
+import { levelOf, PhoneIdentity, useAccess } from "@/data/access";
 import { actAs, decideExpense, nowStamp, enterPhoneCode, sendPhoneCode, setPhoneBiometrics, setPhonePassword, signOutPhone, tryPhonePassword } from "@/data/actions";
 import { useData, useDay, usePrefs } from "@/data/store";
-import type { Db, Expense, Person, Project } from "@/data/types";
+import type { Db, Expense, Person, Project, RoleKey } from "@/data/types";
 import { bookingFor, stateOf, ticketBlocks, vehicleBlocks } from "@/lib/compliance";
 import { money2, REGION } from "@/lib/money";
 import { addDays } from "@/lib/dates";
@@ -113,7 +113,8 @@ function PhoneApp({ owner, day }: { owner: Person; day: string }) {
   if (inFlow || !me.active || !sessionOpen(acc, now)) return <SignIn owner={owner} onStart={start} onIn={(id) => { setWho(id); setUnlocked(true); setUsePassword(false); setInFlow(false); }} />;
   if (acc?.biometrics && !unlocked && !usePassword) return <Unlock me={me} onUnlock={() => setUnlocked(true)} onPassword={() => { signOutPhone(me.id); setUsePassword(true); }} />;
   const manager = me.kind === "Management" || me.level === "site";
-  return manager ? <ManagerHome me={me} day={day} /> : <OperativeHome me={me} day={day} />;
+  const identity = { role: (levelOf(me) ?? "operative") as RoleKey, personId: me.id };
+  return <PhoneIdentity.Provider value={identity}>{manager ? <ManagerHome me={me} day={day} /> : <OperativeHome me={me} day={day} />}</PhoneIdentity.Provider>;
 }
 
 // ── Signing in ────────────────────────────────────────────────────────────────
