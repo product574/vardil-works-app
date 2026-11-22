@@ -140,9 +140,12 @@ the preview on a real phone, Supabase itself. Fingerprint and Face ID came out o
 as in the master demo: after the password is saved the app opens straight away, and Me has no
 switch for it. To be built for the real app through the phone itself (`docs/app-stores.md`).
 
+**In `main` since 22 Nov** at Oisin's word ("remove the fingerprint and merge this"): `linked-site-app`,
+`site-app-calm-ui` and `site-app-links` together, so app.vardil-works-app.pages.dev (Production, firm
+`abc-demo`) now has the linked phone at /app.
+
 **Next, in order:** Email and Team chat hidden; Reset demo data for Vardil staff only (the server already
-refuses anyone else); then two real phones and an office screen; then merge into `main` at Oisin's
-word. The master demo carries on in its own chat: its latest work is on `finance-quick-adds`, not
+refuses anyone else); then two real phones and an office screen. The master demo carries on in its own chat: its latest work is on `finance-quick-adds`, not
 yet in its `main`; bring its changes across here when Oisin asks (same history, so a merge).
 
 ## This repository: the master demo (from 20 Nov 2026)
